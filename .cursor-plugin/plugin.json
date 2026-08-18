@@ -1,0 +1,21 @@
+{
+  "$schema": "https://cursor.com/schemas/plugin.json",
+  "name": "crv-agent-skills",
+  "description": "CRV organization-wide agent skills: vendor-neutral, evidence-driven, and governed by schema-validated frontmatter.",
+  "version": "0.1.0",
+  "author": {
+    "name": "CRV",
+    "url": "https://www.crv4all.com"
+  },
+  "homepage": "https://github.com/crv4all/agent-skills",
+  "repository": "https://github.com/crv4all/agent-skills",
+  "license": "Apache-2.0",
+  "keywords": [
+    "agent-skills",
+    "crv"
+  ],
+  "skills": [
+    "./skills/processes/crv-codebase-onboarding",
+    "./skills/processes/crv-create-skill"
+  ]
+}
