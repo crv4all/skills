@@ -1,0 +1,17 @@
+trigger:
+  branches:
+    include: [main]
+
+variables:
+  # Trap: this variable group is defined in Azure DevOps, outside the
+  # repository. Nothing in a checkout can tell you what is in it.
+  - group: platform-terraform-secrets
+
+stages:
+  - stage: plan
+    jobs:
+      - job: terraform_plan
+        steps:
+          - template: pipelines/terraform-steps.yml
+            parameters:
+              command: plan

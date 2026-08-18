@@ -1,0 +1,11 @@
+{
+  "name": "@crv/api",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "fastify": "5.1.0"
+  }
+}

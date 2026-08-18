@@ -1,0 +1,7 @@
+{
+  "name": "api",
+  "targets": {
+    "build": { "executor": "@nx/js:tsc" },
+    "test": { "executor": "@nx/vite:test" }
+  }
+}

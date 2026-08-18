@@ -1,0 +1,5 @@
+{
+  "name": "@crv/shared",
+  "type": "module",
+  "main": "src/index.ts"
+}

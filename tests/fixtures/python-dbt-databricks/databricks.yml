@@ -1,0 +1,19 @@
+bundle:
+  name: herd-analytics
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: ${DATABRICKS_HOST}
+  prod:
+    workspace:
+      host: ${DATABRICKS_HOST}
+
+resources:
+  jobs:
+    herd_analytics_daily:
+      tasks:
+        - task_key: dbt_build
+          dbt_task:
+            commands: ["dbt build --target ${BUNDLE_TARGET}"]

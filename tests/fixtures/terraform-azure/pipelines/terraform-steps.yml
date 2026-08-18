@@ -1,0 +1,11 @@
+parameters:
+  - name: command
+    type: string
+
+steps:
+  - script: terraform init -backend-config="access_key=$(TFSTATE_ACCESS_KEY)"
+    displayName: terraform init
+  - script: terraform ${{ parameters.command }}
+    displayName: terraform ${{ parameters.command }}
+    env:
+      ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)

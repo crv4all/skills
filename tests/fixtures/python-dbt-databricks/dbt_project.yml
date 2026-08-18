@@ -1,0 +1,11 @@
+name: herd_analytics
+version: "1.0.0"
+profile: crv_databricks
+model-paths: ["models"]
+macro-paths: ["macros"]
+models:
+  herd_analytics:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: incremental

@@ -1,0 +1,9 @@
+trigger:
+  - main
+
+variables:
+  - group: databricks-shared
+
+steps:
+  - script: dbt build --target $(BUNDLE_TARGET)
+    displayName: dbt build
