@@ -1,0 +1,15 @@
+# Every change needs a review from the owning team.
+#
+# [TODO] `@crv4all/agent-skills-maintainers` does not exist yet. Create the team
+# on GitHub, or replace these entries with individual handles, before enabling
+# branch protection that requires code-owner review -- a CODEOWNERS entry naming
+# a team that does not exist silently matches nobody.
+
+*                       @crv4all/agent-skills-maintainers
+
+# The enforcement layer decides what is allowed to ship. Changes here need the
+# same scrutiny as changes to the skills themselves, and usually more, because
+# loosening a check is invisible in every future PR.
+/standards/             @crv4all/agent-skills-maintainers
+/.github/workflows/     @crv4all/agent-skills-maintainers
+/docs/design-principles.md @crv4all/agent-skills-maintainers
