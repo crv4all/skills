@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/crv4all/agent-skills/main/standards/schemas/budgets-config-v1.schema.json",
+  "title": "CRV skill context budgets (v1)",
+  "description": "Configuration for standards/scripts/check_budgets.py. The config is itself schema-validated so that a typo in a budget key silently disables a check instead of failing loudly -- which is the failure mode that makes budget enforcement worthless.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["skill-md", "reference-files", "tokenizer", "enforcement"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Relative path to this schema, so editors offer completion."
+    },
+    "skill-md": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max-lines", "max-characters", "max-tokens"],
+      "description": "Hard budgets for the SKILL.md body. The whole file is loaded into context the moment the skill activates, so every line competes with the user's actual task.",
+      "properties": {
+        "max-lines": { "$ref": "#/$defs/positiveInt", "description": "Spec guidance: keep SKILL.md under 500 lines." },
+        "max-characters": { "$ref": "#/$defs/positiveInt", "description": "Cheap, tokenizer-independent proxy; catches long single-line tables that pass the line check." },
+        "max-tokens": { "$ref": "#/$defs/positiveInt", "description": "Spec guidance: under ~5000 tokens of instructions." }
+      }
+    },
+    "reference-files": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["warn-lines"],
+      "description": "Soft budget for files under references/. These load on demand, so they may be longer than SKILL.md -- but a reference file large enough to blow the context window when pulled in is a file that should have been split.",
+      "properties": {
+        "warn-lines": { "$ref": "#/$defs/positiveInt" }
+      }
+    },
+    "tokenizer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["encoding", "on-unavailable"],
+      "properties": {
+        "encoding": {
+          "type": "string",
+          "enum": ["cl100k_base", "o200k_base", "p50k_base", "r50k_base"],
+          "description": "Token counts are an approximation: no harness publishes its production tokenizer. cl100k_base is a stable, offline, widely understood yardstick. The number is a budget, not a measurement of any specific model."
+        },
+        "on-unavailable": {
+          "type": "string",
+          "enum": ["skip", "error", "estimate"],
+          "description": "What to do when tiktoken is not importable or its encoding files cannot be downloaded. 'skip' reports the token check as skipped and does not fail; 'error' fails; 'estimate' falls back to a characters-per-token heuristic and labels the result as estimated. Never silently pass."
+        },
+        "estimate-characters-per-token": {
+          "$ref": "#/$defs/positiveInt",
+          "description": "Divisor used only when on-unavailable is 'estimate'."
+        }
+      }
+    },
+    "enforcement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["draft", "stable", "deprecated"],
+      "description": "Severity per maturity level. Drafts warn so that authoring is not blocked by a budget before the content exists; stable fails because a stable skill is one other people depend on.",
+      "properties": {
+        "draft": { "$ref": "#/$defs/severity" },
+        "stable": { "$ref": "#/$defs/severity" },
+        "deprecated": { "$ref": "#/$defs/severity" }
+      }
+    },
+    "exemptions": {
+      "type": "array",
+      "description": "Escape hatch with a paper trail. Each entry must name the file, the budget, and a reason -- an exemption nobody can explain is a budget nobody meant.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "budget", "reason"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1, "description": "Repo-relative path to the exempt file." },
+          "budget": {
+            "type": "string",
+            "enum": ["max-lines", "max-characters", "max-tokens", "warn-lines"]
+          },
+          "reason": { "type": "string", "minLength": 20 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "positiveInt": { "type": "integer", "minimum": 1 },
+    "severity": { "type": "string", "enum": ["warn", "error"] }
+  }
+}

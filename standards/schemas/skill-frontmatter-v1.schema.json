@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/crv4all/agent-skills/main/standards/schemas/skill-frontmatter-v1.schema.json",
+  "title": "CRV Agent Skill frontmatter (v1)",
+  "description": "Validates the YAML frontmatter of a SKILL.md against the Agent Skills specification (https://agentskills.io/specification) plus CRV governance requirements. The Agent Skills frontmatter field set is closed: exactly six fields exist. additionalProperties is false at the top level so that any non-spec key -- including 'version', which belongs inside 'metadata' -- is rejected rather than silently ignored by some harnesses and rejected by others.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "description", "metadata"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^crv-[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "Spec: 1-64 chars, lowercase alphanumeric and hyphens, no leading/trailing/consecutive hyphens, must equal the parent directory name. CRV additionally requires the 'crv-' prefix so that our skills never collide with harness built-ins (Cursor ships a built-in 'create-skill') and are distinguishable when a harness shows same-named skills side by side instead of merging them.",
+      "$comment": "The directory-name equality check is a filesystem concern and lives in validate_frontmatter.py, not here."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "description": "Spec: 1-1024 chars. Must describe both what the skill does and when to use it, because this string plus the name is the only thing loaded at startup and is therefore the entire basis for skill selection."
+    },
+    "license": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "Spec: license name or a reference to a bundled license file. Repository default is Apache-2.0."
+    },
+    "compatibility": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "description": "Spec: 1-500 chars. Include only when the skill has real environment requirements. Most skills should omit it."
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Spec: a map from string keys to string values. CRV uses it for governance. Numeric-looking values MUST be quoted in YAML or they parse as numbers and fail validation.",
+      "additionalProperties": { "$ref": "#/$defs/metadataValue" },
+      "propertyNames": {
+        "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+        "$comment": "Lowercase kebab-case keys keep the map readable and diffable."
+      },
+      "required": ["owner", "layer", "maturity"],
+      "properties": {
+        "owner": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "The team or distribution list accountable for this skill. A person's name is acceptable only as a stopgap; people change teams and skills outlive them."
+        },
+        "layer": {
+          "type": "string",
+          "enum": ["utilities", "knowledge", "patterns", "processes"],
+          "description": "Must equal the parent-of-parent directory name; enforced in validate_frontmatter.py."
+        },
+        "maturity": {
+          "type": "string",
+          "enum": ["draft", "stable", "deprecated"],
+          "description": "draft: in development, budget overruns warn. stable: supported, budget overruns fail the build. deprecated: still shipped so existing references resolve, but should not be adopted; the body must say what replaces it."
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
+          "description": "Informational per-skill semver. The distributable unit is the repository tag; this field tells a reader how much the skill itself has moved. Required once maturity is stable or deprecated. Quote it: 1.0 without quotes is a YAML float."
+        },
+        "tags": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*(,[a-z0-9]+(-[a-z0-9]+)*)*$",
+          "description": "Comma-separated, no spaces. A string and not a list because the spec restricts metadata values to strings. Required once maturity is stable or deprecated."
+        },
+        "review-cadence": {
+          "type": "string",
+          "enum": ["monthly", "quarterly", "semiannual", "annual"],
+          "description": "How often the owner re-verifies that the skill is still true. Required once maturity is stable or deprecated. Pick from how fast the underlying facts move, not from how important the skill feels."
+        }
+      },
+      "allOf": [
+        {
+          "$comment": "Governance ratchet: promoting a skill past draft requires the fields that make it maintainable by someone other than its author.",
+          "if": {
+            "properties": { "maturity": { "enum": ["stable", "deprecated"] } },
+            "required": ["maturity"]
+          },
+          "then": {
+            "required": ["version", "tags", "review-cadence"]
+          }
+        }
+      ]
+    },
+    "allowed-tools": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "description": "Spec: space-separated pre-approved tools. Experimental and unevenly supported across harnesses, so treat it as a hint and never as a security boundary."
+    }
+  },
+  "$defs": {
+    "metadataValue": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "description": "Every metadata value is a string. If YAML parsed it as a number, boolean, null, list, or map, quote it."
+    }
+  }
+}

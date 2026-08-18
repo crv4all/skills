@@ -1,0 +1,22 @@
+{
+  "$schema": "../schemas/budgets-config-v1.schema.json",
+  "skill-md": {
+    "max-lines": 500,
+    "max-characters": 25000,
+    "max-tokens": 5000
+  },
+  "reference-files": {
+    "warn-lines": 400
+  },
+  "tokenizer": {
+    "encoding": "cl100k_base",
+    "on-unavailable": "estimate",
+    "estimate-characters-per-token": 4
+  },
+  "enforcement": {
+    "draft": "warn",
+    "stable": "error",
+    "deprecated": "error"
+  },
+  "exemptions": []
+}
