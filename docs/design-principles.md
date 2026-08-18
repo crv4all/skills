@@ -181,10 +181,15 @@ Neither marker may survive into a skill at `maturity: stable`.
 
 ## 12. Generated files are generated, and drift fails the build
 
-`CATALOG.md` and both marketplace manifests are produced from frontmatter by
+`CATALOG.md` is produced from frontmatter by
 `standards/scripts/build_catalog.py`. CI runs it with `--check`. A hand-edit
 that disagrees with the source of truth fails, rather than quietly becoming the
 version people read.
+
+Nothing else is generated, and nothing is published. Marketplace manifests are
+cheap to add and premature to add: they would describe skills nobody has
+installed yet. Share the checkout, install with `install.sh`, and add a
+distribution channel when `install.sh` stops being enough.
 
 ## 13. Attribution is deliberate
 

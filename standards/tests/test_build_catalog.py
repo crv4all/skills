@@ -1,31 +1,14 @@
-"""Generated files are reproducible, and drift fails."""
+"""CATALOG.md is reproducible, and drift fails."""
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "build_catalog.py"
 
-GENERATED = (
-    "CATALOG.md",
-    ".claude-plugin/marketplace.json",
-    ".claude-plugin/plugin.json",
-    ".cursor-plugin/marketplace.json",
-    ".cursor-plugin/plugin.json",
-)
-
-#: Claude Code refuses to load a marketplace using one of its reserved names.
-RESERVED_MARKETPLACE_NAMES = {
-    "claude-code-marketplace", "claude-code-plugins", "claude-plugins-official",
-    "claude-plugins-community", "claude-community", "anthropic-marketplace",
-    "anthropic-plugins", "agent-skills", "anthropic-agent-skills",
-    "knowledge-work-plugins", "life-sciences", "claude-for-legal",
-    "claude-for-financial-services", "financial-services-plugins",
-    "first-party-plugins", "healthcare",
-}
+GENERATED = ("CATALOG.md",)
 
 
 @pytest.fixture
@@ -36,7 +19,7 @@ def catalog(run_script, skill_repo):
     return _catalog
 
 
-def test_write_creates_every_generated_file(make_skill, catalog, skill_repo):
+def test_write_creates_the_catalog(make_skill, catalog, skill_repo):
     make_skill(name="crv-alpha", layer="patterns")
     run = catalog("--write")
     assert run.returncode == 0, run.stderr
@@ -90,24 +73,6 @@ def test_refuses_to_generate_from_a_broken_skill(skill_repo, catalog):
     run = catalog("--write")
     assert run.returncode == 4
     assert "validate_frontmatter" in run.stderr
-
-
-def test_plugin_manifest_lists_skill_directories_explicitly(make_skill, catalog, skill_repo):
-    """Plugin skill discovery is one level deep; our layout is two."""
-    make_skill(name="crv-alpha", layer="patterns")
-    catalog("--write")
-    manifest = json.loads((skill_repo / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
-    assert manifest["skills"] == ["./skills/patterns/crv-alpha"]
-
-
-def test_marketplace_name_is_not_reserved(make_skill, catalog, skill_repo):
-    make_skill(name="crv-alpha", layer="patterns")
-    catalog("--write")
-    for rel in (".claude-plugin/marketplace.json", ".cursor-plugin/marketplace.json"):
-        manifest = json.loads((skill_repo / rel).read_text(encoding="utf-8"))
-        assert manifest["name"] not in RESERVED_MARKETPLACE_NAMES, rel
-        assert manifest["owner"]["name"]
-        assert manifest["plugins"]
 
 
 def test_catalog_carries_the_generated_banner(make_skill, catalog, skill_repo):

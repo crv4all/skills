@@ -17,10 +17,8 @@ agent-skills/
 │   └── tests/                  # pytest over the validators and bundled scripts
 ├── docs/                       # how and why
 ├── tests/fixtures/             # synthetic repositories for behavioural tests
-├── .claude-plugin/marketplace.json   # generated
-├── .cursor-plugin/marketplace.json   # generated
-├── CATALOG.md                        # generated
-└── install.sh                        # dependency-free installer
+├── CATALOG.md                  # generated
+└── install.sh                  # dependency-free installer
 ```
 
 ## The three sources of truth
@@ -44,7 +42,7 @@ Each stage is independently runnable, and CI runs all of them.
 | Frontmatter | `validate_frontmatter.py` | Schema violations, non-spec fields, `name` ≠ directory, `metadata.layer` ≠ parent directory, dangling file references |
 | Description quality | `validate_frontmatter.py` | Warnings only: too short, no trigger clause, self-referential opening |
 | Budgets | `check_budgets.py` | `SKILL.md` over 500 lines / 25,000 chars / 5,000 tokens. Warns at `draft`, errors at `stable` |
-| Drift | `build_catalog.py --check` | `CATALOG.md` or a marketplace manifest disagreeing with frontmatter |
+| Drift | `build_catalog.py --check` | `CATALOG.md` disagreeing with frontmatter |
 | Secrets | `scan_secrets.py` | Credential-shaped strings anywhere in the tree |
 | Unit tests | `pytest` | Validator regressions, bundled-script behaviour against fixtures |
 | Lint | `ruff`, `pyright`, `pymarkdown` | Style, types, markdown structure |
@@ -68,20 +66,18 @@ that budget, and nobody notices for six months. Validating the config against
 
 ## Distribution
 
-Three paths, all reading the same frontmatter.
+One path, deliberately.
 
-**`install.sh`** — dependency-free POSIX shell. Clones or updates a cache,
-then copies selected skills into the target harness's directory. Supports
-`--dry-run`, and refuses to overwrite a modified skill without `--force`.
+**`install.sh`** — dependency-free POSIX shell. Reads skills from a checkout,
+copies the selected ones into the target harness's directory, records a
+checksum, and refuses to overwrite a locally modified skill without `--force`.
+Supports `--dry-run` and `--list`.
 
-**Marketplace manifests** — `.claude-plugin/marketplace.json` and
-`.cursor-plugin/marketplace.json`, both generated. Neither is hand-edited; CI
-fails on drift.
+**`CATALOG.md`** — generated from frontmatter, drift-checked in CI. An index for
+readers, not an install mechanism.
 
-**Convenience wrappers** — `gh skill` and `npx skills` work against this
-repository because it is a public GitHub repo with a conventional layout. They
-are documented in [installing.md](installing.md), and are not a dependency:
-`install.sh` never needs them.
+There is deliberately **no marketplace manifest and no published install URL**
+in this version. See [Deliberate omissions](#deliberate-omissions).
 
 ## Deliberate omissions
 
@@ -91,22 +87,31 @@ a directory nobody reads and a manifest that drifts. Add it when a second team
 needs its own ownership boundary — the layer directories are already the natural
 seam to split on.
 
+**No marketplace manifests, and nothing published.** Claude Code and Cursor
+both support plugin marketplaces, and generating the manifests is easy. It is
+also premature: nobody has installed one of these skills yet, so a manifest
+would be untested machinery describing untested content, and it commits us to a
+public distribution channel before we know whether the skills are any good.
+Share the checkout, use `install.sh`, and add manifests when there is demand
+that `install.sh` cannot serve.
+
 **No harness-specific skill variants.** Canonical skills use only the six spec
 fields, so one copy loads everywhere. Differences between harnesses are absorbed
-by `install.sh` and the generated manifests, not by forking skills.
+by `install.sh`, not by forking skills.
 
 **No runtime skill registry or server.** Skills are files in git. A registry
 would add an availability dependency to an offline capability.
 
 **No `version` in frontmatter, and no per-skill release artifacts.** The
-distributable unit is the repository tag. `metadata.version` is informational,
-telling a reader how much a skill has moved, not what to install.
+distributable unit is the repository checkout. `metadata.version` is
+informational, telling a reader how much a skill has moved, not what to
+install.
 
 ## Why GitHub and not Azure DevOps
 
 Every other CRV repository lives on Azure DevOps
 (`dev.azure.com/crv4all`, projects `DevOps` and `Cloudforce Team Data`). This
-one is on public GitHub, deliberately, for two reasons:
+one is destined for GitHub, deliberately, for two reasons:
 
 - **Azure DevOps scopes repositories per project.** A skills repository that
   serves the whole organization would have to sit inside one project's
@@ -117,4 +122,6 @@ one is on public GitHub, deliberately, for two reasons:
 
 The cost is that nothing confidential can ever land here. That constraint is
 enforced by CI (`scan_secrets.py`) and stated in the `knowledge` layer
-guidance: facts that cannot be public are referenced by URL, never copied.
+guidance: facts that cannot be public are referenced by URL, never copied. We
+hold the repository to that rule from the first commit, so that making it
+public later is a decision rather than an audit.

@@ -206,8 +206,8 @@ uv run standards/scripts/build_catalog.py --write
 uv run standards/scripts/scan_secrets.py
 ```
 
-`build_catalog.py --write` regenerates `CATALOG.md` and both marketplace
-manifests. Commit the result; CI fails on drift.
+`build_catalog.py --write` regenerates `CATALOG.md`. Commit the result; CI
+fails on drift.
 
 ## Step 8: promote from draft when it has earned it
 

@@ -34,7 +34,7 @@ repos:
         pass_filenames: false
 
       - id: catalog-drift
-        name: catalog and marketplace drift
+        name: catalog drift
         entry: uv run standards/scripts/build_catalog.py --check
         language: system
         files: ^(skills/|standards/scripts/build_catalog\.py$)

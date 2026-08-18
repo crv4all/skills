@@ -3,16 +3,20 @@
 # requires-python = ">=3.11"
 # dependencies = ["pyyaml>=6.0.2"]
 # ///
-"""Generate CATALOG.md and both marketplace manifests from skill frontmatter.
+"""Generate CATALOG.md from skill frontmatter.
 
-Frontmatter is the single source of truth for what a skill is. Everything a
-reader or a harness sees about the catalogue is derived from it here, so that a
-skill cannot be described one way in its own file and another way in the index
-people actually read.
+Frontmatter is the single source of truth for what a skill is. The catalogue is
+derived from it here, so that a skill cannot be described one way in its own
+file and another way in the index people actually read.
 
 ``--check`` compares what would be generated against what is committed and
 fails on any difference. CI runs it that way, which is what stops a hand-edit
 from quietly becoming the version everyone reads.
+
+There are deliberately no marketplace or plugin manifests. This repository is
+not published yet -- it is shared as a git checkout while the skills mature,
+and `install.sh` copies from that checkout. Publishing machinery written before
+anyone has installed a skill is machinery nobody has tested.
 """
 
 from __future__ import annotations
@@ -35,12 +39,6 @@ LOGGER = log.get_logger("build-catalog")
 
 REPO_SLUG = "crv4all/agent-skills"
 REPO_URL = f"https://github.com/{REPO_SLUG}"
-
-#: Not `agent-skills`: Claude Code reserves that name, along with a list of
-#: other official-sounding names, and refuses to load a marketplace using one.
-CLAUDE_MARKETPLACE_NAME = "crv-skills"
-CURSOR_MARKETPLACE_NAME = "crv-skills"
-PLUGIN_NAME = "crv-agent-skills"
 
 OWNER_NAME = "CRV"
 OWNER_URL = "https://www.crv4all.com"
@@ -85,9 +83,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="build_catalog.py",
         description=(
-            "Generate CATALOG.md, .claude-plugin/{marketplace,plugin}.json and "
-            ".cursor-plugin/{marketplace,plugin}.json from skill frontmatter. Writes a "
-            "JSON summary to stdout; diagnostics go to stderr."
+            "Generate CATALOG.md from skill frontmatter. Writes a JSON summary to "
+            "stdout; diagnostics go to stderr."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
@@ -212,80 +209,8 @@ def render_catalog(entries: list[Entry]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _plugin_manifest(entries: list[Entry], key_prefix: str) -> dict[str, Any]:
-    """Shared plugin manifest.
-
-    ``skills`` lists each skill directory explicitly rather than pointing at
-    ``skills/``. Both Claude Code and Cursor document plugin skill discovery as
-    one level below the skills root, and our layout is two levels deep -- an
-    explicit list is portable and does not depend on directory walking either
-    vendor promises.
-    """
-    return {
-        "$schema": key_prefix,
-        "name": PLUGIN_NAME,
-        "description": (
-            "CRV organization-wide agent skills: vendor-neutral, evidence-driven, and "
-            "governed by schema-validated frontmatter."
-        ),
-        "version": "0.1.0",
-        "author": {"name": OWNER_NAME, "url": OWNER_URL},
-        "homepage": REPO_URL,
-        "repository": REPO_URL,
-        "license": "Apache-2.0",
-        "keywords": sorted({tag for entry in entries for tag in entry.tags} | {"crv", "agent-skills"}),
-        "skills": [f"./{entry.rel_path}" for entry in entries],
-    }
-
-
-def render_claude_plugin(entries: list[Entry]) -> str:
-    manifest = _plugin_manifest(entries, "https://json.schemastore.org/claude-code-plugin.json")
-    return json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
-
-
-def render_cursor_plugin(entries: list[Entry]) -> str:
-    manifest = _plugin_manifest(entries, "https://cursor.com/schemas/plugin.json")
-    return json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
-
-
-def _marketplace(name: str, entries: list[Entry]) -> dict[str, Any]:
-    return {
-        "name": name,
-        "owner": {"name": OWNER_NAME, "url": OWNER_URL},
-        "description": "CRV organization-wide agent skills.",
-        "plugins": [
-            {
-                "name": PLUGIN_NAME,
-                "source": "./",
-                "description": (
-                    f"{len(entries)} CRV skill(s): "
-                    + ", ".join(entry.name for entry in entries)
-                ),
-                "version": "0.1.0",
-                "author": {"name": OWNER_NAME, "url": OWNER_URL},
-                "homepage": REPO_URL,
-                "license": "Apache-2.0",
-                "category": "productivity",
-                "keywords": sorted({tag for entry in entries for tag in entry.tags} | {"crv"}),
-            }
-        ],
-    }
-
-
-def render_claude_marketplace(entries: list[Entry]) -> str:
-    return json.dumps(_marketplace(CLAUDE_MARKETPLACE_NAME, entries), indent=2, ensure_ascii=False) + "\n"
-
-
-def render_cursor_marketplace(entries: list[Entry]) -> str:
-    return json.dumps(_marketplace(CURSOR_MARKETPLACE_NAME, entries), indent=2, ensure_ascii=False) + "\n"
-
-
 GENERATED = {
     "CATALOG.md": render_catalog,
-    ".claude-plugin/marketplace.json": render_claude_marketplace,
-    ".claude-plugin/plugin.json": render_claude_plugin,
-    ".cursor-plugin/marketplace.json": render_cursor_marketplace,
-    ".cursor-plugin/plugin.json": render_cursor_plugin,
 }
 
 

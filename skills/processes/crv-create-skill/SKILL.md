@@ -39,8 +39,8 @@ skills/<layer>/crv-<name>/
 ```
 
 Plus: `validate_frontmatter.py` and `check_budgets.py` passing, `CATALOG.md`
-and both marketplace manifests regenerated, and a report naming every check
-that ran and every check that did not.
+regenerated, and a report naming every check that ran and every check that did
+not.
 
 ## When not to use this
 

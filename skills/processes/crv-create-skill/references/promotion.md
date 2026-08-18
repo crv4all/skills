@@ -29,7 +29,7 @@ All of these, actually done:
 - [ ] At least one behaviour eval run end to end.
 - [ ] No `[TODO]` or `[ASK USER]` markers remain anywhere in the skill.
 - [ ] Someone other than the author has completed a real task with it.
-- [ ] `CATALOG.md` and both marketplace manifests regenerated.
+- [ ] `CATALOG.md` regenerated.
 
 The last three are the ones that get skipped, and they are the ones that
 matter. An unrun eval and an untested-by-anyone-else skill are the two most
@@ -74,9 +74,9 @@ found it in the first place.
 ## When to delete instead
 
 Delete only when the skill was wrong rather than superseded, and nothing links
-to it. Record the deletion in `CHANGELOG.md`, and add a `renames` entry mapping
-the old name to `null` in the marketplace manifest so existing installs
-migrate cleanly rather than silently keeping a stale copy.
+to it. Record the deletion in `CHANGELOG.md`, and say so in the release notes:
+anyone who installed it with `install.sh` still has a copy on disk, and nothing
+will remove it for them.
 
 ## Demotion
 
