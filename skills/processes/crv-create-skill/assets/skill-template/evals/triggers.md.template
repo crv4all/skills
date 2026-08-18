@@ -1,0 +1,31 @@
+# Trigger evals — {{NAME}}
+
+Run each prompt in a **fresh session** with the skill installed and no other
+context. Observe whether the agent selects the skill before you say anything
+else. Record results in `results.md` with a date. Never report a result you did
+not produce.
+
+## Should fire
+
+| # | Prompt | Why |
+| --- | --- | --- |
+| T1 | "<a prompt in the user's own words>" | <why> |
+| T2 | "<the same intent, different vocabulary>" | <why> |
+| T3 | "<a prompt naming a concrete marker: file, tool, error>" | <why> |
+
+## Should not fire
+
+These matter more. A description that fires for everything is as useless as one
+that fires for nothing, and it is harder to notice.
+
+| # | Prompt | Why not | Should fire instead |
+| --- | --- | --- | --- |
+| N1 | "<adjacent request>" | <why not> | <skill, or nothing> |
+| N2 | "<narrower request answered directly>" | <why not> | nothing |
+| N3 | "<the near neighbour's territory>" | <why not> | <the neighbour> |
+
+## Borderline
+
+| # | Prompt | Correct answer | Reasoning |
+| --- | --- | --- | --- |
+| B1 | "<genuinely ambiguous>" | <fire / do not fire> | <argue it> |

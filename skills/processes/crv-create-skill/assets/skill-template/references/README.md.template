@@ -1,0 +1,13 @@
+<!--
+One file per topic. Keep each under 400 lines: a reference file is loaded whole,
+on demand.
+
+Do NOT link references/a.md -> references/b.md. Chained references get loaded
+late or not at all, and the validator warns about it. Link from SKILL.md.
+
+Delete this file once you have written real references.
+-->
+# <Topic>
+
+<Detail that SKILL.md points at but does not carry: worked examples, per-case
+tables, the long form of a rule, anything a reader consults only sometimes.>

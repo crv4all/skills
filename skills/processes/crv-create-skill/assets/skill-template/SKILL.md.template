@@ -1,0 +1,64 @@
+---
+name: {{NAME}}
+description: >-
+  {{DESCRIPTION}}
+license: Apache-2.0
+metadata:
+  owner: {{OWNER}}
+  layer: {{LAYER}}
+  maturity: draft
+---
+
+# {{TITLE}}
+
+<!--
+Write to an agent that is already competent. This file exists to correct what a
+capable agent gets WRONG, not to teach it the basics.
+
+Budgets: 500 lines / 25,000 characters / 5,000 tokens. Detail goes in
+references/, which loads on demand. Delete every comment like this one before
+committing.
+-->
+
+<One or two sentences: what this is for, and the single thing it gets right
+that an agent otherwise gets wrong.>
+
+## What this produces
+
+<The output contract, stated so a reader could check it. Not "produce
+documentation" but "these files exist, each has these sections, every claim
+carries evidence".>
+
+## When not to use this
+
+- <Near neighbour, and the skill or action that should handle it instead>
+- <A case that looks similar but is out of scope>
+
+## Procedure
+
+1. **<Step>.** <What to do. Say why the order matters if it does — an agent
+   under pressure reorders steps whose purpose it cannot see.>
+2. **<Step>.** <...>
+3. **<Step>.** <...>
+
+<Pair every rule with its reason. A rule with no rationale is discarded the
+moment the surrounding code disagrees with it.>
+
+## When a step fails
+
+<What to do. Unhandled failure is where an agent starts improvising, and
+improvisation is what this skill exists to prevent.>
+
+## Validation
+
+Before reporting done:
+
+- [ ] <A checkable assertion>
+- [ ] <A checkable assertion>
+
+<If any check fails, fix and re-check. Never report completion with a known
+failure, and never report a check as passed that you did not run.>
+
+## References
+
+- [references/<topic>.md](references/<topic>.md) — <what is in it>

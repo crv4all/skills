@@ -1,0 +1,21 @@
+# Behaviour evals — {{NAME}}
+
+Each case: setup, prompt, and a contract of checkable assertions. Prefer
+assertions a reader can verify by looking over judgements like "the output is
+good" — a criterion that cannot fail is decoration.
+
+## B1 — <the main path>
+
+**Setup:** <state of the world before the run>
+**Prompt:** "<verbatim>"
+
+- [ ] <checkable assertion>
+- [ ] <checkable assertion>
+- [ ] <what must NOT happen>
+
+## B2 — <the case that catches the characteristic failure>
+
+**Setup:** <a trap: stale docs, a missing file, an ambiguous input>
+**Prompt:** "<verbatim>"
+
+- [ ] <the trap is detected and reported, not smoothed over>

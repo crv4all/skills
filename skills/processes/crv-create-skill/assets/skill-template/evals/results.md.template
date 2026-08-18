@@ -1,0 +1,15 @@
+# Eval results — {{NAME}}
+
+Dated record of runs that actually happened. An empty section means the eval
+has not been run, which is a true and useful statement.
+
+Never record a result you did not produce. A fabricated pass is worse than a
+missing test, because it removes the reason to run the real one.
+
+## Trigger evals
+
+_Not yet run._
+
+## Behaviour evals
+
+_Not yet run._
