@@ -78,11 +78,20 @@ only two outcomes. There is no partial success.
 ## Step 0 — Preflight, and stop if it fails
 
 Both checks run before any content is gathered, because discovering at create
-time that the tenant is unreachable wastes the whole interview.
+time that the tenant is unreachable wastes the whole interview. They fail
+differently and are fixed differently, so check them in order and report what is
+actually blocking.
 
-1. **Atlassian MCP tools present?** Enumerate the available tools and match on
+1. **Atlassian MCP server available?** Enumerate the available tools and match on
    capability, not on name. Needed here: create an issue, read project
    create-metadata, list visible projects.
+
+   If MCP tools are **absent**: The server is not installed or not enabled. Say so
+   explicitly and point to [references/jira-setup.md#1-the-atlassian-mcp-server](references/jira-setup.md#1-the-atlassian-mcp-server).
+
+   If MCP tools are **present but every call returns unauthorised**: OAuth is not
+   complete. Say so explicitly and point to the authentication instructions.
+
 2. **Machine configured?**
 
    ```bash
@@ -91,13 +100,13 @@ time that the tenant is unreachable wastes the whole interview.
 
    Exit `0` means configured. Exit `1` names the missing keys. Exit `4` means the
    configuration file is corrupt, which is a different problem with a different
-   fix.
+   fix. Point at [references/jira-setup.md#2-machine-configuration](references/jira-setup.md#2-machine-configuration).
 
-**If either check fails, stop.** Report what is missing, point at
-[references/jira-setup.md](references/jira-setup.md), and create nothing. Do not
-proceed on a default project key, do not guess a site, and do not try the call to
-see what happens. An epic filed into the wrong project is far more expensive than
-a refusal, and much harder to notice.
+**If either check fails, stop.** Report what is missing clearly (MCP, or
+configuration), and do not create anything. Do not proceed on a default project
+key, do not guess a site, and do not try the call to see what happens. An epic
+filed into the wrong project is far more expensive than a refusal, and much
+harder to notice.
 
 ## Step 1 — Gather the content
 
@@ -151,8 +160,9 @@ Then say what to do next: stories under this epic are `crv-create-jira-story`.
 
 | Failure | What it means | Do |
 | --- | --- | --- |
-| No Jira tools available | MCP server absent or unauthenticated | Stop. Point at `references/jira-setup.md`. |
-| `jira_setup.py --check` exits `1` | Machine never configured | Stop. Give the exact `--set … --confirm` command. |
+| No Jira tools in tool list | MCP server not installed or not enabled for this harness | Stop. Point at [jira-setup.md § 1](references/jira-setup.md#1-the-atlassian-mcp-server) for installation and enablement. |
+| Jira tools present, every call returns unauthorised | OAuth flow incomplete or grant expired | Stop. Point at [jira-setup.md § Troubleshooting](references/jira-setup.md#troubleshooting) to re-run server authentication. |
+| `jira_setup.py --check` exits `1` | Machine never configured | Stop. Give the exact `--set … --confirm` command from [jira-setup.md § 2](references/jira-setup.md#2-machine-configuration). |
 | `jira_setup.py --check` exits `4` | Configuration file corrupt | Stop. Name the path; it needs inspection, not re-running setup. |
 | Project not visible | Wrong key, or no permission | Stop. List the visible projects. |
 | Required field unresolvable | Screen expects something not supplied | Stop. Name the field and the available field names. |

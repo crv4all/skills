@@ -77,11 +77,23 @@ candidate that is silently absent is a bug.
 ## Step 0 — Preflight, and stop if it fails
 
 Before gathering anything, because discovering at create time that the tenant is
-unreachable wastes the whole decomposition.
+unreachable wastes the whole decomposition. Checks fail differently and are fixed
+differently, so check them in order and report what is actually blocking.
 
-1. **Atlassian MCP tools present?** Enumerate available tools and match on
+1. **Atlassian MCP server available?** Enumerate available tools and match on
    capability, not name. Needed here: create an issue, read an issue, search by
    JQL, read project create-metadata.
+
+   If MCP tools are **absent**: The server is not installed or not enabled. Say so
+   explicitly and point to [references/jira-setup.md#1-the-atlassian-mcp-server](references/jira-setup.md#1-the-atlassian-mcp-server).
+
+   If MCP tools are **present but every call returns unauthorised**: OAuth is not
+   complete. Say so explicitly and point to the authentication instructions.
+
+   **JQL search is not optional.** If the search capability is unavailable, stop —
+   without it Step 3 cannot run, and Step 3 is the reason this skill is safe to
+   invoke twice.
+
 2. **Machine configured?**
 
    ```bash
@@ -89,15 +101,11 @@ unreachable wastes the whole decomposition.
    ```
 
    Exit `0` configured · `1` names the missing keys · `4` the configuration file
-   is corrupt, a different problem with a different fix.
+   is corrupt, a different problem with a different fix. Point at [references/jira-setup.md#2-machine-configuration](references/jira-setup.md#2-machine-configuration).
 
-**If either fails, stop.** Report what is missing, point at
-[references/jira-setup.md](references/jira-setup.md), and create nothing. Do not
-fall back to a guessed project, and do not attempt the call to see what happens.
-
-**JQL search is not optional.** If the search capability is unavailable, stop —
-without it Step 3 cannot run, and Step 3 is the reason this skill is safe to
-invoke twice.
+**If either fails, stop.** Report what is missing clearly (MCP, or configuration),
+and create nothing. Do not fall back to a guessed project, and do not attempt the
+call to see what happens.
 
 ## Step 1 — Read the parent epic
 
@@ -188,8 +196,9 @@ without naming the remaining work reads as completion.
 
 | Failure | What it means | Do |
 | --- | --- | --- |
-| No Jira tools available | MCP absent or unauthenticated | Stop. Point at `references/jira-setup.md`. |
-| `jira_setup.py --check` exits `1` | Never configured | Stop. Give the exact `--set … --confirm` command. |
+| No Jira tools in tool list | MCP server not installed or not enabled for this harness | Stop. Point at [jira-setup.md § 1](references/jira-setup.md#1-the-atlassian-mcp-server) for installation and enablement. |
+| Jira tools present, every call returns unauthorised | OAuth flow incomplete or grant expired | Stop. Point at [jira-setup.md § Troubleshooting](references/jira-setup.md#troubleshooting) to re-run server authentication. |
+| `jira_setup.py --check` exits `1` | Never configured | Stop. Give the exact `--set … --confirm` command from [jira-setup.md § 2](references/jira-setup.md#2-machine-configuration). |
 | `jira_setup.py --check` exits `4` | Configuration corrupt | Stop. Name the path; it needs inspection, not re-running setup. |
 | JQL search unavailable or errors | Duplicate detection impossible | Stop. Create nothing. |
 | Epic key does not resolve | Typo, or no permission | Stop. Ask for the correct key. |

@@ -7,23 +7,64 @@ them separately.
 
 ## 1. The Atlassian MCP server
 
+### Installation & Setup
+
+The Atlassian MCP server is not part of Claude Code by default and must be explicitly enabled.
+
+**For Claude Code CLI:**
+
+```bash
+claude mcp
+```
+
+This opens the interactive MCP configuration interface where you can:
+1. Add the Atlassian Rovo MCP server
+2. Complete the OAuth flow in your browser (you will be prompted)
+3. Verify the server is connected
+
+Alternatively, add it manually to `~/.claude.json` or `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "atlassian": {
+      "command": "npx",
+      "args": ["@atlassian/mcp", "server"]
+    }
+  }
+}
+```
+
+**For Cursor:**
+
+Settings → MCP, then add the Atlassian server. You can also edit `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "atlassian": {
+      "command": "npx",
+      "args": ["@atlassian/mcp", "server"]
+    }
+  }
+}
+```
+
+**For GitHub Copilot:**
+
+Edit `.vscode/mcp.json` and add an entry for the Atlassian server.
+
+### Authentication
+
+Atlassian's MCP server authenticates through the browser on first use. **You must
+complete the OAuth flow once before invoking a skill.** An agent cannot complete
+a browser consent screen, so a half-authorised server looks to the skill exactly
+like a missing one.
+
 Authentication lives here and nowhere else. The skills never read a Jira API
 token, never accept one as an argument, and never store one — a token on disk
 beside the skill would be a second copy to leak, and it would go stale
 independently of the one the harness already manages.
-
-Enable the server for the harness in use:
-
-| Harness | Where |
-| --- | --- |
-| Claude Code | `claude mcp add` for the Atlassian server, or an `mcpServers` entry in `.mcp.json` / `~/.claude.json` |
-| Cursor | Settings → MCP, or an `mcpServers` entry in `.cursor/mcp.json` |
-| GitHub Copilot | An `mcp` entry in `.vscode/mcp.json` |
-
-Atlassian publishes a hosted MCP endpoint that authenticates through the browser
-on first use. Whichever server you configure, complete its OAuth flow once
-before invoking a skill: an agent cannot complete a browser consent screen, so a
-half-authorised server looks to the skill exactly like a missing one.
 
 ### Capabilities the skills need
 
@@ -94,11 +135,24 @@ sends someone to re-run setup when they should be reading the file.
 
 ## Troubleshooting
 
+### MCP Server Issues
+
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| No Jira tools in the tool list | Server not configured, or the harness was not restarted | Configure it, restart the harness, re-check |
-| Every call returns unauthorised | OAuth never completed, or the grant expired | Re-run the server authentication flow in a browser |
-| `--check` exits `1` | Nothing recorded yet | Run `--set … --confirm` |
-| `--check` exits `4` | Configuration file hand-edited into invalid JSON | Inspect the path in the error, fix or delete it, re-run `--set` |
+| "No Jira tools" error, or empty tool list | Atlassian MCP server not installed or not enabled | Run `claude mcp` and add the Atlassian server, or manually configure it in your harness config. Restart the harness afterwards. |
+| "No Jira tools" after harness restart | OAuth flow not completed, or server has no token | In an interactive session, run `claude mcp` and re-authenticate the Atlassian server. You will be prompted to complete OAuth in your browser. |
+| Every Jira API call returns "unauthorised" | OAuth token is missing, expired, or incorrect | In an interactive session (not a non-interactive agent), complete the server OAuth flow: run `claude mcp` and click to authenticate. An agent cannot complete a browser prompt, so you must do this manually. |
+
+### Configuration Issues
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `--check` exits `1` with missing `site` and `project_key` | Machine configuration is incomplete | Run `python3 scripts/jira_setup.py --set --site https://YOUR-SITE.atlassian.net --project ABC --confirm` |
+| `--check` exits `4` | Configuration file hand-edited into invalid JSON | Inspect the path in the error, fix or delete it, then re-run `--set … --confirm` |
+
+### Jira Issues
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
 | Project key rejected as invalid | A project *name* was passed instead of its key | Use the key — the `ABC` in `ABC-123` |
 | Create fails on an unknown field | The project requires a field the input does not supply | Read the create-metadata error; it names the field |
