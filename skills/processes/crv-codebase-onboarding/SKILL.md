@@ -16,6 +16,8 @@ metadata:
   owner: cloudforce-team-data
   layer: processes
   maturity: draft
+  execution: subagent
+  model-tier: economy
 ---
 
 # Codebase onboarding
@@ -61,6 +63,30 @@ indistinguishable from a step that was forgotten.
 - Creating a new agent skill → `crv-create-skill`.
 - A repository you have already onboarded and have not changed → the
   `verify` mode below is cheap, but do not re-run `bootstrap`.
+
+## Execution
+
+**Delegate to a subagent. Do not run this in the main session.** This skill reads a large fraction of a repository. That context belongs in an agent that exits when it is done, not in the conversation the user has to keep using afterwards.
+
+**Model tier: `economy`** — the cheapest model that can follow instructions and
+call tools. Before spawning the subagent, ask once:
+
+> Running `crv-codebase-onboarding` in a subagent on the **economy** tier. Reply
+> `balanced` or `frontier` to run it on a stronger model, or continue to
+> accept the default.
+
+Ask once per invocation, before any work starts. Skip the question only when
+the user has already stated a tier preference in this session or in the
+project's agent configuration.
+
+**Never silently escalate.** If the subagent turns out to be out of its depth,
+stop and say so. Re-running on a bigger model without asking charges the user
+twice and hides the fact that the cheap tier was not enough — which is exactly
+the signal that should reach them.
+
+If the harness has no subagent mechanism, say so plainly and run inline. Still
+state the tier; the user can change the model even when they cannot change
+where it runs.
 
 ## Operating rules
 

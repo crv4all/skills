@@ -56,6 +56,11 @@ TRIGGER_HINTS = ("use when", "use this when", "invoke when", "apply when", "when
 
 MIN_USEFUL_DESCRIPTION = 60
 
+#: Every skill body must carry this heading. It is where the subagent and model
+#: contract is stated to the user, and a skill that omits it will quietly run in
+#: the main session on whatever model happens to be selected.
+EXECUTION_HEADING = "## Execution"
+
 # Anchored so that a repo-relative path such as `standards/scripts/foo.py` is not
 # mistaken for a bundled `scripts/foo.py` inside the skill directory.
 REFERENCE_PATTERN = r"(?<![A-Za-z0-9._/-])(?:scripts|references|assets|evals)/[A-Za-z0-9._\-/]+"
@@ -261,6 +266,56 @@ def check_description_quality(skill: Skill, data: dict[str, Any], report: Report
         )
 
 
+def check_execution_contract(
+    skill: Skill, data: dict[str, Any], body: str, report: Report
+) -> None:
+    """Enforce the subagent-and-cheapest-model rule.
+
+    The schema can require the metadata keys. It cannot check that the body
+    actually tells the agent what to do with them, and metadata nobody acts on
+    is decoration.
+    """
+    metadata = data.get("metadata")
+    if not isinstance(metadata, dict):
+        return
+
+    if EXECUTION_HEADING not in body:
+        report.error(
+            code="execution.missing-section",
+            path=skill.rel_skill_md,
+            message=f"the body has no {EXECUTION_HEADING!r} section",
+            hint=(
+                "Every CRV skill delegates to a subagent and states its model tier to the "
+                "user before starting. Copy the block from "
+                "skills/processes/crv-create-skill/assets/skill-template/SKILL.md.template."
+            ),
+        )
+
+    if metadata.get("execution") == "inline":
+        report.warn(
+            code="execution.inline",
+            path=skill.rel_skill_md,
+            message="runs inline rather than in a subagent",
+            hint=(
+                "Allowed only when the skill is too small to be worth a subagent round "
+                "trip. Say why in the Execution section."
+            ),
+        )
+
+    tier = metadata.get("model-tier")
+    if tier in {"balanced", "frontier"}:
+        report.warn(
+            code="execution.escalated-tier",
+            path=skill.rel_skill_md,
+            message=f"model-tier is {tier!r}; the default is 'economy'",
+            hint=(
+                "Escalating the tier makes every invocation more expensive. Justify it in "
+                "the Execution section, or drop to 'economy' and let the subagent ask for "
+                "more when it actually needs it."
+            ),
+        )
+
+
 def check_repo_conventions(skill: Skill, data: dict[str, Any], report: Report) -> None:
     if "license" not in data:
         report.warn(
@@ -348,6 +403,7 @@ def validate_skill(skill: Skill, schema: dict[str, Any], report: Report) -> None
     check_schema(skill, parsed.data, schema, report)
     check_filesystem_agreement(skill, parsed.data, report)
     check_description_quality(skill, parsed.data, report)
+    check_execution_contract(skill, parsed.data, parsed.body, report)
     check_repo_conventions(skill, parsed.data, report)
     check_references(skill, parsed.body, parsed.body_start_line, report)
     check_reference_chains(skill, report)

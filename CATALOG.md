@@ -6,10 +6,13 @@
 
 Install any of them with `install.sh`; see [docs/installing.md](docs/installing.md).
 
-| Skill | Layer | Maturity | Version | Owner | Summary |
-| --- | --- | --- | --- | --- | --- |
-| [`crv-codebase-onboarding`](skills/processes/crv-codebase-onboarding/SKILL.md) | processes | draft | — | cloudforce-team-data | Produces durable, evidence-backed codebase context in docs/codebase/ — architecture, stack divergences, conventions, workflows, data, integrations, testing,… |
-| [`crv-create-skill`](skills/processes/crv-create-skill/SKILL.md) | processes | draft | — | cloudforce-team-data | Takes a skill idea from "we should have a skill for this" to a validated skill in the CRV agent-skills repository: applies a boundary test to decide whether a… |
+Every skill runs in a subagent and states its model tier before starting. See
+[docs/design-principles.md](docs/design-principles.md) for the tier mapping.
+
+| Skill | Layer | Maturity | Runs as | Tier | Owner | Summary |
+| --- | --- | --- | --- | --- | --- | --- |
+| [`crv-codebase-onboarding`](skills/processes/crv-codebase-onboarding/SKILL.md) | processes | draft | subagent | economy | cloudforce-team-data | Produces durable, evidence-backed codebase context in docs/codebase/ — architecture, stack divergences, conventions, workflows, data, integrations, testing,… |
+| [`crv-create-skill`](skills/processes/crv-create-skill/SKILL.md) | processes | draft | subagent | economy | cloudforce-team-data | Takes a skill idea from "we should have a skill for this" to a validated skill in the CRV agent-skills repository: applies a boundary test to decide whether a… |
 
 ## utilities
 
@@ -37,10 +40,10 @@ End-to-end workflows with a reviewable deliverable.
 
 Produces durable, evidence-backed codebase context in docs/codebase/ — architecture, stack divergences, conventions, workflows, data, integrations, testing, and domain language — with every claim traceable to a real file path and stamped with the commit it was verified against. Use when someone asks to get up to speed on a repository, onboard to a codebase, understand how a system fits together, refresh stale codebase notes, or check whether existing context still matches the code, and before a large change in an unfamiliar repository. Not for writing a public README, explaining a single function, or authoring a new agent skill.
 
-**Owner:** cloudforce-team-data · **Maturity:** draft
+**Owner:** cloudforce-team-data · **Maturity:** draft · **Runs as:** subagent · **Model tier:** economy
 
 ### [`crv-create-skill`](skills/processes/crv-create-skill/SKILL.md)
 
 Takes a skill idea from "we should have a skill for this" to a validated skill in the CRV agent-skills repository: applies a boundary test to decide whether a skill is the right artifact at all, runs a round-based interview that asks only the decisions a person actually has to make, scaffolds into the correct capability layer, validates frontmatter and context budgets, and writes trigger evals. Use when someone wants to create, author, scaffold, split, or improve an agent skill or SKILL.md, when a skill needs review before merge, or when a repeated instruction should become reusable. Not for invoking an existing skill, and not for documenting a codebase — that is crv-codebase-onboarding.
 
-**Owner:** cloudforce-team-data · **Maturity:** draft
+**Owner:** cloudforce-team-data · **Maturity:** draft · **Runs as:** subagent · **Model tier:** economy

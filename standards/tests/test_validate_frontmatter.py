@@ -17,7 +17,11 @@ VALID = (
     "  owner: test-team\n"
     "  layer: processes\n"
     "  maturity: draft\n"
+    "  execution: subagent\n"
+    "  model-tier: economy\n"
 )
+
+BODY = "# Example\n\n## Execution\n\nSubagent, economy tier.\n\nDo the thing.\n"
 
 
 @pytest.fixture
@@ -104,14 +108,14 @@ def test_stable_with_governance_fields_passes(make_skill, validate):
 
 
 def test_dangling_reference_is_an_error(make_skill, validate):
-    make_skill(body="# Example\n\nRun scripts/missing.py for details.\n")
+    make_skill(body=BODY + "\nRun scripts/missing.py for details.\n")
     run = validate()
     assert run.returncode == 1
     assert "reference.missing" in run.codes()
 
 
 def test_existing_reference_is_accepted(make_skill, validate):
-    skill = make_skill(body="# Example\n\nSee references/detail.md.\n")
+    skill = make_skill(body=BODY + "\nSee references/detail.md.\n")
     (skill / "references").mkdir()
     (skill / "references" / "detail.md").write_text("# Detail\n", encoding="utf-8")
     run = validate()
@@ -120,13 +124,13 @@ def test_existing_reference_is_accepted(make_skill, validate):
 
 def test_repo_relative_paths_are_not_mistaken_for_bundled_ones(make_skill, validate):
     """`standards/scripts/x.py` is not a bundled `scripts/x.py`."""
-    make_skill(body="# Example\n\nRun standards/scripts/check_budgets.py first.\n")
+    make_skill(body=BODY + "\nRun standards/scripts/check_budgets.py first.\n")
     run = validate()
     assert "reference.missing" not in run.codes()
 
 
 def test_chained_reference_warns(make_skill, validate):
-    skill = make_skill(body="# Example\n\nSee references/a.md.\n")
+    skill = make_skill(body=BODY + "\nSee references/a.md.\n")
     (skill / "references").mkdir()
     (skill / "references" / "a.md").write_text("See references/b.md\n", encoding="utf-8")
     (skill / "references" / "b.md").write_text("# B\n", encoding="utf-8")
@@ -182,7 +186,7 @@ def test_empty_body_is_an_error(make_skill, validate):
 
 
 def test_stdout_is_only_json(make_skill, validate):
-    make_skill(body="# Example\n\nRun scripts/missing.py.\n")
+    make_skill(body=BODY + "\nRun scripts/missing.py.\n")
     run = validate("--verbose")
     run.json  # would raise if a diagnostic leaked into stdout
     assert "error:" in run.stderr
@@ -204,3 +208,61 @@ def test_missing_schema_exits_input_error(make_skill, validate):
 def test_unknown_target_exits_input_error(make_skill, validate):
     make_skill()
     assert validate("skills/processes/nope").returncode == 3
+
+
+# ------------------------------------------------------ execution contract
+
+
+def test_execution_metadata_is_required(make_skill, validate):
+    frontmatter = VALID.replace("  execution: subagent\n", "")
+    make_skill(frontmatter=frontmatter)
+    run = validate()
+    assert run.returncode == 1
+    assert "'execution' is a required property" in " ".join(
+        f["message"] for f in run.json["findings"]
+    )
+
+
+def test_model_tier_is_required(make_skill, validate):
+    frontmatter = VALID.replace("  model-tier: economy\n", "")
+    make_skill(frontmatter=frontmatter)
+    assert validate().returncode == 1
+
+
+def test_execution_section_is_required_in_the_body(make_skill, validate):
+    """Metadata nobody acts on is decoration."""
+    make_skill(body="# Example\n\nDo the thing.\n")
+    run = validate()
+    assert run.returncode == 1
+    assert "execution.missing-section" in run.codes()
+
+
+def test_inline_execution_warns(make_skill, validate):
+    make_skill(frontmatter=VALID.replace("execution: subagent", "execution: inline"))
+    run = validate()
+    assert "execution.inline" in run.codes()
+    assert run.returncode == 0  # allowed, but it has to be visible
+
+
+def test_escalated_tier_warns(make_skill, validate):
+    make_skill(frontmatter=VALID.replace("model-tier: economy", "model-tier: frontier"))
+    run = validate()
+    assert "execution.escalated-tier" in run.codes()
+    assert run.returncode == 0
+
+
+def test_unknown_tier_is_rejected(make_skill, validate):
+    make_skill(frontmatter=VALID.replace("model-tier: economy", "model-tier: cheapest"))
+    assert validate().returncode == 1
+
+
+def test_shipped_skills_default_to_subagent_and_economy(repo_root):
+    """The rule is only real if the skills we ship actually follow it."""
+    import yaml
+
+    for skill_md in sorted((repo_root / "skills").rglob("SKILL.md")):
+        front = skill_md.read_text(encoding="utf-8").split("---")[1]
+        metadata = yaml.safe_load(front)["metadata"]
+        assert metadata["execution"] == "subagent", skill_md
+        assert metadata["model-tier"] == "economy", skill_md
+        assert "## Execution" in skill_md.read_text(encoding="utf-8"), skill_md

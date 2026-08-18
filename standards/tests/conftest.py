@@ -96,7 +96,7 @@ def make_skill(skill_repo: Path):
         name: str = "crv-example",
         layer: str = "processes",
         frontmatter: Optional[str] = None,
-        body: str = "# Example\n\nDo the thing.\n",
+        body: str = "# Example\n\n## Execution\n\nSubagent, economy tier.\n\nDo the thing.\n",
         directory: Optional[str] = None,
     ) -> Path:
         if frontmatter is None:
@@ -109,6 +109,8 @@ def make_skill(skill_repo: Path):
                 "  owner: test-team\n"
                 f"  layer: {layer}\n"
                 "  maturity: draft\n"
+                "  execution: subagent\n"
+                "  model-tier: economy\n"
             )
         skill_dir = skill_repo / "skills" / layer / (directory or name)
         skill_dir.mkdir(parents=True, exist_ok=True)

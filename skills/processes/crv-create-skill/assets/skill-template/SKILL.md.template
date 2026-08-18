@@ -7,6 +7,8 @@ metadata:
   owner: {{OWNER}}
   layer: {{LAYER}}
   maturity: draft
+  execution: subagent
+  model-tier: economy
 ---
 
 # {{TITLE}}
@@ -22,6 +24,33 @@ committing.
 
 <One or two sentences: what this is for, and the single thing it gets right
 that an agent otherwise gets wrong.>
+
+## Execution
+
+<!--
+MANDATORY. Every CRV skill declares this, and validate_frontmatter.py fails the
+build without it. Keep the shape; change only the sentence explaining why a
+subagent is right for this skill.
+-->
+
+**Delegate to a subagent. Do not run this in the main session.** <One sentence:
+what context this skill accumulates that the user does not want left in their
+conversation.>
+
+**Model tier: `economy`** — the cheapest model that can follow instructions and
+call tools. Before spawning the subagent, ask once:
+
+> Running `{{NAME}}` in a subagent on the **economy** tier. Reply `balanced` or
+> `frontier` to run it on a stronger model, or continue to accept the default.
+
+Ask once per invocation, before any work starts. Skip the question only when
+the user has already stated a tier preference in this session or in the
+project's agent configuration.
+
+**Never silently escalate.** If the subagent is out of its depth, stop and say
+so rather than re-running on a bigger model.
+
+If the harness has no subagent mechanism, say so plainly and run inline.
 
 ## What this produces
 

@@ -16,6 +16,8 @@ VALID = (
     "  owner: test-team\n"
     "  layer: processes\n"
     "  maturity: {maturity}\n"
+    "  execution: subagent\n"
+    "  model-tier: economy\n"
 )
 
 STABLE_EXTRA = '  version: "1.0.0"\n  tags: test\n  review-cadence: annual\n'

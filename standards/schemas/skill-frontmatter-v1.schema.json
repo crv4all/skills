@@ -5,7 +5,11 @@
   "description": "Validates the YAML frontmatter of a SKILL.md against the Agent Skills specification (https://agentskills.io/specification) plus CRV governance requirements. The Agent Skills frontmatter field set is closed: exactly six fields exist. additionalProperties is false at the top level so that any non-spec key -- including 'version', which belongs inside 'metadata' -- is rejected rather than silently ignored by some harnesses and rejected by others.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["name", "description", "metadata"],
+  "required": [
+    "name",
+    "description",
+    "metadata"
+  ],
   "properties": {
     "name": {
       "type": "string",
@@ -35,13 +39,21 @@
     },
     "metadata": {
       "type": "object",
-      "description": "Spec: a map from string keys to string values. CRV uses it for governance. Numeric-looking values MUST be quoted in YAML or they parse as numbers and fail validation.",
-      "additionalProperties": { "$ref": "#/$defs/metadataValue" },
+      "description": "Spec: a map from string keys to string values. CRV uses it for governance and for the execution contract every skill must declare. Numeric-looking values MUST be quoted in YAML or they parse as numbers and fail validation.",
+      "additionalProperties": {
+        "$ref": "#/$defs/metadataValue"
+      },
       "propertyNames": {
         "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
         "$comment": "Lowercase kebab-case keys keep the map readable and diffable."
       },
-      "required": ["owner", "layer", "maturity"],
+      "required": [
+        "owner",
+        "layer",
+        "maturity",
+        "execution",
+        "model-tier"
+      ],
       "properties": {
         "owner": {
           "type": "string",
@@ -51,13 +63,39 @@
         },
         "layer": {
           "type": "string",
-          "enum": ["utilities", "knowledge", "patterns", "processes"],
+          "enum": [
+            "utilities",
+            "knowledge",
+            "patterns",
+            "processes"
+          ],
           "description": "Must equal the parent-of-parent directory name; enforced in validate_frontmatter.py."
         },
         "maturity": {
           "type": "string",
-          "enum": ["draft", "stable", "deprecated"],
+          "enum": [
+            "draft",
+            "stable",
+            "deprecated"
+          ],
           "description": "draft: in development, budget overruns warn. stable: supported, budget overruns fail the build. deprecated: still shipped so existing references resolve, but should not be adopted; the body must say what replaces it."
+        },
+        "execution": {
+          "type": "string",
+          "enum": [
+            "subagent",
+            "inline"
+          ],
+          "description": "How the skill runs. 'subagent' is the mandatory default: skill work reads a lot of files, and that context belongs in an agent that exits when it is done rather than in the conversation the user has to keep using afterwards. 'inline' is allowed only for skills too small to be worth a subagent round trip, and the body must say why."
+        },
+        "model-tier": {
+          "type": "string",
+          "enum": [
+            "economy",
+            "balanced",
+            "frontier"
+          ],
+          "description": "Which model the subagent runs on, expressed as a harness-neutral tier rather than a model id so the skill does not break when a vendor renames a model. 'economy' is the mandatory default -- the cheapest model that can follow instructions and call tools. Anything higher is an escalation and the body must justify it. See docs/design-principles.md for the tier-to-model mapping per harness."
         },
         "version": {
           "type": "string",
@@ -71,7 +109,12 @@
         },
         "review-cadence": {
           "type": "string",
-          "enum": ["monthly", "quarterly", "semiannual", "annual"],
+          "enum": [
+            "monthly",
+            "quarterly",
+            "semiannual",
+            "annual"
+          ],
           "description": "How often the owner re-verifies that the skill is still true. Required once maturity is stable or deprecated. Pick from how fast the underlying facts move, not from how important the skill feels."
         }
       },
@@ -79,11 +122,24 @@
         {
           "$comment": "Governance ratchet: promoting a skill past draft requires the fields that make it maintainable by someone other than its author.",
           "if": {
-            "properties": { "maturity": { "enum": ["stable", "deprecated"] } },
-            "required": ["maturity"]
+            "properties": {
+              "maturity": {
+                "enum": [
+                  "stable",
+                  "deprecated"
+                ]
+              }
+            },
+            "required": [
+              "maturity"
+            ]
           },
           "then": {
-            "required": ["version", "tags", "review-cadence"]
+            "required": [
+              "version",
+              "tags",
+              "review-cadence"
+            ]
           }
         }
       ]

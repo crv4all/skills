@@ -21,6 +21,8 @@ should treat it as provisional.
 All of these, actually done:
 
 - [ ] `version`, `tags`, and `review-cadence` present in `metadata`.
+- [ ] `execution: subagent` and `model-tier: economy`, or a written reason in
+      the Execution section for departing from either.
 - [ ] Budgets pass as hard errors: `check_budgets.py` exits 0.
 - [ ] `validate_frontmatter.py --strict` exits 0 — warnings included.
 - [ ] Bundled scripts run under `/usr/bin/python3` (Python 3.9.6).

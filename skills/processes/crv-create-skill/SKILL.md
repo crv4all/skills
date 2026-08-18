@@ -17,6 +17,8 @@ metadata:
   owner: cloudforce-team-data
   layer: processes
   maturity: draft
+  execution: subagent
+  model-tier: economy
 ---
 
 # Create a skill
@@ -49,6 +51,30 @@ not.
 - A one-off instruction for the current task → say it in the prompt.
 - A rule that a linter could enforce → write the lint rule. It runs every time,
   and it cannot be talked out of its opinion.
+
+## Execution
+
+**Delegate to a subagent. Do not run this in the main session.** The interview and the drafting both accumulate context the user does not need afterwards, and the boundary test is cheap enough that spending a frontier model on it is waste.
+
+**Model tier: `economy`** — the cheapest model that can follow instructions and
+call tools. Before spawning the subagent, ask once:
+
+> Running `crv-create-skill` in a subagent on the **economy** tier. Reply
+> `balanced` or `frontier` to run it on a stronger model, or continue to
+> accept the default.
+
+Ask once per invocation, before any work starts. Skip the question only when
+the user has already stated a tier preference in this session or in the
+project's agent configuration.
+
+**Never silently escalate.** If the subagent turns out to be out of its depth,
+stop and say so. Re-running on a bigger model without asking charges the user
+twice and hides the fact that the cheap tier was not enough — which is exactly
+the signal that should reach them.
+
+If the harness has no subagent mechanism, say so plainly and run inline. Still
+state the tier; the user can change the model even when they cannot change
+where it runs.
 
 ## Step 1 — The boundary test
 
@@ -145,6 +171,10 @@ Then write the body. Structure that works:
    cannot see.
 4. **Validation** — how the skill checks its own output before reporting done.
 5. **Pointers** — one level deep, into `references/`.
+
+The `## Execution` block is mandatory and comes first. The scaffold writes it;
+keep its shape and change only the sentence explaining why a subagent suits
+this skill.
 
 Write to an agent that is already competent. A skill exists to correct what a
 capable agent gets *wrong*, not to teach it the basics.

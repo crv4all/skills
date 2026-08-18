@@ -113,6 +113,12 @@ run. See [script-contract.md](script-contract.md).
   from the facts, not from how important the skill feels.
 - Start at `draft`. Promotion has its own bar; see [promotion.md](promotion.md).
 
+`execution: subagent` and `model-tier: economy` are **not** interview
+questions. They are mandatory defaults, and the only thing worth asking is
+whether this particular skill has a reason to escalate the tier — which almost
+none do, because a skill is a written-down procedure and following one does not
+need a frontier model.
+
 ## Recognizing the end
 
 The frontier is empty when every remaining unknown is a fact you can look up or

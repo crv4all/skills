@@ -191,7 +191,52 @@ cheap to add and premature to add: they would describe skills nobody has
 installed yet. Share the checkout, install with `install.sh`, and add a
 distribution channel when `install.sh` stops being enough.
 
-## 13. Attribution is deliberate
+## 13. Every skill runs in a subagent, on the cheapest adequate model
+
+Two mandatory defaults, declared in metadata and enforced by
+`validate_frontmatter.py`:
+
+```yaml
+metadata:
+  execution: subagent
+  model-tier: economy
+```
+
+**Subagent, not the main session.** Skill work reads a lot of files and
+produces a lot of intermediate reasoning. In the main session all of that stays
+in the conversation the user has to keep using afterwards, degrading every turn
+that follows. A subagent exits when it is done and hands back the conclusion.
+
+**Economy tier by default.** Most skill work is following an explicit
+procedure, not solving a hard problem — that is the whole point of writing the
+procedure down. Running it on a frontier model spends the budget on capability
+the skill was designed not to need. Escalation is available, and the validator
+warns when a skill declares a higher tier so the reason has to be written down.
+
+**Tiers, not model ids.** A tier is harness-neutral and survives a vendor
+renaming a model, which they do often. Model ids in fifty SKILL.md files is
+fifty files to update.
+
+| Tier | Meaning | Claude Code | Other harnesses |
+| --- | --- | --- | --- |
+| `economy` | Cheapest model that can follow instructions and call tools | Haiku 4.5 | The cheapest model the harness offers |
+| `balanced` | Real judgement needed, not just procedure | Sonnet 5 | The harness default |
+| `frontier` | Hardest reasoning, and the skill says why | Opus 5 | The most capable model available |
+
+**Asked once, at the start.** Before spawning, the skill states the tier and
+offers to change it. One prompt per invocation, before any work happens — not
+a per-step interruption, and not a silent choice made on the user's behalf.
+
+The question is skipped when the user has already stated a preference in the
+session or in the project's agent configuration, which is how a standing
+override works: say it once, or put it in `AGENTS.md`.
+
+**Never silently escalate.** A subagent that turns out to be out of its depth
+stops and says so. Re-running on a bigger model without asking charges twice
+and hides the signal that the cheap tier was not enough — which is the most
+useful thing the run produced.
+
+## 14. Attribution is deliberate
 
 The design was informed by prior art. The code is ours. We do not copy code,
 templates, or wording from `github/awesome-copilot`, `affaan-m/ECC`,

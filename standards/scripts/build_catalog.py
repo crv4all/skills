@@ -68,6 +68,8 @@ class Entry:
     description: str
     owner: str
     maturity: str
+    execution: str
+    model_tier: str
     version: Union[str, None]
     tags: list[str]
     review_cadence: Union[str, None]
@@ -134,6 +136,8 @@ def load_entries(root: Path) -> tuple[list[Entry], list[str]]:
                 description=" ".join(description.split()),
                 owner=str(metadata.get("owner") or "unassigned"),
                 maturity=str(metadata.get("maturity") or "draft"),
+                execution=str(metadata.get("execution") or "unspecified"),
+                model_tier=str(metadata.get("model-tier") or "unspecified"),
                 version=str(metadata["version"]) if metadata.get("version") else None,
                 tags=[t for t in str(tags_raw).split(",") if t] if tags_raw else [],
                 review_cadence=str(metadata["review-cadence"]) if metadata.get("review-cadence") else None,
@@ -169,17 +173,24 @@ def render_catalog(entries: list[Entry]) -> str:
         "",
         "Install any of them with `install.sh`; see [docs/installing.md](docs/installing.md).",
         "",
-        "| Skill | Layer | Maturity | Version | Owner | Summary |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "Every skill runs in a subagent and states its model tier before starting. See",
+        "[docs/design-principles.md](docs/design-principles.md) for the tier mapping.",
+        "",
+        "| Skill | Layer | Maturity | Runs as | Tier | Owner | Summary |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for entry in entries:
         lines.append(
-            "| [`{name}`]({path}/SKILL.md) | {layer} | {maturity} | {version} | {owner} | {summary} |".format(
+            (
+                "| [`{name}`]({path}/SKILL.md) | {layer} | {maturity} | {execution} | "
+                "{tier} | {owner} | {summary} |"
+            ).format(
                 name=entry.name,
                 path=entry.rel_path,
                 layer=entry.layer,
                 maturity=entry.maturity,
-                version=entry.version or "—",
+                execution=entry.execution,
+                tier=entry.model_tier,
                 owner=entry.owner,
                 summary=_first_sentence(entry.description),
             )
@@ -197,7 +208,12 @@ def render_catalog(entries: list[Entry]) -> str:
             lines.append("")
             lines.append(entry.description)
             lines.append("")
-            details = [f"**Owner:** {entry.owner}", f"**Maturity:** {entry.maturity}"]
+            details = [
+                f"**Owner:** {entry.owner}",
+                f"**Maturity:** {entry.maturity}",
+                f"**Runs as:** {entry.execution}",
+                f"**Model tier:** {entry.model_tier}",
+            ]
             if entry.version:
                 details.append(f"**Version:** {entry.version}")
             if entry.review_cadence:
@@ -276,7 +292,14 @@ def main(argv: Union[list[str], None] = None) -> int:
         "mode": "write" if args.write else ("check" if args.check else "report"),
         "root": str(root),
         "skills": [
-            {"name": e.name, "layer": e.layer, "maturity": e.maturity, "path": e.rel_path}
+            {
+                "name": e.name,
+                "layer": e.layer,
+                "maturity": e.maturity,
+                "execution": e.execution,
+                "model_tier": e.model_tier,
+                "path": e.rel_path,
+            }
             for e in entries
         ],
         "files": results,

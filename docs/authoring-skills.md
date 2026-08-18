@@ -69,6 +69,8 @@ metadata:
   owner: your-team
   layer: processes
   maturity: draft
+  execution: subagent
+  model-tier: economy
 ---
 ```
 
@@ -84,6 +86,8 @@ forbidden.
 | `owner` | always | A team or distribution list. A person's name is a stopgap; skills outlive team assignments. |
 | `layer` | always | Must equal the parent directory. |
 | `maturity` | always | `draft` · `stable` · `deprecated`. |
+| `execution` | always | `subagent` is the mandatory default. `inline` only for skills too small to be worth the round trip, and the body must say why. |
+| `model-tier` | always | `economy` is the mandatory default. `balanced` and `frontier` are escalations the body must justify; the validator warns on them. |
 | `version` | at `stable`/`deprecated` | Quoted semver, e.g. `"1.0.0"`. Informational. |
 | `tags` | at `stable`/`deprecated` | Comma-separated string, no spaces. A string because the spec only allows strings. |
 | `review-cadence` | at `stable`/`deprecated` | `monthly` · `quarterly` · `semiannual` · `annual`. Chosen from how fast the facts move, not from how important the skill feels. |
@@ -112,13 +116,18 @@ not, one borderline — and see whether they route correctly.
 
 Target well under the budget. Structure that works:
 
-1. **What this produces** — the output contract, stated as something checkable.
-2. **When to use it / when not to** — including the near neighbours.
-3. **The procedure** — numbered, with the ordering constraints made explicit.
+1. **Execution** — the mandatory block. Delegate to a subagent, state the model
+   tier, offer to change it once before starting. Copy it from
+   `skills/processes/crv-create-skill/assets/skill-template/SKILL.md.template`;
+   `validate_frontmatter.py` fails the build if the `## Execution` heading is
+   missing, because metadata nobody acts on is decoration.
+2. **What this produces** — the output contract, stated as something checkable.
+3. **When to use it / when not to** — including the near neighbours.
+4. **The procedure** — numbered, with the ordering constraints made explicit.
    Say *why* an order matters where it does; an agent under pressure will
    reorder steps whose purpose it cannot see.
-4. **Validation** — how the agent checks its own output before reporting done.
-5. **Pointers** — one level deep, into `references/`.
+5. **Validation** — how the agent checks its own output before reporting done.
+6. **Pointers** — one level deep, into `references/`.
 
 Write in the imperative, to the agent. Prefer a rule plus its rationale over a
 rule alone: a rule with a reason survives contact with a codebase that
