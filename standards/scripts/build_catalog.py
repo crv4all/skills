@@ -26,7 +26,7 @@ import difflib
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Union
+from typing import Any, Union
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -128,7 +128,8 @@ def load_entries(root: Path) -> tuple[list[Entry], list[str]]:
             problems.append(str(exc))
             continue
         data = parsed.data
-        metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+        raw_metadata = data.get("metadata")
+        metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
         name = data.get("name")
         description = data.get("description")
         if not isinstance(name, str) or not isinstance(description, str):

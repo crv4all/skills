@@ -160,7 +160,7 @@ def load_config(config_path: Path, schema_path: Path) -> dict[str, Any]:
     except FileNotFoundError as exc:
         raise SystemExit(_fail(cli.EXIT_INPUT, f"budget schema not found: {schema_path}")) from exc
 
-    import jsonschema
+    import jsonschema.validators
 
     validator_cls = jsonschema.validators.validator_for(schema)
     errors = sorted(validator_cls(schema).iter_errors(config), key=lambda e: list(e.absolute_path))

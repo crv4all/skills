@@ -64,6 +64,7 @@ known-first-party = ["lib"]
 
 [tool.pyright]
 include = ["standards", "skills"]
+extraPaths = ["standards/scripts"]
 exclude = ["**/__pycache__", "tests/fixtures", "**/.venv"]
 pythonVersion = "3.9"
 typeCheckingMode = "standard"

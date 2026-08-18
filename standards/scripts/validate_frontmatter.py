@@ -185,7 +185,7 @@ def check_schema(
     skill: Skill, data: dict[str, Any], schema: dict[str, Any], report: Report
 ) -> None:
     """Run JSON Schema validation, then re-explain the errors in author terms."""
-    import jsonschema
+    import jsonschema.validators
 
     validator_cls = jsonschema.validators.validator_for(schema)
     validator_cls.check_schema(schema)

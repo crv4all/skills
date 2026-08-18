@@ -241,20 +241,27 @@ destination_for() {
 # Local-modification detection
 # --------------------------------------------------------------------------
 
+# Decided once. `shasum` is preferred for fewer collisions; `cksum` is POSIX and
+# present everywhere, so there is always a fallback.
+if command -v shasum >/dev/null 2>&1; then
+  HASHER="shasum -a 256"
+else
+  HASHER="cksum"
+fi
+
+# shellcheck disable=SC2086  # $HASHER is a command plus its flags; it must split.
 tree_checksum() {
-  # A stable checksum over file contents and relative paths. cksum is POSIX and
-  # present everywhere; shasum is preferred when available for fewer collisions.
+  # A stable checksum over file contents and relative paths.
+  #
+  # No `find -print0` and no `read -d ''`: both are bashisms. They work on macOS,
+  # where /bin/sh is bash in POSIX mode, and fail on dash, where /bin/sh usually
+  # is on Linux -- silently, taking local-modification detection with them.
+  # Hashing in a single `find -exec` avoids the read loop entirely.
+  #
   dir="$1"
-  ( cd "$dir" && find . -type f ! -name "$STAMP_FILE" -print0 2>/dev/null |
-      LC_ALL=C sort -z |
-      while IFS= read -r -d '' f; do
-        printf '%s ' "$f"
-        if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$f" | cut -d' ' -f1
-        else cksum "$f" | cut -d' ' -f1
-        fi
-      done ) 2>/dev/null | (
-        if command -v shasum >/dev/null 2>&1; then shasum -a 256; else cksum; fi
-      ) | cut -d' ' -f1
+  ( cd "$dir" 2>/dev/null &&
+      find . -type f ! -name "$STAMP_FILE" -exec $HASHER {} + 2>/dev/null |
+      LC_ALL=C sort ) | $HASHER | cut -d' ' -f1
 }
 
 # --------------------------------------------------------------------------

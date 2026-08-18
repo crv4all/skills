@@ -1,0 +1,167 @@
+# Every check here is one you can run locally with the same command. If CI
+# fails and you cannot reproduce it, that is a bug in this file.
+#
+# Actions are pinned to commit SHAs, not tags. A tag is a mutable pointer, so
+# pinning to one gives the appearance of pinning without the property.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_FROZEN: "1"
+
+jobs:
+  lint:
+    name: lint and types
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+      - run: uv sync --all-groups
+      - name: ruff check
+        run: uv run ruff check .
+      - name: ruff format
+        run: uv run ruff format --check .
+      - name: pyright
+        run: uv run pyright
+      # .github/pull_request_template.md is deliberately excluded: it has no H1
+      # because GitHub renders it into the PR body, where an H1 reads as shouting.
+      - name: markdown
+        run: |
+          uv run pymarkdown --config standards/configs/pymarkdown.json scan \
+            README.md AGENTS.md CONTRIBUTING.md CHANGELOG.md THIRD_PARTY_NOTICES.md \
+            docs skills tests/fixtures/README.md
+
+  test:
+    name: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+      - run: uv sync --all-groups
+      - run: uv run pytest
+
+  skills:
+    name: skill gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+      - run: uv sync --all-groups
+
+      # --strict here and not locally: warnings are advice while you are
+      # drafting, and a merge gate once someone else has to live with the skill.
+      - name: frontmatter, layout and references
+        run: uv run standards/scripts/validate_frontmatter.py --strict
+
+      - name: context budgets
+        run: uv run standards/scripts/check_budgets.py
+
+      # Fails if CATALOG.md disagrees with frontmatter, so a hand-edit cannot
+      # quietly become the version people read.
+      - name: generated-file drift
+        run: uv run standards/scripts/build_catalog.py --check --diff
+
+      # This repository is public-safe by policy from the first commit, whether
+      # or not it is published yet.
+      - name: secrets
+        run: uv run standards/scripts/scan_secrets.py
+
+  floor:
+    name: python 3.9 floor
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.9"
+
+      # Deliberately no uv and no dependency install. Skill-bundled scripts are
+      # stdlib-only and must run as a plain `python3 script.py` on stock macOS,
+      # which ships 3.9.6. A script that needs the project virtualenv fails on
+      # the machine of the person who needed it, and this job is the only place
+      # that would notice.
+      - name: bundled scripts import and answer --help
+        run: |
+          set -eu
+          found=0
+          for script in skills/*/*/scripts/*.py; do
+            found=$((found + 1))
+            echo "::group::$script"
+            python "$script" --help > /dev/null
+            echo "::endgroup::"
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "no bundled skill scripts were found; the glob is wrong" >&2
+            exit 1
+          fi
+          echo "$found script(s) run under $(python -V)"
+
+      - name: scanner produces parseable JSON on a fixture
+        run: |
+          set -eu
+          python skills/processes/crv-codebase-onboarding/scripts/scan.py \
+            --root tests/fixtures/java-spring-maven --quiet > scan.json
+          python -c "import json,sys; json.load(open('scan.json')); print('stdout is valid JSON')"
+
+      - name: scanner degrades honestly on a repository with no signal
+        run: |
+          set -eu
+          python skills/processes/crv-codebase-onboarding/scripts/scan.py \
+            --root tests/fixtures/minimal-unknown --quiet > minimal.json
+          python - <<'PY'
+          import json
+          payload = json.load(open("minimal.json"))
+          assert payload["ecosystems"] == [], payload["ecosystems"]
+          assert payload["notes"], "a repository with no signal must produce notes"
+          print(f"{len(payload['notes'])} note(s), no ecosystem asserted")
+          PY
+
+  shell:
+    name: install.sh
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: posix syntax
+        run: sh -n install.sh
+      - name: shellcheck
+        run: shellcheck --shell=sh install.sh
+      - name: dry run writes nothing
+        run: |
+          set -eu
+          ./install.sh --list
+          ./install.sh --all --dir "$RUNNER_TEMP/skills" --dry-run
+          test ! -d "$RUNNER_TEMP/skills" || { echo "--dry-run wrote to disk" >&2; exit 1; }
+      - name: install, then refuse to clobber a local edit
+        run: |
+          set -eu
+          ./install.sh --all --dir "$RUNNER_TEMP/skills" --quiet
+          test -f "$RUNNER_TEMP/skills/crv-create-skill/SKILL.md"
+          echo "local edit" >> "$RUNNER_TEMP/skills/crv-create-skill/SKILL.md"
+          if ./install.sh --all --dir "$RUNNER_TEMP/skills" --quiet; then
+            echo "installer overwrote a locally modified skill" >&2
+            exit 1
+          fi
+          ./install.sh --all --dir "$RUNNER_TEMP/skills" --force --quiet

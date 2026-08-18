@@ -140,7 +140,7 @@ uv run standards/scripts/build_catalog.py --check          # generated-file drif
 uv run standards/scripts/scan_secrets.py                   # credentials
 uv run ruff check . && uv run ruff format --check .
 uv run pyright
-uv run pymarkdown --config standards/configs/pymarkdown.json scan docs skills
+uv run pymarkdown --config standards/configs/pymarkdown.json scan docs skills  # and the root docs
 ```
 
 The pytest suite covers the validators themselves, plus behavioural assertions
