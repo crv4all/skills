@@ -1,0 +1,48 @@
+<!--
+Rendered into the Epic description as markdown. Keep every heading, in this
+order: a reader scanning a board relies on the same sections being in the same
+places. Delete this comment when rendering.
+
+A section with nothing to say gets an explicit "None known" or "Not yet
+decided" -- never an empty heading, which reads as an oversight rather than a
+decision, and never a deleted heading, which hides that the question was asked.
+-->
+
+## Outcome
+
+<What is true after this epic ships that is not true now. One paragraph, in
+terms of the people affected rather than the components changed.>
+
+## Problem
+
+<What is wrong today, and what it costs. Evidence rather than assertion where
+evidence exists.>
+
+## Scope
+
+<What is in. Bullet the workstreams, not the tickets -- the stories under this
+epic are where tickets live.>
+
+## Out of scope
+
+<What a reasonable reader would assume is included and is not. This section
+prevents more rework than any other.>
+
+## Success criteria
+
+<How anyone can tell this worked, stated so that the answer is yes or no.
+Include the measure and where it is read from.>
+
+## Dependencies
+
+<Teams, systems, or decisions this epic waits on. Name the owner of each, or
+say that it is unowned -- an unowned dependency is a risk, not a blank.>
+
+## Technical notes
+
+<Constraints, chosen approach, and anything already ruled out with the reason.>
+
+## Links
+
+<Specs, designs, prior discussion. Links only, never copied content: copied
+content goes stale where it sits, and nobody knows which copy is current.>

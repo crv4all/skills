@@ -1,0 +1,42 @@
+<!--
+Rendered into the Story description as markdown. Keep every heading, in this
+order. Delete this comment when rendering.
+
+Optional sections are marked. Drop an optional heading entirely when it has no
+content; keep every required heading and fill it, using "None" where that is
+the honest answer.
+-->
+
+## User story
+
+As a <role>
+I want <capability>
+So that <benefit>
+
+## Context
+
+<What the implementer needs that is not in the epic: the current behaviour, the
+file or service involved, the decision already taken. Link the epic rather than
+restating it.>
+
+## Acceptance criteria
+
+- [ ] <A condition that is checkable by someone who did not write the code>
+- [ ] <Another>
+
+## Test plan
+
+<How this gets verified, and by whom. Name the level -- unit, integration,
+manual -- because "tested" without a level is how a gap gets agreed to twice.>
+
+## Dependencies
+
+<Other stories, teams, or access this waits on. "None" when there are none.>
+
+## Out of scope (optional)
+
+<What this story deliberately does not do, when a reader would assume it does.>
+
+## Notes (optional)
+
+<Implementation hints, links, prior art.>

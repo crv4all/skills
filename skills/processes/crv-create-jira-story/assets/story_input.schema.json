@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crv4all/agent-skills/schemas/jira-story-input-v1.json",
+  "title": "Jira story input",
+  "description": "Optional structured input for crv-create-jira-story. A caller that already has stories in machine-readable form can pass this instead of describing them in prose. The conversational path enforces the same rules.",
+  "type": "object",
+  "required": ["summary", "parent", "story_points"],
+  "additionalProperties": false,
+  "properties": {
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "The story title. Jira rejects summaries over 255 characters, so the bound is enforced here rather than discovered at create time."
+    },
+    "parent": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,9}-[1-9][0-9]*$",
+      "description": "Key of the parent Epic, for example ABC-123."
+    },
+    "story_points": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Estimate. Required: an un-estimated story is the failure this skill exists to prevent. Deliberately not restricted to a Fibonacci sequence -- teams use their own scales, and a roll-up of several items lands on no ladder at all."
+    },
+    "project_key": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,9}$",
+      "description": "Overrides the recorded default project. Omit to file into the parent Epic's project."
+    },
+    "issue_type": {
+      "type": "string",
+      "minLength": 1,
+      "default": "Story",
+      "description": "Issue type name as it appears on the project's create screen."
+    },
+    "description_markdown": {
+      "type": "string",
+      "description": "A fully rendered description. When present it is used as-is and the structured fields below are ignored."
+    },
+    "user_story": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "capability", "benefit"],
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "capability": { "type": "string", "minLength": 1 },
+        "benefit": { "type": "string", "minLength": 1 }
+      }
+    },
+    "context": { "type": "string" },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "test_plan": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1 },
+          "level": {
+            "type": "string",
+            "enum": ["unit", "integration", "end-to-end", "manual"]
+          },
+          "steps": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "out_of_scope": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "notes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "labels": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[^\\s]+$" }
+    },
+    "additional_fields": {
+      "type": "object",
+      "description": "Extra fields, keyed by their human-readable Jira name rather than a customfield_NNNNN identifier. The skill resolves names to identifiers from the project's create-metadata at run time, because identifiers differ per tenant and change when an administrator edits a screen.",
+      "additionalProperties": true
+    }
+  }
+}
