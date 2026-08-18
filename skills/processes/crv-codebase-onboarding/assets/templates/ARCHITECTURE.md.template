@@ -1,0 +1,64 @@
+<!-- Template. Replace every <placeholder>; delete every EXAMPLE block. -->
+# Architecture
+
+> verified against <full-40-char-sha> on <YYYY-MM-DD>
+
+## Components
+
+| Component | What it is | Runs as | Source |
+| --- | --- | --- | --- |
+| <name> | <one line> | <service / library / job / CLI> | `<path>` |
+
+## Boundaries
+
+| From | To | Protocol | Sync? | Defined at |
+| --- | --- | --- | --- | --- |
+| <component> | <component or external system> | <HTTP / Kafka / SQL / file> | <yes/no> | `<path:line>` |
+
+## Where state lives
+
+| Store | Owner | Contents | Defined at |
+| --- | --- | --- | --- |
+| <store> | <component> | <what> | `<path>` |
+
+## End-to-end flow: <name of the flow>
+
+<Why this flow: what the system exists to do.>
+
+```text
+<entry point>
+  → <path:line>        (<what happens here>)
+  → <path:line>        (<what happens here>)
+  → <path:line>        (<what happens here>)
+  → <terminal: store write, external call, or response>
+```
+
+<!-- EXAMPLE: replace
+POST /api/orders
+  → src/api/OrderController.java:34     (request validation, auth)
+  → src/domain/OrderService.java:88     (pricing and stock rules)
+  → src/infra/OrderRepository.java:51   (persistence)
+  → db/migrations/V12__orders.sql       (schema)
+  → emits orders.created → src/infra/KafkaPublisher.java:22
+-->
+
+**Every path above must exist.** Verify before writing.
+
+### What happens when it fails
+
+| Step | Failure mode | Behaviour | Evidence |
+| --- | --- | --- | --- |
+| <step> | <what can go wrong> | <retry / queue / drop / propagate> | `<path:line>` |
+
+## Diagram
+
+<!-- Only if it shows something the prose cannot. Must parse. Delete otherwise. -->
+
+```mermaid
+flowchart LR
+  A[<component>] -->|<protocol>| B[<component>]
+```
+
+## Not determined
+
+<What you could not establish, and where you looked.>

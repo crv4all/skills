@@ -1,0 +1,27 @@
+<!-- Template. One block per external system. -->
+# Integrations
+
+> verified against <full-40-char-sha> on <YYYY-MM-DD>
+
+## <External system name>
+
+| Aspect | Detail |
+| --- | --- |
+| What we use it for | <one line> |
+| Protocol | <HTTP / gRPC / Kafka / JDBC / SFTP> |
+| Direction | <we call it / it calls us / both> |
+| Client code | `<path>` |
+| Configured by | `<VARIABLE_NAME>` at `<path:line>` |
+| On failure | <retry / circuit break / fail / silently continue> at `<path:line>` |
+| Test double | `<path>` or "none found" |
+
+<Repeat per system.>
+
+## Systems referenced but not reachable from this repository
+
+<!-- EXAMPLE: replace
+`azure-pipelines.yml:12` references the variable group `shared-prod`, which is
+defined in Azure DevOps and not visible from a checkout.
+-->
+
+## Not determined

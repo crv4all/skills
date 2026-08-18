@@ -1,0 +1,43 @@
+<!-- Template. Evidence over coverage percentages. -->
+# Testing
+
+> verified against <full-40-char-sha> on <YYYY-MM-DD>
+
+## What exists
+
+| Kind | Count | Location | Framework | Evidence |
+| --- | --- | --- | --- | --- |
+| Unit | <n> | `<path>` | <framework> | `<path>` |
+| Integration | <n> | `<path>` | <framework> | `<path>` |
+| End-to-end | <n> | `<path>` | <framework> | `<path>` |
+
+## How they run
+
+| Kind | Command | Source | Requires |
+| --- | --- | --- | --- |
+| <kind> | `<command>` | `<path:line>` | <containers / database / network / nothing> |
+
+Not executed. Sourced from the files named above.
+
+## Well covered
+
+| Area | Evidence |
+| --- | --- |
+| <area> | `<test path>` |
+
+## Not covered
+
+Named gaps, not implied ones.
+
+<!-- EXAMPLE: replace
+- The payment retry path. `PaymentRetryHandler.java` has no corresponding test
+  file, and no test in `src/test/` references it.
+-->
+
+## Fixtures and test data
+
+| What | Location | Notes |
+| --- | --- | --- |
+| <fixture> | `<path>` | <notes> |
+
+## Not determined

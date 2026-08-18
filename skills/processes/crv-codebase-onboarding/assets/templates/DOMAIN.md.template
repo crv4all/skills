@@ -1,0 +1,47 @@
+<!--
+Template. CONDITIONAL: write only if this repository has business vocabulary a
+newcomer would misread. A generic CRUD service does not. If you skip it, say so
+in README.md with the reason. Never invent terms to fill this file.
+-->
+# Domain language
+
+> verified against <full-40-char-sha> on <YYYY-MM-DD>
+
+## Terms
+
+### <Term>
+
+| Aspect | Detail |
+| --- | --- |
+| Means | <what it means in the business> |
+| Is not | <the wrong reading you are pre-empting> |
+| Carried by | `<ClassName>` at `<path:line>` |
+| Related to | <other terms> |
+
+<!-- EXAMPLE: replace
+### Lactation
+
+| Aspect | Detail |
+| --- | --- |
+| Means | One milk-production period for one animal, bounded by calving and dry-off |
+| Is not | A calendar year, and not interchangeable with "milking period" in the UI |
+| Carried by | `LactationRecord` at `src/domain/LactationRecord.java:18` |
+| Related to | Calving, dry-off, 305-day yield |
+-->
+
+## Inconsistent naming
+
+Findings, not cleanup tasks.
+
+| Concept | Names used | Where | Which is canonical |
+| --- | --- | --- | --- |
+| <concept> | `<a>`, `<b>` | `<path>`, `<path>` | <or "unclear — [ASK USER]"> |
+
+## Terms found but not defined
+
+Terms the code uses that you could not pin to a definition. Each one is an
+`[ASK USER]`.
+
+| Term | Where it appears | Guessed meaning |
+| --- | --- | --- |
+| <term> | `<path:line>` | [ASK USER] |

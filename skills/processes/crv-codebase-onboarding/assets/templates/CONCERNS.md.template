@@ -1,0 +1,46 @@
+<!--
+Template. CONDITIONAL: write only when there is something concrete. An empty
+concerns file is noise; a fabricated one is worse. Order by consequence.
+Report facts and consequences; do not editorialize about code quality.
+-->
+# Concerns
+
+> verified against <full-40-char-sha> on <YYYY-MM-DD>
+
+## <Short title>
+
+| Aspect | Detail |
+| --- | --- |
+| What | <the finding, in one line> |
+| Evidence | `<path:line>` |
+| Why it matters | <consequence, concretely> |
+| Confidence | <high / medium / low, and what would settle it> |
+
+<!-- EXAMPLE: replace
+## README describes a module layout that no longer exists
+
+| Aspect | Detail |
+| --- | --- |
+| What | `README.md:31` describes `core/`, `api/`, `worker/`; the tree has `service/` and `shared/` |
+| Evidence | `README.md:31`, repository root listing |
+| Why it matters | An agent following the README will look for files that are not there and improvise |
+| Confidence | High — the directories simply do not exist |
+-->
+
+## Documentation that contradicts the code
+
+## Committed files that should not be
+
+<!-- Report by path. Never read or quote the contents. -->
+
+## Dependencies past end of life
+
+## Half-finished migrations
+
+<!-- Two patterns doing the same job, with counts for each. -->
+
+## Risky paths with no test coverage
+
+## Unresolved from the scan
+
+<Anything `scan.py` flagged in `notes` that you could not resolve.>

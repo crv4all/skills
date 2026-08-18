@@ -1,0 +1,43 @@
+<!--
+Template. Source commands from CI, not from the README: CI is executable and
+therefore true. You have NOT run these commands; say where each came from.
+-->
+# Workflows
+
+> verified against <full-40-char-sha> on <YYYY-MM-DD>
+
+## Prerequisites
+
+| Requirement | Version | Where declared |
+| --- | --- | --- |
+| <tool> | <version> | `<path:line>` |
+
+Required environment variables, **by name only**:
+
+| Variable | Purpose | Referenced at |
+| --- | --- | --- |
+| `<NAME>` | <what it configures> | `<path:line>` |
+
+## Commands
+
+| Task | Command | Source |
+| --- | --- | --- |
+| Build | `<command>` | `<path:line>` |
+| Test | `<command>` | `<path:line>` |
+| Run locally | `<command>` | `<path:line>` |
+| Lint | `<command>` | `<path:line>` |
+| Deploy | `<command or "not determinable — see below">` | `<path:line>` |
+
+These were read from the sources named above and **not executed**.
+
+## Release and deploy
+
+<How a change reaches an environment, as far as the repository shows.>
+
+## Not determinable from this repository
+
+<!-- EXAMPLE: replace
+The deployment definition is not in this repository. `azure-pipelines.yml:41`
+publishes an image to `<registry>` and nothing here consumes it.
+[ASK USER] which repository holds the deployment definition.
+-->

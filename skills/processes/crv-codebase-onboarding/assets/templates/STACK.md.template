@@ -1,0 +1,34 @@
+<!--
+Template. NOT a dependency inventory — a list of libraries adds nothing and is
+already in the manifest. Only non-obvious facts, divergences, and consequences.
+If there is nothing non-obvious, say so in two lines. That is a valid result.
+-->
+# Stack: what is not obvious
+
+> verified against <full-40-char-sha> on <YYYY-MM-DD>
+
+## Non-obvious facts
+
+| Fact | Why it matters | Evidence |
+| --- | --- | --- |
+| <fact> | <what a newcomer would get wrong> | `<path:line>` |
+
+<!-- EXAMPLE: replace
+| Spring Boot 2.7, past end of life | The Jakarta upgrade is blocked by `javax.*` imports in `common/` | `pom.xml:24`, `common/src/main/java/.../Base.java:3` |
+-->
+
+## Divergences
+
+| Divergence | From what | Reason, if visible | Evidence |
+| --- | --- | --- | --- |
+| <what is different> | <framework default / CRV default / rest of repo> | <reason or "not stated"> | `<path:line>` |
+
+## Version constraints that bind
+
+| Component | Pinned to | Constraint | Evidence |
+| --- | --- | --- | --- |
+| <name> | <version> | <what forces it> | `<path:line>` |
+
+## Not determined
+
+<Anything about the stack you could not establish.>

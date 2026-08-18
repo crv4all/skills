@@ -1,0 +1,42 @@
+<!--
+Template. Three sections, kept apart: they carry different authority.
+Never promote an observed pattern into a rule.
+-->
+# Conventions
+
+> verified against <full-40-char-sha> on <YYYY-MM-DD>
+
+## Configured — enforced by a tool
+
+A violation of these is a bug; the tool will catch it.
+
+| Convention | Tool | Config | Applies to |
+| --- | --- | --- | --- |
+| <rule> | <linter/formatter/compiler> | `<path>` | <scope> |
+
+## Observed — the dominant pattern, with counts
+
+Not rules. A count and its exceptions.
+
+| Pattern | Count | Exceptions | Evidence |
+| --- | --- | --- | --- |
+| <pattern> | <n of m> | `<path>` | `<path>` |
+
+<!-- EXAMPLE: replace
+| Controllers return `ResponseEntity` | 23 of 27 | `LegacyController.java`, 4 methods | `src/api/` |
+-->
+
+## Organization-required — CRV standards from outside this repository
+
+Only from a written standard you can point at. If there is no written standard,
+it is an observed pattern and belongs above.
+
+| Standard | Source | Followed here? | Evidence |
+| --- | --- | --- | --- |
+| <standard> | <link or document> | <yes / no / partly> | `<path>` |
+
+## Where the code disagrees with its own configuration
+
+| Rule | Configured at | Violated at |
+| --- | --- | --- |
+| <rule> | `<path>` | `<path:line>` |

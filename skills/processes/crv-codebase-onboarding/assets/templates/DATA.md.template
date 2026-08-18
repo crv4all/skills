@@ -1,0 +1,39 @@
+<!-- Template. Variable names only — never a value, hostname, or account name. -->
+# Data
+
+> verified against <full-40-char-sha> on <YYYY-MM-DD>
+
+## Stores
+
+| Store | Type | Contents | Owner | Evidence |
+| --- | --- | --- | --- | --- |
+| <name> | <PostgreSQL / Delta / Cosmos / …> | <what lives here> | <component> | `<path:line>` |
+
+## Schema
+
+| Aspect | Detail | Evidence |
+| --- | --- | --- |
+| Defined by | <migrations / ORM models / DDL / inferred> | `<path>` |
+| Location | `<path>` | |
+
+## Migrations
+
+| Aspect | Detail |
+| --- | --- |
+| Tool | <Flyway / Liquibase / Alembic / dbt / none found> |
+| Directory | `<path>` |
+| Ordering | <convention, e.g. `V<n>__` prefix — never renumber> |
+| Applied by | <how and when, with evidence> |
+
+## Data in and out
+
+| Direction | What | Mechanism | Evidence |
+| --- | --- | --- | --- |
+| <in/out> | <dataset> | <batch / stream / API / file drop> | `<path:line>` |
+
+## Retention and sensitivity
+
+<Anything visible in code or config about retention, anonymization, or
+classification. If nothing is visible, say so — do not infer.>
+
+## Not determined

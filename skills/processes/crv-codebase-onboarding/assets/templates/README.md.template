@@ -1,0 +1,55 @@
+<!--
+Template for docs/codebase/README.md.
+Replace every <angle-bracket placeholder>. Delete every EXAMPLE block.
+No template text may survive into the written file.
+-->
+# Codebase context
+
+> verified against <full-40-char-sha> on <YYYY-MM-DD>
+
+<One paragraph: what this repository is, in plain terms, for someone who has
+never seen it. What it does, who uses it, what it is part of.>
+
+## What is here
+
+| File | Contents |
+| --- | --- |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | <one line> |
+| [STACK.md](STACK.md) | <one line> |
+| [CONVENTIONS.md](CONVENTIONS.md) | <one line> |
+| [WORKFLOWS.md](WORKFLOWS.md) | <one line> |
+| [DATA.md](DATA.md) | <one line> |
+| [INTEGRATIONS.md](INTEGRATIONS.md) | <one line> |
+| [TESTING.md](TESTING.md) | <one line> |
+| [DOMAIN.md](DOMAIN.md) | <one line, or move to "Not written"> |
+| [CONCERNS.md](CONCERNS.md) | <one line, or move to "Not written"> |
+
+## Not written
+
+<!-- EXAMPLE: replace or delete
+- `DOMAIN.md` — this service has no business vocabulary beyond standard CRUD
+  terms. Inventing a glossary would add noise.
+-->
+
+## How this was produced
+
+- Mode: `<bootstrap|refresh|focus|verify>`
+- Scope: <whole repository, or the named scope>
+- Not covered: <what this run did not look at>
+
+## Staleness
+
+Every file in this set is stamped with the commit it was verified against.
+Compare that SHA with `HEAD`:
+
+```bash
+git log --oneline <short-sha>..HEAD -- <the paths this set describes>
+```
+
+If that range contains changes to build files, entry points, or the paths named
+in ARCHITECTURE.md, this set is probably out of date. Re-run the
+crv-codebase-onboarding skill; it will detect `refresh` mode automatically.
+
+## Open questions
+
+<!-- Every [ASK USER] item from the run, or "None." -->
