@@ -2,7 +2,7 @@
 
 # Skill catalogue
 
-2 skill(s) in [crv4all/agent-skills](https://github.com/crv4all/agent-skills).
+4 skill(s) in [crv4all/agent-skills](https://github.com/crv4all/agent-skills).
 
 Install any of them with `install.sh`; see [docs/installing.md](docs/installing.md).
 
@@ -12,6 +12,8 @@ Every skill runs in a subagent and states its model tier before starting. See
 | Skill | Layer | Maturity | Runs as | Tier | Owner | Summary |
 | --- | --- | --- | --- | --- | --- | --- |
 | [`crv-codebase-onboarding`](skills/processes/crv-codebase-onboarding/SKILL.md) | processes | draft | subagent | economy | cloudforce-team-data | Produces durable, evidence-backed codebase context in docs/codebase/ — architecture, stack divergences, conventions, workflows, data, integrations, testing,… |
+| [`crv-create-jira-epic`](skills/processes/crv-create-jira-epic/SKILL.md) | processes | draft | subagent | economy | cloudforce-team-data | Files a Jira Epic through the Atlassian MCP, resolving the required fields of the target project at run time instead of assuming custom-field IDs from any… |
+| [`crv-create-jira-story`](skills/processes/crv-create-jira-story/SKILL.md) | processes | draft | subagent | economy | cloudforce-team-data | Files Jira Stories under a parent Epic through the Atlassian MCP, searching for duplicates by JQL before creating anything, requiring a story-point estimate… |
 | [`crv-create-skill`](skills/processes/crv-create-skill/SKILL.md) | processes | draft | subagent | economy | cloudforce-team-data | Takes a skill idea from "we should have a skill for this" to a validated skill in the CRV agent-skills repository: applies a boundary test to decide whether a… |
 
 ## utilities
@@ -39,6 +41,18 @@ End-to-end workflows with a reviewable deliverable.
 ### [`crv-codebase-onboarding`](skills/processes/crv-codebase-onboarding/SKILL.md)
 
 Produces durable, evidence-backed codebase context in docs/codebase/ — architecture, stack divergences, conventions, workflows, data, integrations, testing, and domain language — with every claim traceable to a real file path and stamped with the commit it was verified against. Use when someone asks to get up to speed on a repository, onboard to a codebase, understand how a system fits together, refresh stale codebase notes, or check whether existing context still matches the code, and before a large change in an unfamiliar repository. Not for writing a public README, explaining a single function, or authoring a new agent skill.
+
+**Owner:** cloudforce-team-data · **Maturity:** draft · **Runs as:** subagent · **Model tier:** economy
+
+### [`crv-create-jira-epic`](skills/processes/crv-create-jira-epic/SKILL.md)
+
+Files a Jira Epic through the Atlassian MCP, resolving the required fields of the target project at run time instead of assuming custom-field IDs from any particular tenant, and rendering the description as markdown from a section template. Use when someone wants to create, file, or raise an epic in Jira — including "create a Jira epic", "open an epic for this work", or turning an approved spec into an epic. For the stories that live under an epic, use crv-create-jira-story instead. Not for editing, commenting on, or transitioning an issue that already exists.
+
+**Owner:** cloudforce-team-data · **Maturity:** draft · **Runs as:** subagent · **Model tier:** economy
+
+### [`crv-create-jira-story`](skills/processes/crv-create-jira-story/SKILL.md)
+
+Files Jira Stories under a parent Epic through the Atlassian MCP, searching for duplicates by JQL before creating anything, requiring a story-point estimate on every story, and resolving the Story Points field from the target project at run time. Use when someone wants to create, file, or raise a story or ticket in Jira under an existing epic — including "file a Jira story", "raise a ticket for this", or breaking a spec into stories. To create the parent epic itself, use crv-create-jira-epic. Not for editing, commenting on, or transitioning an issue that already exists.
 
 **Owner:** cloudforce-team-data · **Maturity:** draft · **Runs as:** subagent · **Model tier:** economy
 

@@ -10,7 +10,35 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`crv-create-jira-epic`** (`processes`, draft). Files one Jira Epic through
+  an Atlassian MCP server, with a description rendered from a fixed section
+  template. Preflight is a hard stop: no MCP tools or no machine configuration
+  means nothing is created, because an epic filed into a guessed project looks
+  like success in the transcript and is expensive to find later.
+- **`crv-create-jira-story`** (`processes`, draft). Files Stories under a parent
+  Epic. Searches the epic by JQL before the first create, so re-running a
+  request that filed eight stories skips all eight rather than filing them
+  again. Story points are required and are not restricted to a Fibonacci
+  ladder: a roll-up of several items lands on no ladder at all.
+- **Tenant configuration outside the repository.** Both skills bundle
+  `jira_setup.py`, which records the Jira site and default project key in
+  `${XDG_CONFIG_HOME:-$HOME/.config}/crv-agent-skills/jira.json` at mode `0600`.
+  Nothing tenant-specific is committed. Credentials are refused outright — a
+  token passed to the script exits `2` with a message saying authentication
+  belongs to the MCP server, because a second copy on disk is a second thing to
+  leak. Custom-field identifiers are not stored at all; they are resolved from
+  project create-metadata by field *name* on every run, since they differ per
+  tenant and change when an administrator edits a screen.
+- **Drift guard.** `test_shared_jira_files.py` asserts that the setup script and
+  the two shared reference files are byte-identical across both skills. They are
+  duplicated on purpose — `install.sh` installs one skill at a time, so a skill
+  reaching for a sibling's files would break silently — and nothing else in the
+  repository would notice a one-sided edit.
+- **Story input schema.** `story_input.schema.json` with a contract test pinning
+  the required triple, the positive-integer estimate, and the deliberate absence
+  of a Fibonacci enum.
 
 ## [0.1.0] — 2026-08-18
 
