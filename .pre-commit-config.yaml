@@ -1,0 +1,47 @@
+# Optional but recommended. Install with:
+#   uvx pre-commit install
+# CI runs the same checks via .github/workflows/ci.yml, so pre-commit is a
+# convenience for contributors, never the source of truth.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff (lint)
+        entry: uv run ruff check
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: ruff-format
+        name: ruff (format check)
+        entry: uv run ruff format --check
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: validate-frontmatter
+        name: validate skill frontmatter
+        entry: uv run standards/scripts/validate_frontmatter.py
+        language: system
+        files: ^skills/.*/SKILL\.md$
+        pass_filenames: false
+
+      - id: check-budgets
+        name: check skill context budgets
+        entry: uv run standards/scripts/check_budgets.py
+        language: system
+        files: ^skills/
+        pass_filenames: false
+
+      - id: catalog-drift
+        name: catalog and marketplace drift
+        entry: uv run standards/scripts/build_catalog.py --check
+        language: system
+        files: ^(skills/|standards/scripts/build_catalog\.py$)
+        pass_filenames: false
+
+      - id: scan-secrets
+        name: scan for committed secrets
+        entry: uv run standards/scripts/scan_secrets.py
+        language: system
+        pass_filenames: false

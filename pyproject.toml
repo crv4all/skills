@@ -1,0 +1,75 @@
+# Repo tooling only.
+#
+# This project is NOT a distributable Python package. It exists so that `uv`
+# can resolve and lock the dependencies used by the validators under
+# `standards/scripts/` and by the test suite.
+#
+# Two-tier Python policy (see docs/design-principles.md):
+#   * Skill-bundled scripts (skills/**/scripts/*.py) are stdlib-only, carry a
+#     PEP 723 header pinned to `requires-python = ">=3.9"`, and must run as a
+#     plain `python3 script.py` on stock macOS.
+#   * Repo tooling (this file) may use real dependencies, because it only runs
+#     in CI and on contributor machines that have uv.
+
+[project]
+name = "crv-agent-skills"
+version = "0.1.0"
+description = "Tooling and tests for the CRV Agent Skills repository"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "jsonschema>=4.23",
+    "pyyaml>=6.0.2",
+    "tiktoken>=0.8",
+]
+
+[dependency-groups]
+dev = [
+    "pymarkdownlnt>=0.9.29",
+    "pyright>=1.1.390",
+    "pytest>=8.3",
+    "ruff>=0.8",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+extend-exclude = ["tests/fixtures"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # import sorting
+    "UP",   # pyupgrade
+    "B",    # bugbear
+    "SIM",  # simplify
+    "PTH",  # prefer pathlib over os.path
+    "T20",  # flake8-print: no print(), diagnostics go to logging/stderr
+    "RUF",
+]
+ignore = [
+    "UP007",  # `X | Y` unions need 3.10; skill scripts target 3.9
+    "UP045",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Validators legitimately write their JSON payload with sys.stdout.write, not
+# print; the T20 ban stays global. Tests may assert on wide literals.
+"standards/tests/*" = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["lib"]
+
+[tool.pyright]
+include = ["standards", "skills"]
+exclude = ["**/__pycache__", "tests/fixtures", "**/.venv"]
+pythonVersion = "3.9"
+typeCheckingMode = "standard"
+reportMissingImports = "warning"
+
+[tool.pytest.ini_options]
+testpaths = ["standards/tests"]
+pythonpath = ["standards/scripts"]
+addopts = "-q --strict-markers"

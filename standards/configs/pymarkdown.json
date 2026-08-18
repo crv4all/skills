@@ -1,0 +1,27 @@
+{
+  "plugins": {
+    "line-length": {
+      "enabled": false
+    },
+    "no-inline-html": {
+      "enabled": false
+    },
+    "first-line-heading": {
+      "enabled": true
+    },
+    "no-duplicate-heading": {
+      "siblings_only": true
+    },
+    "code-block-style": {
+      "enabled": false
+    },
+    "no-emphasis-as-heading": {
+      "enabled": false
+    }
+  },
+  "extensions": {
+    "front-matter": {
+      "enabled": true
+    }
+  }
+}
