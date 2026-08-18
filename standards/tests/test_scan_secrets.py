@@ -10,7 +10,13 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "scan_secrets.py"
 
 FAKE_AWS_KEY = "AKIA" + "Q" * 16
 FAKE_GITHUB_TOKEN = "ghp_" + "b" * 36
-FAKE_JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijklmnop"  # crv-allow-secret: synthetic
+FAKE_JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijklmnop"  # crv-allow-secret
+# Synthetic values live in short named constants so the allowlist marker stays on
+# the same line as the value. Inline in a call, the formatter wraps the line and
+# the marker drifts away from what it was marking.
+FAKE_PRIVATE_KEY = "-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n"  # crv-allow-secret
+FAKE_BASIC_AUTH_URL = "postgres://admin:hunter2xyz@db.internal:5432/app"  # crv-allow-secret
+FAKE_PASSWORD = "s3cretVal4e!"  # crv-allow-secret
 
 
 @pytest.fixture
@@ -29,7 +35,7 @@ def test_clean_tree_passes(scan):
 
 
 def test_detects_private_key(scan):
-    run = scan("-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n", "id_rsa")  # crv-allow-secret: synthetic
+    run = scan(FAKE_PRIVATE_KEY, "id_rsa")
     assert run.returncode == 1
     assert run.json["findings"][0]["code"] == "secret.private-key"
 
@@ -40,7 +46,7 @@ def test_detects_private_key(scan):
         (f"aws_key = {FAKE_AWS_KEY}\n", "secret.aws-access-key-id"),
         (f"token: {FAKE_GITHUB_TOKEN}\n", "secret.github-token"),
         (f"auth: {FAKE_JWT}\n", "secret.jwt"),
-        ("url: postgres://admin:hunter2xyz@db.internal:5432/app\n", "secret.basic-auth-url"),  # crv-allow-secret: synthetic
+        (f"url: {FAKE_BASIC_AUTH_URL}\n", "secret.basic-auth-url"),
     ],
 )
 def test_detects_credential_shapes(scan, content, code):
@@ -67,13 +73,13 @@ def test_placeholders_are_not_flagged(scan):
 
 
 def test_hardcoded_assignment_is_flagged(scan):
-    run = scan('password: "s3cretVal4e!"\n')  # crv-allow-secret: synthetic
+    run = scan(f'password: "{FAKE_PASSWORD}"\n')
     assert run.returncode == 1
     assert "secret.generic-assignment" in run.codes()
 
 
 def test_allowlist_marker_suppresses(scan):
-    run = scan('password: "s3cretVal4e!"  # crv-allow-secret: fixture only\n')
+    run = scan(f'password: "{FAKE_PASSWORD}"  # crv-allow-secret: fixture only\n')
     assert run.returncode == 0, run.stderr
 
 

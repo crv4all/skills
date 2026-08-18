@@ -188,7 +188,7 @@ def test_empty_body_is_an_error(make_skill, validate):
 def test_stdout_is_only_json(make_skill, validate):
     make_skill(body=BODY + "\nRun scripts/missing.py.\n")
     run = validate("--verbose")
-    run.json  # would raise if a diagnostic leaked into stdout
+    assert run.json is not None  # raises if a diagnostic leaked into stdout
     assert "error:" in run.stderr
 
 

@@ -26,7 +26,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Optional
 
 LOGGER = logging.getLogger("crv.validate-context")
 
@@ -91,9 +91,20 @@ SECRET_PATTERN = re.compile(
 
 MERMAID_FENCE = re.compile(r"```mermaid\n(.*?)```", re.DOTALL)
 MERMAID_TYPES = (
-    "flowchart", "graph", "sequenceDiagram", "classDiagram", "stateDiagram",
-    "stateDiagram-v2", "erDiagram", "journey", "gantt", "C4Context", "C4Container",
-    "mindmap", "timeline", "block-beta",
+    "flowchart",
+    "graph",
+    "sequenceDiagram",
+    "classDiagram",
+    "stateDiagram",
+    "stateDiagram-v2",
+    "erDiagram",
+    "journey",
+    "gantt",
+    "C4Context",
+    "C4Container",
+    "mindmap",
+    "timeline",
+    "block-beta",
 )
 
 #: Words that look like file paths in prose but are not repository files.
@@ -109,8 +120,8 @@ class Finding:
     line: Optional[int] = None
     hint: Optional[str] = None
 
-    def as_dict(self) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {
+    def as_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
             "level": self.level,
             "code": self.code,
             "path": self.path,
@@ -125,9 +136,9 @@ class Finding:
 
 @dataclass
 class Report:
-    findings: List[Finding] = field(default_factory=list)
-    markers: List[Dict[str, str]] = field(default_factory=list)
-    stamps: Dict[str, Optional[str]] = field(default_factory=dict)
+    findings: list[Finding] = field(default_factory=list)
+    markers: list[dict[str, str]] = field(default_factory=list)
+    stamps: dict[str, Optional[str]] = field(default_factory=dict)
     paths_checked: int = 0
 
     def error(self, **kwargs: Any) -> None:
@@ -137,11 +148,11 @@ class Report:
         self.findings.append(Finding(level="warning", **kwargs))
 
     @property
-    def errors(self) -> List[Finding]:
+    def errors(self) -> list[Finding]:
         return [f for f in self.findings if f.level == "error"]
 
     @property
-    def warnings(self) -> List[Finding]:
+    def warnings(self) -> list[Finding]:
         return [f for f in self.findings if f.level == "warning"]
 
 
@@ -166,7 +177,9 @@ def build_parser() -> argparse.ArgumentParser:
             + EXIT_CODE_HELP
         ),
     )
-    parser.add_argument("--root", type=Path, default=Path("."), help="Repository root (default: current directory).")
+    parser.add_argument(
+        "--root", type=Path, default=Path(), help="Repository root (default: current directory)."
+    )
     parser.add_argument(
         "--context-dir",
         type=Path,
@@ -179,7 +192,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Require every stamp to name this commit. Accepts a prefix.",
     )
     parser.add_argument("--strict", action="store_true", help="Treat warnings as errors.")
-    parser.add_argument("--output", type=Path, default=None, help="Write the JSON report here instead of stdout.")
+    parser.add_argument(
+        "--output", type=Path, default=None, help="Write the JSON report here instead of stdout."
+    )
     parser.add_argument("--verbose", action="store_true", help="Verbose diagnostics on stderr.")
     parser.add_argument("--quiet", action="store_true", help="Only warnings and errors on stderr.")
     return parser
@@ -201,7 +216,10 @@ def check_stamp(name: str, text: str, expect_sha: Optional[str], report: Report)
             code="stamp.missing",
             path=name,
             message="no `> verified against <sha> on <date>` line",
-            hint="Context that cannot be dated cannot be distinguished from context that has gone stale.",
+            hint=(
+                "Context that cannot be dated cannot be distinguished from context that "
+                "has gone stale."
+            ),
         )
         report.stamps[name] = None
         return
@@ -213,7 +231,10 @@ def check_stamp(name: str, text: str, expect_sha: Optional[str], report: Report)
             code="stamp.short-sha",
             path=name,
             message=f"stamp uses a {len(sha)}-character SHA; the contract asks for the full 40",
-            hint="Short SHAs collide as history grows, and a stamp that no longer resolves is worthless.",
+            hint=(
+                "Short SHAs collide as history grows, and a stamp that no longer "
+                "resolves is worthless."
+            ),
         )
     if expect_sha and not sha.startswith(expect_sha) and not expect_sha.startswith(sha):
         report.error(
@@ -251,7 +272,7 @@ def check_template_residue(name: str, text: str, report: Report) -> None:
 
 def check_paths(name: str, text: str, root: Path, report: Report) -> None:
     """Every repository path the document names must exist."""
-    seen: Set[str] = set()
+    seen: set[str] = set()
 
     def verify(raw: str, line: int, kind: str) -> None:
         candidate = raw.split(":", 1)[0].strip()
@@ -279,7 +300,7 @@ def check_paths(name: str, text: str, root: Path, report: Report) -> None:
             if target.startswith(PATH_IGNORE_PREFIXES) or target.startswith("<"):
                 continue
             # Links inside docs/codebase/ are relative to that directory.
-            local = (root / "docs" / "codebase" / target)
+            local = root / "docs" / "codebase" / target
             if local.exists() or (root / target).exists():
                 report.paths_checked += 1
                 continue
@@ -359,7 +380,7 @@ def check_conditionals(context_dir: Path, readme_text: str, report: Report) -> N
         )
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     configure_logging(args.verbose, args.quiet)
@@ -378,7 +399,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return EXIT_INPUT
 
     report = Report()
-    present: List[str] = []
+    present: list[str] = []
 
     for name in REQUIRED_FILES + CONDITIONAL_FILES:
         path = context_dir / name
@@ -413,7 +434,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         report.error(
             code="stamp.inconsistent",
             path="docs/codebase/",
-            message=f"files are stamped with {len(distinct_stamps)} different SHAs: {sorted(distinct_stamps)}",
+            message=(
+                f"files are stamped with {len(distinct_stamps)} different SHAs: "
+                f"{sorted(distinct_stamps)}"
+            ),
             hint="Every file in the set is verified at one commit. Restamp them all.",
         )
 
@@ -452,7 +476,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             LOGGER.warning(message)
 
     for marker in report.markers:
-        LOGGER.info("[%s] %s:%s %s", marker["marker"], marker["path"], marker["line"], marker["text"])
+        LOGGER.info(
+            "[%s] %s:%s %s", marker["marker"], marker["path"], marker["line"], marker["text"]
+        )
 
     LOGGER.info(
         "%d file(s), %d path(s) checked, %d error(s), %d warning(s)",

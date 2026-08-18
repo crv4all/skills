@@ -14,7 +14,11 @@ import pytest
 
 SCRIPT = (
     Path(__file__).resolve().parents[2]
-    / "skills" / "processes" / "crv-codebase-onboarding" / "scripts" / "scan.py"
+    / "skills"
+    / "processes"
+    / "crv-codebase-onboarding"
+    / "scripts"
+    / "scan.py"
 )
 
 
@@ -232,5 +236,5 @@ def test_bad_max_items_exits_usage(run_script, fixtures_dir):
 
 def test_stdout_is_only_json_even_when_verbose(run_script, fixtures_dir):
     run = run_script(SCRIPT, ["--root", str(fixtures_dir / "java-spring-maven"), "--verbose"])
-    run.json
+    assert run.json is not None
     assert run.stderr.strip()

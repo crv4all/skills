@@ -20,9 +20,9 @@ from typing import Any, Union
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib import cli, log  # noqa: E402
-from lib.discovery import LAYERS, Skill, discover, repo_root, resolve_targets  # noqa: E402
-from lib.frontmatter import FrontmatterError, parse_file  # noqa: E402
+from lib import cli, log
+from lib.discovery import LAYERS, Skill, discover, repo_root, resolve_targets
+from lib.frontmatter import FrontmatterError, parse_file
 
 LOGGER = log.get_logger("validate-frontmatter")
 
@@ -125,7 +125,8 @@ def build_parser() -> argparse.ArgumentParser:
             "  # validate everything\n"
             "  uv run standards/scripts/validate_frontmatter.py\n\n"
             "  # validate one skill, by directory or by SKILL.md path\n"
-            "  uv run standards/scripts/validate_frontmatter.py skills/processes/crv-create-skill\n\n"
+            "  uv run standards/scripts/validate_frontmatter.py \\\n"
+            "      skills/processes/crv-create-skill\n\n"
             "  # only the processes layer, warnings promoted to errors\n"
             "  uv run standards/scripts/validate_frontmatter.py --layer processes --strict\n\n"
             "  # write the report to a file instead of stdout\n"
@@ -138,16 +139,22 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="*",
         help="Skill directories or SKILL.md paths. Default: every skill in the repository.",
     )
-    parser.add_argument("--root", type=Path, default=None, help="Repository root (default: auto-detected).")
+    parser.add_argument(
+        "--root", type=Path, default=None, help="Repository root (default: auto-detected)."
+    )
     parser.add_argument(
         "--layer",
         action="append",
         choices=list(LAYERS),
         help="Restrict to a layer. Repeatable.",
     )
-    parser.add_argument("--schema", type=Path, default=None, help=f"Schema path (default: {DEFAULT_SCHEMA}).")
+    parser.add_argument(
+        "--schema", type=Path, default=None, help=f"Schema path (default: {DEFAULT_SCHEMA})."
+    )
     parser.add_argument("--strict", action="store_true", help="Treat warnings as errors.")
-    parser.add_argument("--output", type=Path, default=None, help="Write the JSON report here instead of stdout.")
+    parser.add_argument(
+        "--output", type=Path, default=None, help="Write the JSON report here instead of stdout."
+    )
     parser.add_argument("--verbose", action="store_true", help="Verbose diagnostics on stderr.")
     parser.add_argument("--quiet", action="store_true", help="Only warnings and errors on stderr.")
     return parser
@@ -159,7 +166,9 @@ def load_schema(path: Path) -> dict[str, Any]:
     except FileNotFoundError as exc:
         raise SystemExit(_fail(cli.EXIT_INPUT, f"schema not found: {path}")) from exc
     except json.JSONDecodeError as exc:
-        raise SystemExit(_fail(cli.EXIT_MALFORMED, f"schema is not valid JSON: {path}: {exc}")) from exc
+        raise SystemExit(
+            _fail(cli.EXIT_MALFORMED, f"schema is not valid JSON: {path}: {exc}")
+        ) from exc
 
 
 def _fail(code: int, message: str) -> int:
@@ -172,7 +181,9 @@ def _schema_path_label(error: Any) -> str:
     return ".".join(parts) if parts else "(root)"
 
 
-def check_schema(skill: Skill, data: dict[str, Any], schema: dict[str, Any], report: Report) -> None:
+def check_schema(
+    skill: Skill, data: dict[str, Any], schema: dict[str, Any], report: Report
+) -> None:
     """Run JSON Schema validation, then re-explain the errors in author terms."""
     import jsonschema
 
@@ -209,7 +220,10 @@ def check_filesystem_agreement(skill: Skill, data: dict[str, Any], report: Repor
         report.error(
             code="frontmatter.name-directory-mismatch",
             path=skill.rel_skill_md,
-            message=f"name is {name!r} but the directory is {skill.name!r}; the spec requires them to be equal",
+            message=(
+                f"name is {name!r} but the directory is {skill.name!r}; the spec "
+                "requires them to be equal"
+            ),
             hint=f"Either rename the directory to {name!r} or set name to {skill.name!r}.",
         )
 
@@ -266,9 +280,7 @@ def check_description_quality(skill: Skill, data: dict[str, Any], report: Report
         )
 
 
-def check_execution_contract(
-    skill: Skill, data: dict[str, Any], body: str, report: Report
-) -> None:
+def check_execution_contract(skill: Skill, data: dict[str, Any], body: str, report: Report) -> None:
     """Enforce the subagent-and-cheapest-model rule.
 
     The schema can require the metadata keys. It cannot check that the body
@@ -321,7 +333,9 @@ def check_repo_conventions(skill: Skill, data: dict[str, Any], report: Report) -
         report.warn(
             code="convention.missing-license",
             path=skill.rel_skill_md,
-            message="no license field; skills are copied out of this repository and lose their context",
+            message=(
+                "no license field; skills are copied out of this repository and lose their context"
+            ),
             hint="Add `license: Apache-2.0`.",
         )
     metadata = data.get("metadata")
@@ -364,7 +378,10 @@ def check_references(skill: Skill, body: str, body_start_line: int, report: Repo
                 code="reference.too-deep",
                 path=skill.rel_skill_md,
                 line=line,
-                message=f"{raw!r} is {depth} levels deep; the spec asks for references one level from SKILL.md",
+                message=(
+                    f"{raw!r} is {depth} levels deep; the spec asks for references "
+                    "one level from SKILL.md"
+                ),
                 hint="Flatten it, or point at the directory and let the agent list it.",
             )
 
@@ -381,7 +398,9 @@ def check_reference_chains(skill: Skill, report: Report) -> None:
                 path=reference.relative_to(skill.root).as_posix(),
                 line=text[: match.start()].count("\n") + 1,
                 message=f"reference file points at another reference file ({match.group(0)})",
-                hint="Link from SKILL.md instead. Chained references get loaded late or not at all.",
+                hint=(
+                    "Link from SKILL.md instead. Chained references get loaded late or not at all."
+                ),
             )
             break
 
@@ -396,7 +415,10 @@ def validate_skill(skill: Skill, schema: dict[str, Any], report: Report) -> None
             path=skill.rel_skill_md,
             line=exc.line,
             message=str(exc).split(": ", 1)[-1],
-            hint="Frontmatter is a YAML mapping between two `---` lines, at the very top of the file.",
+            hint=(
+                "Frontmatter is a YAML mapping between two `---` lines, at the very "
+                "top of the file."
+            ),
         )
         return
 
@@ -471,7 +493,9 @@ def main(argv: Union[list[str], None] = None) -> int:
 
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        args.output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         LOGGER.info("report written to %s", args.output)
     else:
         cli.emit(payload)

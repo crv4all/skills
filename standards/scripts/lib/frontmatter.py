@@ -124,7 +124,7 @@ def parse_text(text: str, path: Path) -> ParsedMarkdown:
     front, body, body_start_line = split(text, path)
 
     try:
-        loaded = yaml.load(front, Loader=_NoDuplicateKeyLoader)  # noqa: S506 - custom SafeLoader
+        loaded = yaml.load(front, Loader=_NoDuplicateKeyLoader)
     except yaml.MarkedYAMLError as exc:
         # Marks are relative to the frontmatter block; +1 for the opening fence.
         line = (exc.problem_mark.line + 2) if exc.problem_mark else None

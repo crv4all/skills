@@ -26,13 +26,15 @@ import json
 import re
 import subprocess
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Optional, Pattern, Tuple
+from re import Pattern
+from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib import cli, log  # noqa: E402
+from lib import cli, log
 
 LOGGER = log.get_logger("scan-secrets")
 
@@ -41,10 +43,31 @@ ALLOWLIST_MARKER = "crv-allow-secret"
 
 #: Paths never scanned. Kept short on purpose: every entry is a place a real
 #: secret could hide unnoticed.
-SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", ".ruff_cache", ".pytest_cache", "dist", "build"}
+SKIP_DIRS = {
+    ".git",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    ".ruff_cache",
+    ".pytest_cache",
+    "dist",
+    "build",
+}
 
 #: Extensions with no plausible plaintext credential and a high false-positive rate.
-SKIP_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".ico", ".woff", ".woff2", ".zip", ".gz", ".lock"}
+SKIP_SUFFIXES = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".pdf",
+    ".ico",
+    ".woff",
+    ".woff2",
+    ".zip",
+    ".gz",
+    ".lock",
+}
 
 MAX_BYTES = 2_000_000
 MAX_LINE_LENGTH = 4000
@@ -62,7 +85,7 @@ def _compile(pattern: str) -> Pattern[str]:
     return re.compile(pattern)
 
 
-RULES: Tuple[Rule, ...] = (
+RULES: tuple[Rule, ...] = (
     Rule(
         "private-key",
         "PEM private key block",
@@ -184,7 +207,9 @@ class Finding:
             "code": f"secret.{self.code}",
             "path": self.path,
             "line": self.line,
-            "message": f"{self.description} (length {self.match_length}, sha256:{self.fingerprint})",
+            "message": (
+                f"{self.description} (length {self.match_length}, sha256:{self.fingerprint})"
+            ),
             "hint": self.remediation,
         }
 
@@ -206,18 +231,23 @@ def build_parser() -> argparse.ArgumentParser:
             "allowlisting:\n"
             f"  Put the marker `{ALLOWLIST_MARKER}` in a comment on the same line to accept a\n"
             "  match. Do that only for values that are demonstrably not credentials; the\n"
-            "  marker is visible in review, which is the point.\n\n"
-            + cli.EXIT_CODE_HELP
+            "  marker is visible in review, which is the point.\n\n" + cli.EXIT_CODE_HELP
         ),
     )
-    parser.add_argument("paths", nargs="*", help="Files or directories to scan. Default: the whole repository.")
-    parser.add_argument("--root", type=Path, default=None, help="Repository root (default: auto-detected).")
+    parser.add_argument(
+        "paths", nargs="*", help="Files or directories to scan. Default: the whole repository."
+    )
+    parser.add_argument(
+        "--root", type=Path, default=None, help="Repository root (default: auto-detected)."
+    )
     parser.add_argument(
         "--staged",
         action="store_true",
         help="Scan only files staged in git. Intended for a pre-commit hook.",
     )
-    parser.add_argument("--output", type=Path, default=None, help="Write the JSON report here instead of stdout.")
+    parser.add_argument(
+        "--output", type=Path, default=None, help="Write the JSON report here instead of stdout."
+    )
     parser.add_argument("--verbose", action="store_true", help="Verbose diagnostics on stderr.")
     parser.add_argument("--quiet", action="store_true", help="Only warnings and errors on stderr.")
     return parser
@@ -225,12 +255,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 def repo_root_from(here: Path) -> Path:
     for candidate in [here, *here.parents]:
-        if (candidate / ".git").exists() or ((candidate / "skills").is_dir() and (candidate / "standards").is_dir()):
+        if (candidate / ".git").exists() or (
+            (candidate / "skills").is_dir() and (candidate / "standards").is_dir()
+        ):
             return candidate
     return here
 
 
-def staged_files(root: Path) -> List[Path]:
+def staged_files(root: Path) -> list[Path]:
     try:
         result = subprocess.run(
             ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
@@ -245,8 +277,8 @@ def staged_files(root: Path) -> List[Path]:
     return [root / line for line in result.stdout.splitlines() if line.strip()]
 
 
-def walk(paths: Iterable[Path]) -> List[Path]:
-    files: List[Path] = []
+def walk(paths: Iterable[Path]) -> list[Path]:
+    files: list[Path] = []
     for path in paths:
         if path.is_file():
             files.append(path)
@@ -283,7 +315,7 @@ def fingerprint(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
 
 
-def scan_file(path: Path, root: Path) -> List[Finding]:
+def scan_file(path: Path, root: Path) -> list[Finding]:
     try:
         content = path.read_text(encoding="utf-8")
     except (UnicodeDecodeError, OSError):
@@ -295,7 +327,7 @@ def scan_file(path: Path, root: Path) -> List[Finding]:
     except ValueError:
         rel = str(path)
 
-    findings: List[Finding] = []
+    findings: list[Finding] = []
     for number, line in enumerate(content.splitlines(), start=1):
         if len(line) > MAX_LINE_LENGTH:
             line = line[:MAX_LINE_LENGTH]
@@ -323,7 +355,7 @@ def scan_file(path: Path, root: Path) -> List[Finding]:
     return findings
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     log.configure(verbose=args.verbose, quiet=args.quiet)
@@ -353,7 +385,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     files = [p for p in candidates if scannable(p)]
     LOGGER.debug("scanning %d file(s)", len(files))
 
-    findings: List[Finding] = []
+    findings: list[Finding] = []
     for path in files:
         findings.extend(scan_file(path, root))
 
@@ -368,13 +400,17 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        args.output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         LOGGER.info("report written to %s", args.output)
     else:
         cli.emit(payload)
 
     for finding in findings:
-        LOGGER.error("%s:%d: [secret.%s] %s", finding.path, finding.line, finding.code, finding.description)
+        LOGGER.error(
+            "%s:%d: [secret.%s] %s", finding.path, finding.line, finding.code, finding.description
+        )
         LOGGER.error("    %s", finding.remediation)
 
     if findings:

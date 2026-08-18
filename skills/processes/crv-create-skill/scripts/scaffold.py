@@ -25,7 +25,7 @@ import logging
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 
 LOGGER = logging.getLogger("crv.scaffold")
 
@@ -78,28 +78,39 @@ def build_parser() -> argparse.ArgumentParser:
             "after scaffolding:\n"
             "  uv run standards/scripts/validate_frontmatter.py skills/<layer>/<name>\n"
             "  uv run standards/scripts/check_budgets.py skills/<layer>/<name>\n"
-            "  uv run standards/scripts/build_catalog.py --write\n\n"
-            + EXIT_CODE_HELP
+            "  uv run standards/scripts/build_catalog.py --write\n\n" + EXIT_CODE_HELP
         ),
     )
-    parser.add_argument("--repo", type=Path, required=True, help="Path to the agent-skills repository root.")
-    parser.add_argument("--name", required=True, help="Skill name, including the mandatory crv- prefix.")
+    parser.add_argument(
+        "--repo", type=Path, required=True, help="Path to the agent-skills repository root."
+    )
+    parser.add_argument(
+        "--name", required=True, help="Skill name, including the mandatory crv- prefix."
+    )
     parser.add_argument("--layer", required=True, choices=list(LAYERS), help="Capability layer.")
-    parser.add_argument("--owner", required=True, help="Accountable team, written to metadata.owner.")
+    parser.add_argument(
+        "--owner", required=True, help="Accountable team, written to metadata.owner."
+    )
     parser.add_argument(
         "--description",
         required=True,
         help="Frontmatter description. Say what it does AND when to use it.",
     )
-    parser.add_argument("--title", default=None, help="H1 for the body (default: derived from --name).")
+    parser.add_argument(
+        "--title", default=None, help="H1 for the body (default: derived from --name)."
+    )
     parser.add_argument(
         "--templates",
         type=Path,
         default=None,
         help="Template directory (default: ../assets/skill-template next to this script).",
     )
-    parser.add_argument("--with-scripts", action="store_true", help="Also create scripts/ with a .gitkeep.")
-    parser.add_argument("--with-assets", action="store_true", help="Also create assets/ with a .gitkeep.")
+    parser.add_argument(
+        "--with-scripts", action="store_true", help="Also create scripts/ with a .gitkeep."
+    )
+    parser.add_argument(
+        "--with-assets", action="store_true", help="Also create assets/ with a .gitkeep."
+    )
     parser.add_argument(
         "--confirm",
         action="store_true",
@@ -112,7 +123,9 @@ def build_parser() -> argparse.ArgumentParser:
         "the intent can be stated in a command line that a human will read.",
     )
     parser.add_argument("--force", action="store_true", help="Overwrite files that already exist.")
-    parser.add_argument("--output", type=Path, default=None, help="Write the JSON plan here instead of stdout.")
+    parser.add_argument(
+        "--output", type=Path, default=None, help="Write the JSON plan here instead of stdout."
+    )
     parser.add_argument("--verbose", action="store_true", help="Verbose diagnostics on stderr.")
     parser.add_argument("--quiet", action="store_true", help="Only warnings and errors on stderr.")
     return parser
@@ -156,17 +169,17 @@ def title_from_name(name: str) -> str:
     return name[len("crv-") :].replace("-", " ").capitalize()
 
 
-def render(text: str, substitutions: Dict[str, str]) -> str:
+def render(text: str, substitutions: dict[str, str]) -> str:
     for key, value in substitutions.items():
         text = text.replace("{{" + key + "}}", value)
     return text
 
 
 def plan_files(
-    templates: Path, skill_dir: Path, substitutions: Dict[str, str], args: argparse.Namespace
-) -> List[Tuple[Path, Optional[Path]]]:
+    templates: Path, skill_dir: Path, substitutions: dict[str, str], args: argparse.Namespace
+) -> list[tuple[Path, Optional[Path]]]:
     """Return (destination, template-or-None) pairs. None means an empty file."""
-    files: List[Tuple[Path, Optional[Path]]] = [
+    files: list[tuple[Path, Optional[Path]]] = [
         (skill_dir / "SKILL.md", templates / "SKILL.md.template"),
         (skill_dir / "references" / "README.md", templates / "references" / "README.md.template"),
         (skill_dir / "evals" / "triggers.md", templates / "evals" / "triggers.md.template"),
@@ -180,7 +193,7 @@ def plan_files(
     return files
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     configure_logging(args.verbose, args.quiet)
@@ -199,7 +212,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         LOGGER.error("%s has no skills/ directory; is this the agent-skills repository?", repo)
         return EXIT_INPUT
 
-    templates = (args.templates or (Path(__file__).resolve().parent.parent / "assets" / "skill-template")).resolve()
+    templates = (
+        args.templates or (Path(__file__).resolve().parent.parent / "assets" / "skill-template")
+    ).resolve()
     if not templates.is_dir():
         LOGGER.error("template directory not found: %s", templates)
         return EXIT_INPUT
@@ -215,13 +230,15 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     planned = plan_files(templates, skill_dir, substitutions, args)
 
-    actions: List[Dict[str, str]] = []
-    conflicts: List[str] = []
+    actions: list[dict[str, str]] = []
+    conflicts: list[str] = []
     for destination, template in planned:
         rel = destination.relative_to(repo).as_posix()
         if destination.exists() and not args.force:
             conflicts.append(rel)
-            actions.append({"path": rel, "action": "skip", "reason": "exists; pass --force to overwrite"})
+            actions.append(
+                {"path": rel, "action": "skip", "reason": "exists; pass --force to overwrite"}
+            )
             continue
         if template is not None and not template.is_file():
             LOGGER.error("template missing: %s", template)
@@ -240,7 +257,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         if layer != args.layer and (repo / "skills" / layer / args.name).is_dir()
     ]
 
-    written: List[str] = []
+    written: list[str] = []
     if args.confirm and not (conflicts and not args.force):
         for destination, template in planned:
             if destination.exists() and not args.force:

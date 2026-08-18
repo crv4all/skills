@@ -6,9 +6,10 @@ skill cannot be valid to one check and invisible to another.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Union
+from typing import Union
 
 #: The four capability layers, in the order they are presented to readers.
 #: See skills/README.md for what each one means.
@@ -83,7 +84,9 @@ def repo_root(start: Union[Path, None] = None) -> Path:
     return Path(__file__).resolve().parents[3]
 
 
-def discover(root: Path, layers: Union[Iterable[str], None] = None) -> tuple[list[Skill], list[Stray]]:
+def discover(
+    root: Path, layers: Union[Iterable[str], None] = None
+) -> tuple[list[Skill], list[Stray]]:
     """Return every skill under ``root/skills``, plus anything suspicious.
 
     Args:

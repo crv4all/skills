@@ -23,17 +23,16 @@ from __future__ import annotations
 
 import argparse
 import difflib
-import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Union
+from typing import Union
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib import cli, log  # noqa: E402
-from lib.discovery import LAYERS, Skill, discover, repo_root  # noqa: E402
-from lib.frontmatter import FrontmatterError, parse_file  # noqa: E402
+from lib import cli, log
+from lib.discovery import LAYERS, discover, repo_root
+from lib.frontmatter import FrontmatterError, parse_file
 
 LOGGER = log.get_logger("build-catalog")
 
@@ -51,7 +50,9 @@ GENERATED_BANNER = (
 
 LAYER_BLURB = {
     "utilities": "Cross-cutting tooling: the hard part is invoking something correctly.",
-    "knowledge": "Reference and organizational context: facts a capable agent would otherwise get wrong.",
+    "knowledge": (
+        "Reference and organizational context: facts a capable agent would otherwise get wrong."
+    ),
     "patterns": "Reusable implementation recipes, applied inside a larger task.",
     "processes": "End-to-end workflows with a reviewable deliverable.",
 }
@@ -97,14 +98,19 @@ def build_parser() -> argparse.ArgumentParser:
             "  uv run standards/scripts/build_catalog.py --check --diff\n\n"
             "notes:\n"
             "  --check and --write are mutually exclusive: a check that repairs what it is\n"
-            "  checking cannot fail, which makes it worthless in CI.\n\n"
-            + cli.EXIT_CODE_HELP
+            "  checking cannot fail, which makes it worthless in CI.\n\n" + cli.EXIT_CODE_HELP
         ),
     )
-    parser.add_argument("--root", type=Path, default=None, help="Repository root (default: auto-detected).")
+    parser.add_argument(
+        "--root", type=Path, default=None, help="Repository root (default: auto-detected)."
+    )
     parser.add_argument("--write", action="store_true", help="Write the generated files.")
-    parser.add_argument("--check", action="store_true", help="Exit 1 if any generated file is out of date.")
-    parser.add_argument("--diff", action="store_true", help="Print a unified diff to stderr for each drifted file.")
+    parser.add_argument(
+        "--check", action="store_true", help="Exit 1 if any generated file is out of date."
+    )
+    parser.add_argument(
+        "--diff", action="store_true", help="Print a unified diff to stderr for each drifted file."
+    )
     parser.add_argument("--verbose", action="store_true", help="Verbose diagnostics on stderr.")
     parser.add_argument("--quiet", action="store_true", help="Only warnings and errors on stderr.")
     return parser
@@ -140,7 +146,9 @@ def load_entries(root: Path) -> tuple[list[Entry], list[str]]:
                 model_tier=str(metadata.get("model-tier") or "unspecified"),
                 version=str(metadata["version"]) if metadata.get("version") else None,
                 tags=[t for t in str(tags_raw).split(",") if t] if tags_raw else [],
-                review_cadence=str(metadata["review-cadence"]) if metadata.get("review-cadence") else None,
+                review_cadence=str(metadata["review-cadence"])
+                if metadata.get("review-cadence")
+                else None,
                 rel_path=skill.rel_path,
                 rel_skill_md=skill.rel_skill_md,
             )
@@ -181,19 +189,9 @@ def render_catalog(entries: list[Entry]) -> str:
     ]
     for entry in entries:
         lines.append(
-            (
-                "| [`{name}`]({path}/SKILL.md) | {layer} | {maturity} | {execution} | "
-                "{tier} | {owner} | {summary} |"
-            ).format(
-                name=entry.name,
-                path=entry.rel_path,
-                layer=entry.layer,
-                maturity=entry.maturity,
-                execution=entry.execution,
-                tier=entry.model_tier,
-                owner=entry.owner,
-                summary=_first_sentence(entry.description),
-            )
+            f"| [`{entry.name}`]({entry.rel_path}/SKILL.md) | {entry.layer} | "
+            f"{entry.maturity} | {entry.execution} | "
+            f"{entry.model_tier} | {entry.owner} | {_first_sentence(entry.description)} |"
         )
 
     lines.append("")
@@ -283,7 +281,9 @@ def main(argv: Union[list[str], None] = None) -> int:
                 "path": rel,
                 "existed": current is not None,
                 "up_to_date": up_to_date,
-                "action": "written" if (args.write and not up_to_date) else ("ok" if up_to_date else "drifted"),
+                "action": "written"
+                if (args.write and not up_to_date)
+                else ("ok" if up_to_date else "drifted"),
             }
         )
 
@@ -314,7 +314,9 @@ def main(argv: Union[list[str], None] = None) -> int:
     if drifted:
         for rel in drifted:
             LOGGER.error("out of date: %s", rel)
-        LOGGER.error("run `uv run standards/scripts/build_catalog.py --write` and commit the result")
+        LOGGER.error(
+            "run `uv run standards/scripts/build_catalog.py --write` and commit the result"
+        )
         return cli.EXIT_FINDINGS if args.check else cli.EXIT_OK
 
     LOGGER.info("%d skill(s) catalogued, all generated files up to date", len(entries))

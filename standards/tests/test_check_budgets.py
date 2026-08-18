@@ -128,4 +128,4 @@ def test_tokenizer_reported_honestly(make_skill, budgets):
 
 def test_stdout_is_only_json(make_skill, budgets):
     make_skill(frontmatter=VALID.format(maturity="draft"), body=oversized_body())
-    budgets("--verbose").json
+    assert budgets("--verbose").json is not None

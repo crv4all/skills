@@ -38,9 +38,10 @@ import re
 import subprocess
 import sys
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Optional
 
 LOGGER = logging.getLogger("crv.scan")
 
@@ -64,25 +65,101 @@ EXIT_CODE_HELP = """exit codes:
 #: Directories never descended into. Vendored and generated trees dominate file
 #: counts and teach nothing about how the project is built.
 SKIP_DIRS = {
-    ".git", ".hg", ".svn", ".idea", ".vscode", ".vs",
-    "node_modules", "bower_components", "vendor", "third_party",
-    "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".tox", ".nox",
-    ".venv", "venv", "env", ".env.d",
-    "target", "build", "dist", "out", "bin", "obj", ".gradle", ".m2",
-    ".next", ".nuxt", ".svelte-kit", ".angular", ".parcel-cache", ".turbo", ".nx",
-    "coverage", "htmlcov", ".coverage",
-    ".terraform", ".serverless", ".aws-sam",
-    "site-packages", ".dart_tool", "Pods", "DerivedData",
+    ".git",
+    ".hg",
+    ".svn",
+    ".idea",
+    ".vscode",
+    ".vs",
+    "node_modules",
+    "bower_components",
+    "vendor",
+    "third_party",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".tox",
+    ".nox",
+    ".venv",
+    "venv",
+    "env",
+    ".env.d",
+    "target",
+    "build",
+    "dist",
+    "out",
+    "bin",
+    "obj",
+    ".gradle",
+    ".m2",
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".angular",
+    ".parcel-cache",
+    ".turbo",
+    ".nx",
+    "coverage",
+    "htmlcov",
+    ".coverage",
+    ".terraform",
+    ".serverless",
+    ".aws-sam",
+    "site-packages",
+    ".dart_tool",
+    "Pods",
+    "DerivedData",
 }
 
 BINARY_SUFFIXES = {
-    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".svg", ".webp",
-    ".pdf", ".zip", ".gz", ".tar", ".bz2", ".xz", ".7z", ".rar",
-    ".jar", ".war", ".ear", ".class", ".dll", ".so", ".dylib", ".exe",
-    ".woff", ".woff2", ".ttf", ".eot", ".otf",
-    ".mp3", ".mp4", ".mov", ".avi", ".wav",
-    ".pyc", ".pyo", ".o", ".a", ".bin", ".db", ".sqlite", ".sqlite3",
-    ".parquet", ".avro", ".pkl", ".h5", ".onnx",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".bmp",
+    ".ico",
+    ".svg",
+    ".webp",
+    ".pdf",
+    ".zip",
+    ".gz",
+    ".tar",
+    ".bz2",
+    ".xz",
+    ".7z",
+    ".rar",
+    ".jar",
+    ".war",
+    ".ear",
+    ".class",
+    ".dll",
+    ".so",
+    ".dylib",
+    ".exe",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".eot",
+    ".otf",
+    ".mp3",
+    ".mp4",
+    ".mov",
+    ".avi",
+    ".wav",
+    ".pyc",
+    ".pyo",
+    ".o",
+    ".a",
+    ".bin",
+    ".db",
+    ".sqlite",
+    ".sqlite3",
+    ".parquet",
+    ".avro",
+    ".pkl",
+    ".h5",
+    ".onnx",
 }
 
 MAX_READ_BYTES = 1_000_000
@@ -95,7 +172,7 @@ DEFAULT_MAX_ITEMS = 50
 # reported and the verdict is left to a human.
 # --------------------------------------------------------------------------
 
-ECOSYSTEM_MARKERS: Tuple[Tuple[str, str, str], ...] = (
+ECOSYSTEM_MARKERS: tuple[tuple[str, str, str], ...] = (
     ("maven", "pom.xml", "Maven project object model"),
     ("gradle", "build.gradle", "Gradle build script (Groovy DSL)"),
     ("gradle", "build.gradle.kts", "Gradle build script (Kotlin DSL)"),
@@ -141,7 +218,7 @@ ECOSYSTEM_MARKERS: Tuple[Tuple[str, str, str], ...] = (
     ("databricks", "databricks.yaml", "Databricks asset bundle"),
 )
 
-GLOB_MARKERS: Tuple[Tuple[str, str, str], ...] = (
+GLOB_MARKERS: tuple[tuple[str, str, str], ...] = (
     ("dotnet", "*.csproj", "C# project"),
     ("dotnet", "*.fsproj", "F# project"),
     ("dotnet", "*.sln", "Visual Studio solution"),
@@ -150,7 +227,7 @@ GLOB_MARKERS: Tuple[Tuple[str, str, str], ...] = (
     ("docker", "Dockerfile.*", "Container image definition"),
 )
 
-CI_MARKERS: Tuple[Tuple[str, str], ...] = (
+CI_MARKERS: tuple[tuple[str, str], ...] = (
     (".github/workflows", "GitHub Actions"),
     ("azure-pipelines.yml", "Azure Pipelines"),
     ("azure-pipelines.yaml", "Azure Pipelines"),
@@ -163,7 +240,7 @@ CI_MARKERS: Tuple[Tuple[str, str], ...] = (
     (".teamcity", "TeamCity"),
 )
 
-CONTEXT_MARKERS: Tuple[Tuple[str, str], ...] = (
+CONTEXT_MARKERS: tuple[tuple[str, str], ...] = (
     ("AGENTS.md", "agents_md"),
     ("CLAUDE.md", "claude_md"),
     ("GEMINI.md", "other_agent_context"),
@@ -179,7 +256,7 @@ CONTEXT_MARKERS: Tuple[Tuple[str, str], ...] = (
 
 ADR_DIRS = ("docs/adr", "docs/adrs", "docs/decisions", "architecture/decisions", "doc/adr")
 
-ENTRY_POINT_PATTERNS: Tuple[Tuple[str, str], ...] = (
+ENTRY_POINT_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"(?:^|/)main\.py$", "Python module entry point"),
     (r"(?:^|/)__main__\.py$", "Python package entry point"),
     (r"(?:^|/)manage\.py$", "Django management entry point"),
@@ -199,7 +276,7 @@ ENTRY_POINT_PATTERNS: Tuple[Tuple[str, str], ...] = (
 
 #: Environment variable reference sites. Names only -- the value side of an
 #: assignment is never captured, in any of these patterns.
-ENV_PATTERNS: Tuple[Tuple[str, str], ...] = (
+ENV_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"os\.environ\[[\"']([A-Z][A-Z0-9_]{2,})[\"']\]", "python"),
     (r"os\.environ\.get\(\s*[\"']([A-Z][A-Z0-9_]{2,})[\"']", "python"),
     (r"os\.getenv\(\s*[\"']([A-Z][A-Z0-9_]{2,})[\"']", "python"),
@@ -214,12 +291,26 @@ ENV_PATTERNS: Tuple[Tuple[str, str], ...] = (
 )
 
 SECRET_NAME_HINTS = (
-    "SECRET", "PASSWORD", "PASSWD", "TOKEN", "APIKEY", "API_KEY", "PRIVATE_KEY",
-    "CREDENTIAL", "CONNECTION_STRING", "CONNSTR", "CLIENT_SECRET", "ACCESS_KEY",
-    "SAS", "PAT", "CERT", "SIGNING_KEY", "ENCRYPTION_KEY",
+    "SECRET",
+    "PASSWORD",
+    "PASSWD",
+    "TOKEN",
+    "APIKEY",
+    "API_KEY",
+    "PRIVATE_KEY",
+    "CREDENTIAL",
+    "CONNECTION_STRING",
+    "CONNSTR",
+    "CLIENT_SECRET",
+    "ACCESS_KEY",
+    "SAS",
+    "PAT",
+    "CERT",
+    "SIGNING_KEY",
+    "ENCRYPTION_KEY",
 )
 
-DATASTORE_HINTS: Tuple[Tuple[str, str], ...] = (
+DATASTORE_HINTS: tuple[tuple[str, str], ...] = (
     (r"\bpostgres(?:ql)?\b", "PostgreSQL"),
     (r"\bmysql\b", "MySQL"),
     (r"\bmariadb\b", "MariaDB"),
@@ -238,7 +329,7 @@ DATASTORE_HINTS: Tuple[Tuple[str, str], ...] = (
     (r"\bsqlite\b", "SQLite"),
 )
 
-MESSAGING_HINTS: Tuple[Tuple[str, str], ...] = (
+MESSAGING_HINTS: tuple[tuple[str, str], ...] = (
     (r"\bkafka\b", "Kafka"),
     (r"\brabbitmq\b|\bamqp\b", "RabbitMQ / AMQP"),
     (r"\bservicebus\b|\bservice[_-]?bus\b", "Azure Service Bus"),
@@ -250,8 +341,14 @@ MESSAGING_HINTS: Tuple[Tuple[str, str], ...] = (
 )
 
 MIGRATION_DIR_HINTS = (
-    "migrations", "migration", "db/migrate", "flyway", "liquibase",
-    "alembic", "changelog", "sql/migrations",
+    "migrations",
+    "migration",
+    "db/migrate",
+    "flyway",
+    "liquibase",
+    "alembic",
+    "changelog",
+    "sql/migrations",
 )
 
 TEST_DIR_HINTS = ("test", "tests", "spec", "specs", "__tests__", "it", "e2e", "integration-test")
@@ -275,23 +372,25 @@ class Inventory:
         self.root = root
         self.skip_dirs = SKIP_DIRS | {s.strip() for s in extra_skips if s.strip()}
         self.max_files = max_files
-        self.paths: List[Path] = []
+        self.paths: list[Path] = []
         self.truncated = False
-        self.skipped_dirs: List[str] = []
+        self.skipped_dirs: list[str] = []
         self._walk()
-        self.rel_paths: List[str] = [p.relative_to(root).as_posix() for p in self.paths]
-        self.by_name: Dict[str, List[str]] = defaultdict(list)
+        self.rel_paths: list[str] = [p.relative_to(root).as_posix() for p in self.paths]
+        self.by_name: dict[str, list[str]] = defaultdict(list)
         for rel in self.rel_paths:
             self.by_name[Path(rel).name].append(rel)
 
     def _walk(self) -> None:
         for dirpath, dirnames, filenames in os.walk(self.root, followlinks=False):
-            pruned = [d for d in dirnames if d in self.skip_dirs or d.startswith(".") and d in self.skip_dirs]
+            pruned = [
+                d
+                for d in dirnames
+                if d in self.skip_dirs or (d.startswith(".") and d in self.skip_dirs)
+            ]
             for name in pruned:
                 dirnames.remove(name)
-                self.skipped_dirs.append(
-                    (Path(dirpath) / name).relative_to(self.root).as_posix()
-                )
+                self.skipped_dirs.append((Path(dirpath) / name).relative_to(self.root).as_posix())
             for filename in filenames:
                 if len(self.paths) >= self.max_files:
                     self.truncated = True
@@ -306,10 +405,10 @@ class Inventory:
     def exists(self, rel: str) -> bool:
         return (self.root / rel).exists()
 
-    def find_name(self, name: str) -> List[str]:
+    def find_name(self, name: str) -> list[str]:
         return sorted(self.by_name.get(name, []))
 
-    def find_glob(self, pattern: str) -> List[str]:
+    def find_glob(self, pattern: str) -> list[str]:
         regex = re.compile(
             "^" + re.escape(pattern).replace(r"\*", "[^/]*").replace(r"\?", "[^/]") + "$"
         )
@@ -340,7 +439,7 @@ def count_lines(path: Path) -> int:
 # --------------------------------------------------------------------------
 
 
-def collect_git(root: Path, enabled: bool, notes: List[str]) -> Dict[str, Any]:
+def collect_git(root: Path, enabled: bool, notes: list[str]) -> dict[str, Any]:
     """Read-only git facts. The head SHA is what stamps the generated context."""
     if not enabled:
         return {"available": False, "reason": "disabled with --no-git"}
@@ -362,7 +461,9 @@ def collect_git(root: Path, enabled: bool, notes: List[str]) -> Dict[str, Any]:
             LOGGER.debug("git %s failed: %s", " ".join(args), exc)
             return None
         if result.returncode != 0:
-            LOGGER.debug("git %s exited %d: %s", " ".join(args), result.returncode, result.stderr.strip())
+            LOGGER.debug(
+                "git %s exited %d: %s", " ".join(args), result.returncode, result.stderr.strip()
+            )
             return None
         return result.stdout.strip()
 
@@ -398,10 +499,10 @@ def collect_git(root: Path, enabled: bool, notes: List[str]) -> Dict[str, Any]:
     }
 
 
-def collect_size(inventory: Inventory, max_items: int) -> Dict[str, Any]:
+def collect_size(inventory: Inventory, max_items: int) -> dict[str, Any]:
     by_extension: Counter = Counter()
     lines_by_extension: Counter = Counter()
-    sizes: List[Tuple[int, str]] = []
+    sizes: list[tuple[int, str]] = []
 
     for path, rel in zip(inventory.paths, inventory.rel_paths):
         suffix = path.suffix.lower() or "(none)"
@@ -424,9 +525,9 @@ def collect_size(inventory: Inventory, max_items: int) -> Dict[str, Any]:
     }
 
 
-def collect_existing_context(inventory: Inventory, root: Path) -> Dict[str, Any]:
+def collect_existing_context(inventory: Inventory, root: Path) -> dict[str, Any]:
     """What the repository already tells an agent. This decides the mode."""
-    found: Dict[str, List[str]] = defaultdict(list)
+    found: dict[str, list[str]] = defaultdict(list)
     for name, key in CONTEXT_MARKERS:
         if "/" in name:
             if inventory.exists(name):
@@ -438,12 +539,12 @@ def collect_existing_context(inventory: Inventory, root: Path) -> Dict[str, Any]
     if cursor_rules:
         found["cursor_rules"].extend(cursor_rules)
 
-    adrs: List[str] = []
+    adrs: list[str] = []
     for directory in ADR_DIRS:
         adrs.extend(sorted(rel for rel in inventory.rel_paths if rel.startswith(directory + "/")))
 
     codebase_dir = root / "docs" / "codebase"
-    codebase: Dict[str, Any] = {"present": codebase_dir.is_dir()}
+    codebase: dict[str, Any] = {"present": codebase_dir.is_dir()}
     if codebase.get("present"):
         files = sorted(p.name for p in codebase_dir.glob("*.md"))
         codebase["files"] = files
@@ -468,8 +569,8 @@ def collect_existing_context(inventory: Inventory, root: Path) -> Dict[str, Any]
     }
 
 
-def collect_ecosystems(inventory: Inventory, max_items: int) -> List[Dict[str, Any]]:
-    evidence: Dict[str, List[Dict[str, str]]] = defaultdict(list)
+def collect_ecosystems(inventory: Inventory, max_items: int) -> list[dict[str, Any]]:
+    evidence: dict[str, list[dict[str, str]]] = defaultdict(list)
 
     for ecosystem, marker, reason in ECOSYSTEM_MARKERS:
         for rel in inventory.find_name(marker)[:max_items]:
@@ -497,7 +598,7 @@ def collect_ecosystems(inventory: Inventory, max_items: int) -> List[Dict[str, A
     return result
 
 
-def _parse_pom(text: str) -> Dict[str, Any]:
+def _parse_pom(text: str) -> dict[str, Any]:
     import xml.etree.ElementTree as ET
 
     try:
@@ -526,7 +627,7 @@ def _parse_pom(text: str) -> Dict[str, Any]:
     }
 
 
-def _parse_package_json(text: str) -> Dict[str, Any]:
+def _parse_package_json(text: str) -> dict[str, Any]:
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
@@ -545,7 +646,7 @@ def _parse_package_json(text: str) -> Dict[str, Any]:
     }
 
 
-def _parse_pyproject(text: str) -> Dict[str, Any]:
+def _parse_pyproject(text: str) -> dict[str, Any]:
     """Extract the few fields that matter without a TOML parser.
 
     Python 3.9 has no ``tomllib``, and the two-tier policy forbids a dependency
@@ -553,6 +654,7 @@ def _parse_pyproject(text: str) -> Dict[str, Any]:
     cannot see is left for a human to read, which is why the source path is
     always reported alongside.
     """
+
     def scalar(key: str) -> Optional[str]:
         match = re.search(rf"^\s*{key}\s*=\s*[\"']([^\"']+)[\"']", text, re.MULTILINE)
         return match.group(1) if match else None
@@ -568,12 +670,14 @@ def _parse_pyproject(text: str) -> Dict[str, Any]:
     }
 
 
-def collect_manifests(inventory: Inventory, root: Path, max_items: int) -> Dict[str, Any]:
-    manifests: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+def collect_manifests(inventory: Inventory, root: Path, max_items: int) -> dict[str, Any]:
+    manifests: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
     for rel in inventory.find_name("pom.xml")[:max_items]:
         text = read_text(root / rel)
-        manifests["maven"].append({"path": rel, **(_parse_pom(text) if text else {"unreadable": True})})
+        manifests["maven"].append(
+            {"path": rel, **(_parse_pom(text) if text else {"unreadable": True})}
+        )
 
     for rel in inventory.find_name("package.json")[:max_items]:
         text = read_text(root / rel)
@@ -614,7 +718,7 @@ def collect_manifests(inventory: Inventory, root: Path, max_items: int) -> Dict[
     return dict(manifests)
 
 
-def collect_entry_points(inventory: Inventory, max_items: int) -> List[Dict[str, str]]:
+def collect_entry_points(inventory: Inventory, max_items: int) -> list[dict[str, str]]:
     compiled = [(re.compile(pattern), reason) for pattern, reason in ENTRY_POINT_PATTERNS]
     found = []
     for rel in inventory.rel_paths:
@@ -626,15 +730,15 @@ def collect_entry_points(inventory: Inventory, max_items: int) -> List[Dict[str,
     return found[:max_items]
 
 
-def collect_environment(inventory: Inventory, root: Path, max_items: int) -> Dict[str, Any]:
+def collect_environment(inventory: Inventory, root: Path, max_items: int) -> dict[str, Any]:
     """Environment variable *names* and where they are referenced.
 
     Values are never captured. The regexes anchor on the name side of each
     reference form, and no capture group in ENV_PATTERNS spans a value.
     """
     compiled = [(re.compile(pattern), kind) for pattern, kind in ENV_PATTERNS]
-    references: Dict[str, List[str]] = defaultdict(list)
-    kinds: Dict[str, set] = defaultdict(set)
+    references: dict[str, list[str]] = defaultdict(list)
+    kinds: dict[str, set] = defaultdict(set)
 
     for path, rel in zip(inventory.paths, inventory.rel_paths):
         if path.suffix.lower() in BINARY_SUFFIXES:
@@ -685,7 +789,7 @@ def collect_environment(inventory: Inventory, root: Path, max_items: int) -> Dic
     ]
 
     return {
-        "variables": variables[:max_items * 4],
+        "variables": variables[: max_items * 4],
         "variable_count": len(variables),
         "secret_like_count": sum(1 for v in variables if v["secret_like"]),
         "dotenv_examples": dotenv_examples,
@@ -696,12 +800,12 @@ def collect_environment(inventory: Inventory, root: Path, max_items: int) -> Dic
 
 def _hint_scan(
     inventory: Inventory,
-    hints: Tuple[Tuple[str, str], ...],
+    hints: tuple[tuple[str, str], ...],
     max_items: int,
-    filename_filter: Optional[Tuple[str, ...]] = None,
-) -> List[Dict[str, Any]]:
+    filename_filter: Optional[tuple[str, ...]] = None,
+) -> list[dict[str, Any]]:
     compiled = [(re.compile(pattern, re.IGNORECASE), label) for pattern, label in hints]
-    evidence: Dict[str, List[str]] = defaultdict(list)
+    evidence: dict[str, list[str]] = defaultdict(list)
 
     for path, rel in zip(inventory.paths, inventory.rel_paths):
         if path.suffix.lower() in BINARY_SUFFIXES:
@@ -719,13 +823,11 @@ def _hint_scan(
                     evidence[label].append(f"{rel}:{index}")
 
     return [
-        {"name": label, "evidence": sites}
-        for label, sites in sorted(evidence.items())
-        if sites
+        {"name": label, "evidence": sites} for label, sites in sorted(evidence.items()) if sites
     ][:max_items]
 
 
-def collect_migrations(inventory: Inventory, max_items: int) -> Dict[str, Any]:
+def collect_migrations(inventory: Inventory, max_items: int) -> dict[str, Any]:
     directories = sorted(
         {
             str(Path(rel).parent)
@@ -752,7 +854,7 @@ def collect_migrations(inventory: Inventory, max_items: int) -> Dict[str, Any]:
     }
 
 
-def collect_ci(inventory: Inventory, root: Path, max_items: int) -> Dict[str, Any]:
+def collect_ci(inventory: Inventory, root: Path, max_items: int) -> dict[str, Any]:
     systems = []
     for marker, label in CI_MARKERS:
         if inventory.exists(marker):
@@ -760,9 +862,7 @@ def collect_ci(inventory: Inventory, root: Path, max_items: int) -> Dict[str, An
             target = root / marker
             if target.is_dir():
                 files = sorted(
-                    p.relative_to(root).as_posix()
-                    for p in target.rglob("*")
-                    if p.is_file()
+                    p.relative_to(root).as_posix() for p in target.rglob("*") if p.is_file()
                 )[:max_items]
             else:
                 files = [marker]
@@ -770,7 +870,7 @@ def collect_ci(inventory: Inventory, root: Path, max_items: int) -> Dict[str, An
     return {"systems": systems}
 
 
-def collect_tests(inventory: Inventory, max_items: int) -> Dict[str, Any]:
+def collect_tests(inventory: Inventory, max_items: int) -> dict[str, Any]:
     test_files = [rel for rel in inventory.rel_paths if TEST_FILE_PATTERN.search(rel)]
     test_dirs = sorted(
         {
@@ -785,10 +885,15 @@ def collect_tests(inventory: Inventory, max_items: int) -> Dict[str, Any]:
     )
     frameworks = []
     for name, label in (
-        ("pytest.ini", "pytest"), ("conftest.py", "pytest"), ("tox.ini", "tox"),
-        ("jest.config.js", "jest"), ("jest.config.ts", "jest"),
-        ("vitest.config.ts", "vitest"), ("playwright.config.ts", "playwright"),
-        ("karma.conf.js", "karma"), ("cypress.config.ts", "cypress"),
+        ("pytest.ini", "pytest"),
+        ("conftest.py", "pytest"),
+        ("tox.ini", "tox"),
+        ("jest.config.js", "jest"),
+        ("jest.config.ts", "jest"),
+        ("vitest.config.ts", "vitest"),
+        ("playwright.config.ts", "playwright"),
+        ("karma.conf.js", "karma"),
+        ("cypress.config.ts", "cypress"),
         ("testng.xml", "testng"),
     ):
         if inventory.find_name(name):
@@ -801,9 +906,10 @@ def collect_tests(inventory: Inventory, max_items: int) -> Dict[str, Any]:
     }
 
 
-def collect_containers(inventory: Inventory, root: Path, max_items: int) -> Dict[str, Any]:
+def collect_containers(inventory: Inventory, root: Path, max_items: int) -> dict[str, Any]:
     dockerfiles = sorted(
-        rel for rel in inventory.rel_paths
+        rel
+        for rel in inventory.rel_paths
         if Path(rel).name == "Dockerfile" or Path(rel).name.startswith("Dockerfile.")
     )
     base_images = []
@@ -813,45 +919,66 @@ def collect_containers(inventory: Inventory, root: Path, max_items: int) -> Dict
             base_images.append({"path": rel, "image": match.group(1)})
 
     k8s = sorted(
-        rel for rel in inventory.rel_paths
-        if rel.endswith((".yaml", ".yml")) and re.search(r"(?:^|/)(k8s|kubernetes|manifests|deploy)/", rel)
+        rel
+        for rel in inventory.rel_paths
+        if rel.endswith((".yaml", ".yml"))
+        and re.search(r"(?:^|/)(k8s|kubernetes|manifests|deploy)/", rel)
     )
     return {
         "dockerfiles": dockerfiles[:max_items],
         "base_images": base_images[: max_items * 2],
         "compose_files": sorted(
-            rel for rel in inventory.rel_paths
-            if Path(rel).name in {"docker-compose.yml", "docker-compose.yaml", "compose.yaml", "compose.yml"}
+            rel
+            for rel in inventory.rel_paths
+            if Path(rel).name
+            in {"docker-compose.yml", "docker-compose.yaml", "compose.yaml", "compose.yml"}
         ),
         "helm_charts": inventory.find_name("Chart.yaml")[:max_items],
         "kubernetes_like_manifests": k8s[:max_items],
     }
 
 
-def collect_iac(inventory: Inventory, max_items: int) -> Dict[str, Any]:
+def collect_iac(inventory: Inventory, max_items: int) -> dict[str, Any]:
     tf = sorted(rel for rel in inventory.rel_paths if rel.endswith(".tf"))
     return {
         "terraform_files": tf[:max_items],
         "terraform_file_count": len(tf),
         "terraform_modules": sorted({str(Path(rel).parent) for rel in tf})[:max_items],
-        "bicep_files": sorted(rel for rel in inventory.rel_paths if rel.endswith(".bicep"))[:max_items],
+        "bicep_files": sorted(rel for rel in inventory.rel_paths if rel.endswith(".bicep"))[
+            :max_items
+        ],
         "arm_templates": sorted(
             rel for rel in inventory.rel_paths if Path(rel).name == "azuredeploy.json"
         )[:max_items],
     }
 
 
-def collect_config_files(inventory: Inventory, max_items: int) -> List[str]:
+def collect_config_files(inventory: Inventory, max_items: int) -> list[str]:
     interesting = (
-        "application.properties", "application.yml", "application.yaml",
-        "appsettings.json", "web.config", "config.yaml", "config.yml",
-        ".editorconfig", ".eslintrc.json", ".eslintrc.js", "eslint.config.js",
-        ".prettierrc", "checkstyle.xml", "spotbugs.xml", ".flake8",
-        "ruff.toml", "mypy.ini", ".pylintrc", "sonar-project.properties",
+        "application.properties",
+        "application.yml",
+        "application.yaml",
+        "appsettings.json",
+        "web.config",
+        "config.yaml",
+        "config.yml",
+        ".editorconfig",
+        ".eslintrc.json",
+        ".eslintrc.js",
+        "eslint.config.js",
+        ".prettierrc",
+        "checkstyle.xml",
+        "spotbugs.xml",
+        ".flake8",
+        "ruff.toml",
+        "mypy.ini",
+        ".pylintrc",
+        "sonar-project.properties",
     )
     found = [rel for rel in inventory.rel_paths if Path(rel).name in interesting]
     found += [
-        rel for rel in inventory.rel_paths
+        rel
+        for rel in inventory.rel_paths
         if re.match(r"^application-[a-z0-9]+\.(properties|ya?ml)$", Path(rel).name)
     ]
     return sorted(set(found))[:max_items]
@@ -883,12 +1010,15 @@ def build_parser() -> argparse.ArgumentParser:
             "  A single JSON object. Keys of note: `notes` lists everything the scanner\n"
             "  saw but could not classify, and `limits` reports any truncation. Read both\n"
             "  before drawing conclusions -- the scanner reports evidence and decides\n"
-            "  nothing.\n\n"
-            + EXIT_CODE_HELP
+            "  nothing.\n\n" + EXIT_CODE_HELP
         ),
     )
-    parser.add_argument("--root", type=Path, default=Path("."), help="Repository root (default: current directory).")
-    parser.add_argument("--output", type=Path, default=None, help="Write JSON here instead of stdout.")
+    parser.add_argument(
+        "--root", type=Path, default=Path(), help="Repository root (default: current directory)."
+    )
+    parser.add_argument(
+        "--output", type=Path, default=None, help="Write JSON here instead of stdout."
+    )
     parser.add_argument("--no-git", action="store_true", help="Do not invoke git, even read-only.")
     parser.add_argument(
         "--exclude",
@@ -921,7 +1051,7 @@ def configure_logging(verbose: bool, quiet: bool) -> None:
     LOGGER.propagate = False
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: Optional[list[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     configure_logging(args.verbose, args.quiet)
@@ -941,14 +1071,14 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     try:
         LOGGER.info("scanning %s", root)
-        notes: List[str] = []
+        notes: list[str] = []
         inventory = Inventory(root, args.exclude.split(","), args.max_files)
         LOGGER.info("inventoried %d file(s)", len(inventory.paths))
 
         if not inventory.paths:
             notes.append("The tree contains no files outside the skip list; nothing to report.")
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "tool": "crv-codebase-scan",
             "schema_version": SCHEMA_VERSION,
             "scanned_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -981,7 +1111,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "concern and check whether it holds real credentials."
             )
         if not payload["ci"]["systems"]:
-            notes.append("No CI configuration found; how this project is built and released is unverified.")
+            notes.append(
+                "No CI configuration found; how this project is built and released is unverified."
+            )
         if not payload["tests"]["test_file_count"]:
             notes.append("No files matched the test-file naming conventions this scanner knows.")
 

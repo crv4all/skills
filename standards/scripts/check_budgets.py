@@ -26,9 +26,9 @@ from typing import Any, Union
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib import cli, log  # noqa: E402
-from lib.discovery import LAYERS, Skill, discover, repo_root, resolve_targets  # noqa: E402
-from lib.frontmatter import FrontmatterError, parse_file  # noqa: E402
+from lib import cli, log
+from lib.discovery import LAYERS, Skill, discover, repo_root, resolve_targets
+from lib.frontmatter import FrontmatterError, parse_file
 
 LOGGER = log.get_logger("check-budgets")
 
@@ -53,7 +53,12 @@ class Finding:
     hint: Union[str, None] = None
 
     def as_dict(self) -> dict[str, Any]:
-        payload = {"level": self.level, "code": self.code, "path": self.path, "message": self.message}
+        payload = {
+            "level": self.level,
+            "code": self.code,
+            "path": self.path,
+            "message": self.message,
+        }
         if self.hint:
             payload["hint"] = self.hint
         return payload
@@ -77,7 +82,7 @@ class Tokenizer:
             import tiktoken
 
             self._encoding = tiktoken.get_encoding(encoding_name)
-        except Exception as exc:  # noqa: BLE001 - any failure means "cannot count"
+        except Exception as exc:
             self.unavailable_reason = f"{type(exc).__name__}: {exc}"
             LOGGER.warning(
                 "tokenizer %s unavailable (%s); policy on-unavailable=%s",
@@ -119,12 +124,22 @@ def build_parser() -> argparse.ArgumentParser:
             + cli.EXIT_CODE_HELP
         ),
     )
-    parser.add_argument("targets", nargs="*", help="Skill directories or SKILL.md paths. Default: all skills.")
-    parser.add_argument("--root", type=Path, default=None, help="Repository root (default: auto-detected).")
-    parser.add_argument("--layer", action="append", choices=list(LAYERS), help="Restrict to a layer. Repeatable.")
-    parser.add_argument("--config", type=Path, default=None, help=f"Budget config (default: {DEFAULT_CONFIG}).")
+    parser.add_argument(
+        "targets", nargs="*", help="Skill directories or SKILL.md paths. Default: all skills."
+    )
+    parser.add_argument(
+        "--root", type=Path, default=None, help="Repository root (default: auto-detected)."
+    )
+    parser.add_argument(
+        "--layer", action="append", choices=list(LAYERS), help="Restrict to a layer. Repeatable."
+    )
+    parser.add_argument(
+        "--config", type=Path, default=None, help=f"Budget config (default: {DEFAULT_CONFIG})."
+    )
     parser.add_argument("--strict", action="store_true", help="Treat every warning as an error.")
-    parser.add_argument("--output", type=Path, default=None, help="Write the JSON report here instead of stdout.")
+    parser.add_argument(
+        "--output", type=Path, default=None, help="Write the JSON report here instead of stdout."
+    )
     parser.add_argument("--verbose", action="store_true", help="Verbose diagnostics on stderr.")
     parser.add_argument("--quiet", action="store_true", help="Only warnings and errors on stderr.")
     return parser
@@ -136,7 +151,9 @@ def load_config(config_path: Path, schema_path: Path) -> dict[str, Any]:
     except FileNotFoundError as exc:
         raise SystemExit(_fail(cli.EXIT_INPUT, f"budget config not found: {config_path}")) from exc
     except json.JSONDecodeError as exc:
-        raise SystemExit(_fail(cli.EXIT_MALFORMED, f"budget config is not valid JSON: {exc}")) from exc
+        raise SystemExit(
+            _fail(cli.EXIT_MALFORMED, f"budget config is not valid JSON: {exc}")
+        ) from exc
 
     try:
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
@@ -325,7 +342,9 @@ def main(argv: Union[list[str], None] = None) -> int:
 
     payload = {
         "tool": "check_budgets",
-        "config": config_path.relative_to(root).as_posix() if config_path.is_relative_to(root) else str(config_path),
+        "config": config_path.relative_to(root).as_posix()
+        if config_path.is_relative_to(root)
+        else str(config_path),
         "tokenizer": {
             "encoding": tokenizer.encoding_name,
             "available": tokenizer.available,
@@ -340,7 +359,9 @@ def main(argv: Union[list[str], None] = None) -> int:
 
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        args.output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         LOGGER.info("report written to %s", args.output)
     else:
         cli.emit(payload)
@@ -352,7 +373,9 @@ def main(argv: Union[list[str], None] = None) -> int:
         else:
             LOGGER.warning(message)
 
-    LOGGER.info("%d skill(s) measured, %d error(s), %d warning(s)", len(skills), len(errors), len(warnings))
+    LOGGER.info(
+        "%d skill(s) measured, %d error(s), %d warning(s)", len(skills), len(errors), len(warnings)
+    )
     return cli.EXIT_FINDINGS if errors else cli.EXIT_OK
 
 
