@@ -1,0 +1,40 @@
+{
+  "summary": "Reject expired tokens at the ingest endpoint",
+  "parent": "ABC-123",
+  "project_key": "ABC",
+  "story_points": 3,
+  "user_story": {
+    "role": "platform operator",
+    "capability": "the ingest endpoint to reject expired tokens with a 401",
+    "benefit": "a stale client fails loudly instead of writing under a revoked identity"
+  },
+  "context": "Ingest currently checks the token signature but not its expiry, so a revoked client keeps writing until its key rotates. Expiry is already present in the claim set.",
+  "acceptance_criteria": [
+    "A request carrying an expired token returns 401 and writes nothing",
+    "A request carrying a valid token is unaffected",
+    "The rejection is logged with the client id and the expiry timestamp"
+  ],
+  "test_plan": [
+    {
+      "title": "Expired token is rejected",
+      "level": "integration",
+      "steps": [
+        "Mint a token with an expiry in the past",
+        "POST to the ingest endpoint",
+        "Assert 401 and assert no row was written"
+      ]
+    },
+    {
+      "title": "Valid token still succeeds",
+      "level": "integration"
+    }
+  ],
+  "dependencies": [
+    "None"
+  ],
+  "out_of_scope": [
+    "Key rotation itself",
+    "Changing the token lifetime"
+  ],
+  "labels": ["ingest", "auth"]
+}
