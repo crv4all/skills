@@ -44,6 +44,26 @@ hang.
 **`CATALOG.md` is generated.** Change frontmatter, then run
 `build_catalog.py --write`. CI fails on drift.
 
+**Documentation is part of the change, not a follow-up.** A change is not done
+until every place that describes it says the same thing. This applies to you,
+to the user, and to every session and subagent: nobody gets to leave it for the
+next person, because the next person cannot tell that it was left.
+
+| You changed | Also update |
+| --- | --- |
+| Added or removed a skill | The `README.md` skills table, `CATALOG.md` via `build_catalog.py --write`, and `CHANGELOG.md` |
+| Skill frontmatter, including the description | `CATALOG.md` via `build_catalog.py --write` |
+| A rule every skill follows | `README.md`, the matching section of `docs/design-principles.md`, `docs/authoring-skills.md`, and the scaffold at `skills/processes/crv-create-skill/assets/skill-template/SKILL.md.template` |
+| A skill's behaviour or output contract | That skill's `evals/behaviour.md`, and `evals/triggers.md` if the description moved |
+| A file shared byte-identically between skills | Every copy. `test_shared_jira_files.py` names them |
+| Anything a person would notice | `CHANGELOG.md`, under Unreleased, saying why rather than what |
+| Adapted third-party material | A header in the file and a row in `THIRD_PARTY_NOTICES.md` |
+
+Two of these are enforced: `build_catalog.py --check` fails on catalogue drift,
+and `test_documentation_sync.py` fails when a skill is missing from the README
+table. The rest are not, which is why they are written down here. If you skipped
+one, say which and why in your final message rather than leaving it silent.
+
 **This repository is public-safe.** No credentials, no customer or farmer data,
 no unpublished commercial terms — regardless of whether it is published yet.
 
