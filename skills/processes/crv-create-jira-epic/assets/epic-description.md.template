@@ -1,17 +1,23 @@
 <!--
-Rendered into the Epic description as markdown. Keep every heading, in this
-order: a reader scanning a board relies on the same sections being in the same
-places. Delete this comment when rendering.
+Rendered into the Epic description as markdown. Delete this comment when
+rendering.
 
-A section with nothing to say gets an explicit "None known" or "Not yet
-decided". Never an empty heading, which reads as an oversight rather than a
-decision, and never a deleted heading, which hides that the question was asked.
+Five required headings, in this order: Outcome, Problem, Scope, Out of scope,
+Success criteria. A reader scanning a board relies on the same sections being in
+the same places, and those five are what the decision "does this work belong in
+this epic" actually needs.
 
-Write in plain sentences. No em dash, no en dash, no arrows, no filler
-adjectives. The title and prose rules are in the issue-writing reference.
+Dependencies, Technical notes and Links are optional. Drop an optional heading
+entirely when it has nothing in it. A required section with nothing to say gets
+an explicit "None known" or "Not yet decided", never a placeholder like TBD and
+never an empty heading, which reads as an oversight rather than a decision.
 
-Never state how many stories sit under this epic, and never list them. The
-child links are the source of truth and they update themselves; a count in the
+Hard cap, checked before the create call: 400 words for the whole description.
+Cut rather than compress. The prose rules, the banned punctuation and the
+placeholder rules are in the issue-writing reference.
+
+Never state how many stories sit under this epic, and never list them. The child
+links are the source of truth and they update themselves; a count in the
 description is stale the moment a story is added or split.
 -->
 
@@ -40,16 +46,16 @@ prevents more rework than any other.>
 <How anyone can tell this worked, stated so that the answer is yes or no.
 Include the measure and where it is read from.>
 
-## Dependencies
+## Dependencies (optional)
 
-<Teams, systems, or decisions this epic waits on. Name the owner of each, or
-say that it is unowned. An unowned dependency is a risk, not a blank.>
+<Teams, systems, or decisions this epic waits on. Name the owner of each, or say
+that it is unowned. An unowned dependency is a risk, not a blank.>
 
-## Technical notes
+## Technical notes (optional)
 
 <Constraints, chosen approach, and anything already ruled out with the reason.>
 
-## Links
+## Links (optional)
 
 <Specs, designs, prior discussion. Links only, never copied content: copied
 content goes stale where it sits, and nobody knows which copy is current.>

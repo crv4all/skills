@@ -223,13 +223,19 @@ fifty files to update.
 | `balanced` | Real judgement needed, not just procedure | Sonnet 5 | The harness default |
 | `frontier` | Hardest reasoning, and the skill says why | Opus 5 | The most capable model available |
 
-**Asked once, at the start.** Before spawning, the skill states the tier and
-offers to change it. One prompt per invocation, before any work happens — not
-a per-step interruption, and not a silent choice made on the user's behalf.
+**Stated, not asked.** The skill says which tier it is using in one line and
+then starts work. It does not stop for an answer.
 
-The question is skipped when the user has already stated a preference in the
-session or in the project's agent configuration, which is how a standing
-override works: say it once, or put it in `AGENTS.md`.
+That is a reversal, and the reason is worth recording. The rule used to be one
+prompt per invocation, before any work happened. In practice nobody answered
+it: the user cannot judge the tier before seeing what the run involves, so the
+prompt cost a round trip on every invocation and taught them that the skill's
+questions are noise. A stated default they can override at any point is worth
+more than a question they have to clear to get started.
+
+A tier named in the session or in the project's agent configuration is honoured
+and reported, which is how a standing override works: say it once, or put it in
+`AGENTS.md`. The one thing a skill may never do is choose a tier silently.
 
 **Never silently escalate.** A subagent that turns out to be out of its depth
 stops and says so. Re-running on a bigger model without asking charges twice
@@ -244,6 +250,9 @@ templates, or wording from `github/awesome-copilot`, `affaan-m/ECC`,
 and `xlsx` skills are proprietary and prohibit derivative works; they are out
 of bounds entirely.
 
-If anything is ever adapted, it carries a file header
+Anything adapted carries a file header
 `Adapted from <url> (<license>, <copyright holder>)` and an entry in
-[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
+[THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md). One file currently does:
+the Jira skills' `issue-writing.md` adapts the pattern catalogue from
+[`blader/humanizer`](https://github.com/blader/humanizer) (MIT). Adapting is
+allowed and recorded. Adapting quietly is not.
