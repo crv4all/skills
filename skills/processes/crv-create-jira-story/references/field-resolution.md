@@ -15,9 +15,41 @@ So: resolve by **field name**, per project, per run.
 | --- | --- |
 | Story Points | `Story Points` on most tenants, `Story point estimate` on others. |
 | Epic membership | `parent` in a team-managed project, an `Epic Link` custom field in a company-managed one. See below. |
-| Team | `Team`, `Assigned Team(s)`, `Squad`, or absent. Often not required by the screen but expected by the organisation. |
+| Team | `Team`, `Assigned Team(s)`, `Squad`, or absent. Asked, never assumed. See below. |
 | Sprint | Numbered per tenant, and rejected outright on some boards. |
 | Any option field | The allowed values are per project, not per tenant. |
+
+One field is deliberately absent from that table. **Never choose a Priority.**
+Neither skill picks one, whether or not the create screen offers it and whether
+or not it has a recorded default. Reasons, in order:
+
+- Priority is a scheduling decision the team makes in grooming, against
+  everything else in the backlog. A value chosen at filing time by something
+  that has not seen the backlog is a guess, and once it is in Jira it is
+  indistinguishable from an agreed one.
+- It is an option field, so an invented value is rejected or, on some screens,
+  stored as an unrecognised option and rendered as a broken icon.
+- A written-out placeholder is worse. `TBD` is not one of the allowed values, so
+  a `Priority` field or a `Priority: TBD` line in the description produces
+  exactly that broken icon and a value nobody can filter on.
+
+An unset Priority is honest, searchable, and one bulk edit away from being set
+by the person entitled to set it.
+
+Two exceptions, and both turn on the value coming from a person rather than from
+the run:
+
+- **The user names a priority explicitly**, in the request or in answer to a
+  question. That is a supplied value, so send it. Validate it against the
+  allowed values from create-metadata first, because Jira accepts an
+  unrecognised option by ignoring it, and report it as supplied.
+- **The create screen marks Priority required.** Stop and ask which value, then
+  send the answer. Do not choose one to get past the screen, and never send
+  `TBD` to satisfy it.
+
+What is forbidden is the run deciding. A priority inferred from the tone of a
+spec, copied from a sibling issue, taken from a recorded default, or written as
+a placeholder is a value nobody chose.
 
 ## The procedure
 
@@ -41,6 +73,42 @@ So: resolve by **field name**, per project, per run.
    in the report as a default rather than a supplied value.
 5. **Stop if anything is unresolved.** See below.
 6. **Build the create payload** using the resolved identifiers, never the names.
+
+## Team: ask the user, do not assume
+
+The team field is the one field the organisation cares about that the create
+screen usually does not enforce, so it gets left empty and patched one issue at
+a time afterwards. It is also the one field the agent cannot derive: the work
+described in a spec does not say who is going to do it.
+
+So **ask**, once, before the first create call:
+
+1. Resolve the field by name. Try `Assigned Team(s)`, `Team`, `Squad`, in that
+   order. If none appears in create-metadata, the project does not have one.
+   Say so and move on; do not invent a labels-based substitute.
+2. Read its allowed values from create-metadata. It is an option field on most
+   tenants, and often multi-value, which is why the CRV name is plural.
+3. Ask the user, offering those values and the recorded default:
+
+   > `Assigned Team(s)` for this project: Platform, Empower, Insight. Recorded
+   > default is Platform. Reply with one or more, or `none` to leave it unset.
+
+   One question for the whole batch, not one per story. Include it in the same
+   batch of questions as anything else that is missing.
+4. If the user answers, use it. If the user says `none`, leave the field unset
+   and say so in the report. If the user does not answer at all and a recorded
+   default exists, use the default and report it **as a default**, naming it.
+5. Validate the answer against the allowed values before sending. A team name
+   that is not among them is a typo or a renamed team, and Jira will accept the
+   payload and drop the value. List the allowed values and ask again.
+
+The recorded default from `jira_setup.py --show` is a starting point for that
+question, not a replacement for it. A default that is never surfaced is a
+default nobody notices is wrong, and team assignments change faster than anyone
+re-runs setup.
+
+If the create screen marks the team field required, an unanswered question is a
+stop, not a default.
 
 ## Epic membership: `parent` or `Epic Link`
 
@@ -88,10 +156,15 @@ field has no value, **do not create the issue**. Report:
 - the field names that *are* available, so the caller can see the near miss,
 - and that nothing was created.
 
-Creating the issue anyway is the expensive failure. A missing Story Points value
-is invisible in the transcript, the issue was created, the run looks successful,
-and it surfaces days later as a story nobody can plan against. A refusal is
-noticed in seconds. Prefer the failure that gets noticed.
+Creating the issue anyway is the expensive failure. A field identifier Jira
+ignored is invisible in the transcript, the issue was created, the run looks
+successful, and it surfaces days later as a story nobody can plan against. A
+refusal is noticed in seconds. Prefer the failure that gets noticed.
+
+The distinction to keep hold of: a field that **cannot be resolved** is a stop,
+because the run does not know what it is about to write. A field that resolved
+fine and has **no value to write** is not a stop. It is left unset and named in
+the report.
 
 The same applies to option fields: if a supplied value is not among the allowed
 values for that field, stop and list the allowed values. Jira will often accept
@@ -106,6 +179,22 @@ a JSON number, not a string.
 Do not restrict the value to a Fibonacci sequence. Teams use their own scales,
 and a story-point total rolled up from several smaller items lands on no ladder
 at all. Reject only what is genuinely invalid: zero, negatives, and non-integers.
+
+**An estimate is optional and never invented.** Sizing is the team's job and it
+happens in grooming, with the people who will do the work. Three rules follow:
+
+- No estimate supplied, and none agreed: omit the field and file the story. Say
+  in the report and in the story's Estimate note that it was filed unsized.
+- Never write a number the user did not agree to. Once a number is in Jira an
+  invented estimate is indistinguishable from a groomed one, and it gets summed
+  into a sprint commitment.
+- Never block a batch on a missing estimate. An unsized story in the backlog is
+  a five-second fix in grooming. A refusal to file is a re-run of the whole
+  decomposition.
+
+The field must still **resolve** if a value was supplied. Supplying an estimate
+that Jira silently drops is the failure this section exists to prevent, and it
+is a different thing from having no estimate to supply.
 
 ## Verifying, rather than trusting, the write
 
