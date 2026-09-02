@@ -13,7 +13,7 @@ Every skill runs in a subagent and states its model tier before starting. See
 | --- | --- | --- | --- | --- | --- | --- |
 | [`crv-codebase-onboarding`](skills/processes/crv-codebase-onboarding/SKILL.md) | processes | draft | subagent | economy | cloudforce-team-data | Produces durable, evidence-backed codebase context in docs/codebase/ — architecture, stack divergences, conventions, workflows, data, integrations, testing,… |
 | [`crv-create-jira-epic`](skills/processes/crv-create-jira-epic/SKILL.md) | processes | draft | subagent | economy | cloudforce-team-data | Files a Jira Epic through the Atlassian MCP, resolving the required fields of the target project at run time instead of assuming custom-field IDs from any… |
-| [`crv-create-jira-story`](skills/processes/crv-create-jira-story/SKILL.md) | processes | draft | subagent | economy | cloudforce-team-data | Files Jira Stories under a parent Epic through the Atlassian MCP, searching for duplicates by JQL before creating anything, requiring a story-point estimate… |
+| [`crv-create-jira-story`](skills/processes/crv-create-jira-story/SKILL.md) | processes | draft | subagent | economy | cloudforce-team-data | Files Jira Stories under a parent Epic through the Atlassian MCP, searching for duplicates by JQL before creating anything, writing short descriptions that do… |
 | [`crv-create-skill`](skills/processes/crv-create-skill/SKILL.md) | processes | draft | subagent | economy | cloudforce-team-data | Takes a skill idea from "we should have a skill for this" to a validated skill in the CRV agent-skills repository: applies a boundary test to decide whether a… |
 
 ## utilities
@@ -46,13 +46,13 @@ Produces durable, evidence-backed codebase context in docs/codebase/ — archite
 
 ### [`crv-create-jira-epic`](skills/processes/crv-create-jira-epic/SKILL.md)
 
-Files a Jira Epic through the Atlassian MCP, resolving the required fields of the target project at run time instead of assuming custom-field IDs from any particular tenant, rendering the description as markdown from a section template, and reading the created epic back to prove what was stored. Use when someone wants to create, file, or raise an epic in Jira, including "create a Jira epic", "open an epic for this work", or turning an approved spec into an epic. For the stories that live under an epic, use crv-create-jira-story instead. Not for editing, commenting on, or transitioning an issue that already exists.
+Files a Jira Epic through the Atlassian MCP, resolving the required fields of the target project at run time instead of assuming custom-field IDs from any particular tenant, rendering a short description as markdown from a section template, asking which team the work belongs to, and reading the created epic back to prove what was stored. Use when someone wants to create, file, or raise an epic in Jira, including "create a Jira epic", "open an epic for this work", or turning an approved spec into an epic. For the stories that live under an epic, use crv-create-jira-story instead. Not for editing, commenting on, or transitioning an issue that already exists.
 
 **Owner:** cloudforce-team-data · **Maturity:** draft · **Runs as:** subagent · **Model tier:** economy
 
 ### [`crv-create-jira-story`](skills/processes/crv-create-jira-story/SKILL.md)
 
-Files Jira Stories under a parent Epic through the Atlassian MCP, searching for duplicates by JQL before creating anything, requiring a story-point estimate on every story, resolving the Story Points and epic-membership fields from the target project at run time, creating the native dependency links, and reading every created story back to prove what was stored. Use when someone wants to create, file, or raise a story or ticket in Jira under an existing epic, including "file a Jira story", "raise a ticket for this", or breaking a spec into stories. To create the parent epic itself, use crv-create-jira-epic. Not for editing, commenting on, or transitioning an issue that already exists.
+Files Jira Stories under a parent Epic through the Atlassian MCP, searching for duplicates by JQL before creating anything, writing short descriptions that do not read as generated text, asking who the work is assigned to, resolving the epic-membership and Story Points fields from the target project at run time, creating the native dependency links, and reading every created story back to prove what was stored. Use when someone wants to create, file, or raise a story or ticket in Jira under an existing epic, including "file a Jira story", "raise a ticket for this", or breaking a spec into stories. To create the parent epic itself, use crv-create-jira-epic. Not for editing, commenting on, or transitioning an issue that already exists.
 
 **Owner:** cloudforce-team-data · **Maturity:** draft · **Runs as:** subagent · **Model tier:** economy
 
