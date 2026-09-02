@@ -5,6 +5,10 @@ order. Delete this comment when rendering.
 Optional sections are marked. Drop an optional heading entirely when it has no
 content; keep every required heading and fill it, using "None" where that is
 the honest answer.
+
+Write in plain sentences. No em dash, no en dash, no arrows, no filler
+adjectives. The title and prose rules are in the issue-writing reference, and
+they are checked before the create call, not after.
 -->
 
 ## User story
@@ -26,16 +30,29 @@ restating it.>
 
 ## Test plan
 
-<How this gets verified, and by whom. Name the level -- unit, integration,
-manual -- because "tested" without a level is how a gap gets agreed to twice.>
+<How this gets verified, and by whom. Name the level, unit or integration or
+manual, because "tested" without a level is how a gap gets agreed to twice.>
 
 ## Dependencies
 
-<Other stories, teams, or access this waits on. "None" when there are none.>
+<Other stories, teams, or access this waits on. "None" when there are none.
+
+Name a real Jira key, never a plan-local number. During the first pass a key
+does not exist yet, so write the placeholder `[[dep:<n>]]` and replace it with
+the real key in the backfill pass. Every dependency named here also gets a
+native issue link; this section is for the human, the link is for every tool the
+team uses.>
 
 ## Out of scope (optional)
 
 <What this story deliberately does not do, when a reader would assume it does.>
+
+## Estimate note (optional)
+
+<Only when the estimate was proposed by the agent and approved in bulk rather
+than groomed. State it: "3 points proposed on 2026-08-20 and approved as part of
+a batch, not groomed by the team." An estimate whose provenance is unrecorded is
+indistinguishable from an agreed one.>
 
 ## Notes (optional)
 

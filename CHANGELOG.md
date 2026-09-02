@@ -22,6 +22,60 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   request that filed eight stories skips all eight rather than filing them
   again. Story points are required and are not restricted to a Fibonacci
   ladder: a roll-up of several items lands on no ladder at all.
+- **Read-back before reporting, in both skills.** A create call that returns
+  success proves an issue exists and nothing about what is in it: Jira accepts a
+  field identifier it does not recognise on that screen by ignoring it. Both
+  skills now re-read what they wrote and report the stored values, and the story
+  skill asserts row count, epic membership, estimates, applied defaults and the
+  point total against that read-back. Written after a run filed 29 stories with
+  no epic link and reported completion "under the epic".
+- **Epic membership resolved by name.** A company-managed project carries an
+  `Epic Link` custom field; a team-managed one carries `parent`. The field
+  reference now names both, with the payload shape each takes, and forbids
+  assuming a `customfield_` number. Sending the wrong one produces a batch of
+  orphans that reports as success.
+- **Two-pass creation, and native issue links.** Stories are created first, then
+  cross-references are backfilled with the keys Jira allocated, because a key
+  cannot be cited before it exists. Dependencies are also written as native
+  `Blocks` links, since blocked-by views, dependency reports and automation read
+  links and not a prose heading. The inward issue is the blocker, and the skill
+  verifies the direction against one read-back before creating the rest.
+- **Dependency-graph validation before the first create.** Self-references,
+  unknown references, and cycles of any length are caught on the candidate list.
+  A cycle is reported as a decomposition error with its path, not silently
+  resolved by dropping an edge.
+- **Per-project field defaults.** `jira_setup.py --field-default "NAME=VALUE"`
+  records what the organisation expects on every issue in a project, keyed by
+  human-readable field name and scoped by `--defaults-project`. A create screen
+  enforces what an administrator marked required, not what the team agreed to, so
+  a field like `Assigned Team(s)` was left unset and then patched one issue at a
+  time. Repeating a name stores a list; re-running the same command replaces
+  rather than appends, so it stays idempotent.
+- **Writing rules for titles and descriptions.** A shared `issue-writing.md`
+  caps summaries at 80 characters and 12 words, bans em dashes, en dashes,
+  arrows, plan-local numbering and field-duplicating prefixes, lists the words
+  that name nothing, and shows rewrites. A summary is the most-read text in Jira
+  and almost every place it appears truncates it.
+- **Remediation for a batch that succeeded incorrectly.** "Stop and report,
+  never improvise" covers a failure, not 29 issues created wrong. A shared
+  reference covers establishing what is actually stored, patching in place as the
+  default because keys are already in use elsewhere, one approval for one patch
+  table, and the narrow cases where refiling is right. Deleting stays the user's
+  call.
+- **Derivable configuration.** Absent site or project no longer hard-stops when
+  the answer was supplied: a board or issue URL in the conversation, or a single
+  accessible site. The value used, and where it came from, is reported along with
+  the command that records it. Two candidate sites, or a project named but not
+  keyed, is still a guess and still stops the run.
+- **Bulk estimation, sanctioned.** Asking for 29 estimates one at a time is 29
+  questions. The skills may propose every estimate in one table and take one
+  approval, provided each issue records that its number was proposed and
+  bulk-approved rather than groomed. `estimate_source` in the input schema
+  carries that provenance.
+- **One tier question, asked by the orchestrator.** Both skills now distinguish
+  the session that spawns from the subagent that executes. The executor is told
+  the tier and starts work; it does not re-ask a question the user already
+  answered, which previously cost two round trips per invocation.
 - **Tenant configuration outside the repository.** Both skills bundle
   `jira_setup.py`, which records the Jira site and default project key in
   `${XDG_CONFIG_HOME:-$HOME/.config}/crv-agent-skills/jira.json` at mode `0600`.
@@ -32,13 +86,17 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   project create-metadata by field *name* on every run, since they differ per
   tenant and change when an administrator edits a screen.
 - **Drift guard.** `test_shared_jira_files.py` asserts that the setup script and
-  the two shared reference files are byte-identical across both skills. They are
+  the four shared reference files are byte-identical across both skills. They are
   duplicated on purpose — `install.sh` installs one skill at a time, so a skill
   reaching for a sibling's files would break silently — and nothing else in the
   repository would notice a one-sided edit.
 - **Story input schema.** `story_input.schema.json` with a contract test pinning
-  the required triple, the positive-integer estimate, and the deliberate absence
-  of a Fibonacci enum.
+  the required triple, the positive-integer estimate, the deliberate absence of a
+  Fibonacci enum, the estimate provenance, and machine-readable dependency edges.
+- **Setup-script tests.** `test_jira_setup.py` covers the field defaults end to
+  end: scalar against list, per-project scoping, idempotent re-runs, refusal of
+  `customfield_NNNNN` identifiers, and a hand-mangled defaults block reported as
+  malformed rather than absent.
 
 ## [0.1.0] — 2026-08-18
 

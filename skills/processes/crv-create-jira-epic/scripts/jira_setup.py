@@ -14,6 +14,12 @@ second thing to leak.
 Custom-field identifiers are also out of scope. They differ per tenant and
 change when a Jira administrator edits a screen, so the skills resolve them from
 project create-metadata at run time rather than trusting a cached copy.
+
+Per-project field defaults are in scope, keyed by human-readable field name. A
+Jira create screen enforces what an administrator marked required, not what the
+organisation expects on every issue, so a field like "Assigned Team(s)" is left
+unset by a run that only satisfies the screen and then asked for afterwards, one
+edit per issue. Recording the expectation once is cheaper than that.
 """
 
 from __future__ import annotations
@@ -47,7 +53,10 @@ EXIT_CODE_HELP = """exit codes:
 #: here: most Atlassian MCP deployments resolve it from the site, and demanding
 #: it up front would block setup on a value the user cannot easily find.
 REQUIRED_KEYS = ("site", "project_key")
-OPTIONAL_KEYS = ("cloud_id",)
+OPTIONAL_KEYS = ("cloud_id", "project_defaults")
+
+#: Key holding per-project field defaults: ``{project_key: {field_name: value}}``.
+DEFAULTS_KEY = "project_defaults"
 
 CONFIG_DIR_NAME = "crv-agent-skills"
 CONFIG_FILE_NAME = "jira.json"
@@ -55,6 +64,7 @@ CONFIG_FILE_NAME = "jira.json"
 SITE_PATTERN = re.compile(r"^https://[A-Za-z0-9.-]+\.atlassian\.net$")
 PROJECT_KEY_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{1,9}$")
 CLOUD_ID_PATTERN = re.compile(r"^[0-9a-fA-F-]{8,64}$")
+CUSTOM_FIELD_PATTERN = re.compile(r"^customfield_[0-9]+$", re.IGNORECASE)
 
 #: Argument names that would mean a credential is being handed to this script.
 #: They are registered so that the refusal is an explicit, readable message
@@ -139,6 +149,74 @@ def validate_cloud_id(value: str) -> str:
     return cloud_id
 
 
+def parse_field_default(raw: str) -> tuple[str, str]:
+    """Split a ``NAME=VALUE`` field default, refusing custom-field identifiers.
+
+    Names rather than identifiers, on purpose: ``customfield_10001`` recorded on
+    this machine is wrong the day an administrator edits a screen, and wrong on
+    every other tenant. A name is resolved from create-metadata at run time and
+    fails loudly when it stops existing.
+    """
+    name, separator, value = raw.partition("=")
+    name = name.strip()
+    value = value.strip()
+    if not separator:
+        raise ValueError(
+            f"--field-default {raw!r} is not NAME=VALUE. "
+            'Example: --field-default "Assigned Team(s)=Platform"'
+        )
+    if not name:
+        raise ValueError(f"--field-default {raw!r} has an empty field name.")
+    if not value:
+        raise ValueError(
+            f"--field-default {raw!r} has an empty value. To remove defaults, "
+            "use --clear-field-defaults."
+        )
+    if CUSTOM_FIELD_PATTERN.match(name):
+        raise ValueError(
+            f"--field-default {raw!r} names a custom-field identifier. Use the "
+            "human-readable field name instead: identifiers differ per tenant and "
+            "change when an administrator edits a screen, so the skills resolve "
+            "names at run time."
+        )
+    return name, value
+
+
+def collect_field_defaults(raw_values: list[str]) -> dict[str, Any]:
+    """Fold ``NAME=VALUE`` arguments into a mapping.
+
+    A name given once stores a scalar; a name repeated in the same invocation
+    stores a list, which is what a multi-value field needs. Repeating across
+    invocations replaces rather than appends, so re-running the same command is
+    idempotent instead of growing the list every time.
+    """
+    collected: dict[str, list[str]] = {}
+    for raw in raw_values:
+        name, value = parse_field_default(raw)
+        collected.setdefault(name, []).append(value)
+    return {name: (values[0] if len(values) == 1 else values) for name, values in collected.items()}
+
+
+def read_project_defaults(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Return the recorded defaults, rejecting a structurally wrong file.
+
+    A hand-edited file whose ``project_defaults`` is a list or a string is
+    malformed in the same way invalid JSON is: the remedy is inspection, not
+    re-running setup.
+    """
+    stored = config.get(DEFAULTS_KEY)
+    if stored is None:
+        return {}
+    if not isinstance(stored, dict) or any(
+        not isinstance(value, dict) for value in stored.values()
+    ):
+        raise ValueError(
+            f"{DEFAULTS_KEY} must be an object of project key to field mapping, "
+            f"found {type(stored).__name__}"
+        )
+    return {str(key): dict(value) for key, value in stored.items()}
+
+
 def write_config(path: Path, config: dict[str, Any]) -> None:
     """Write the configuration with owner-only permissions."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -177,6 +255,9 @@ def build_parser() -> argparse.ArgumentParser:
             "  # actually write it\n"
             "  python3 jira_setup.py --set --site https://example.atlassian.net "
             "--project ABC --confirm\n\n"
+            "  # record fields the organisation expects on every ABC issue\n"
+            "  python3 jira_setup.py --set --defaults-project ABC \\\n"
+            '    --field-default "Assigned Team(s)=Platform" --confirm\n\n'
             "  # show what is recorded\n"
             "  python3 jira_setup.py --show\n\n" + EXIT_CODE_HELP
         ),
@@ -193,6 +274,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--project", help="Default Jira project key, for example ABC.")
     parser.add_argument(
         "--cloud-id", help="Atlassian cloud identifier, if the MCP server needs it."
+    )
+    parser.add_argument(
+        "--field-default",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="With --set: a field the organisation expects on every issue in a project, "
+        "named as it appears on the create screen. Repeat the same NAME to store a list. "
+        "Scoped by --defaults-project, else --project, else the recorded default project.",
+    )
+    parser.add_argument(
+        "--defaults-project",
+        help="Project key the --field-default values belong to, when it is not the "
+        "default project being recorded.",
+    )
+    parser.add_argument(
+        "--clear-field-defaults",
+        action="store_true",
+        help="With --set: remove every recorded field default for the scoped project.",
     )
     parser.add_argument(
         "--confirm",
@@ -280,18 +380,49 @@ def run_set(path: Path, args: argparse.Namespace, output: Optional[Path]) -> int
 
     config: dict[str, Any] = dict(existing) if existing else {}
     try:
+        defaults = read_project_defaults(config)
+    except ValueError as exc:
+        LOG.error("%s: %s", path, exc)
+        LOG.error("Refusing to rewrite a structure this script did not write. Inspect it.")
+        return EXIT_MALFORMED
+
+    try:
         if args.site:
             config["site"] = validate_site(args.site)
         if args.project:
             config["project_key"] = validate_project_key(args.project)
         if args.cloud_id:
             config["cloud_id"] = validate_cloud_id(args.cloud_id)
+        touches_defaults = bool(args.field_default) or args.clear_field_defaults
+        if touches_defaults:
+            scope_raw = args.defaults_project or args.project or config.get("project_key")
+            if not scope_raw:
+                raise ValueError(
+                    "a field default needs a project. Pass --defaults-project ABC, or "
+                    "record a default project first with --set --project ABC --confirm."
+                )
+            scope = validate_project_key(str(scope_raw))
+            if args.clear_field_defaults:
+                defaults.pop(scope, None)
+            if args.field_default:
+                scoped = dict(defaults.get(scope, {}))
+                scoped.update(collect_field_defaults(args.field_default))
+                defaults[scope] = scoped
+            if defaults:
+                config[DEFAULTS_KEY] = defaults
+            else:
+                config.pop(DEFAULTS_KEY, None)
     except ValueError as exc:
         LOG.error("%s", exc)
         return EXIT_USAGE
 
-    if not any([args.site, args.project, args.cloud_id]):
-        LOG.error("--set needs at least one of --site, --project, --cloud-id.")
+    if not any(
+        [args.site, args.project, args.cloud_id, args.field_default, args.clear_field_defaults]
+    ):
+        LOG.error(
+            "--set needs at least one of --site, --project, --cloud-id, "
+            "--field-default, --clear-field-defaults."
+        )
         return EXIT_USAGE
 
     absent = missing_keys(config)
@@ -340,6 +471,13 @@ def main(argv: Optional[list[str]] = None) -> int:
             "handled by the Atlassian MCP server, and a token on disk here would be a "
             "second copy to leak. Configure the MCP server instead.",
             offending,
+        )
+        return EXIT_USAGE
+
+    if not args.set and (args.field_default or args.clear_field_defaults or args.defaults_project):
+        LOG.error(
+            "--field-default, --clear-field-defaults and --defaults-project only apply "
+            "to --set. Use --show to read what is recorded."
         )
         return EXIT_USAGE
 

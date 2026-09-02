@@ -4,8 +4,15 @@ order: a reader scanning a board relies on the same sections being in the same
 places. Delete this comment when rendering.
 
 A section with nothing to say gets an explicit "None known" or "Not yet
-decided" -- never an empty heading, which reads as an oversight rather than a
+decided". Never an empty heading, which reads as an oversight rather than a
 decision, and never a deleted heading, which hides that the question was asked.
+
+Write in plain sentences. No em dash, no en dash, no arrows, no filler
+adjectives. The title and prose rules are in the issue-writing reference.
+
+Never state how many stories sit under this epic, and never list them. The
+child links are the source of truth and they update themselves; a count in the
+description is stale the moment a story is added or split.
 -->
 
 ## Outcome
@@ -20,7 +27,7 @@ evidence exists.>
 
 ## Scope
 
-<What is in. Bullet the workstreams, not the tickets -- the stories under this
+<What is in. Bullet the workstreams, not the tickets. The stories under this
 epic are where tickets live.>
 
 ## Out of scope
@@ -36,7 +43,7 @@ Include the measure and where it is read from.>
 ## Dependencies
 
 <Teams, systems, or decisions this epic waits on. Name the owner of each, or
-say that it is unowned -- an unowned dependency is a risk, not a blank.>
+say that it is unowned. An unowned dependency is a risk, not a blank.>
 
 ## Technical notes
 

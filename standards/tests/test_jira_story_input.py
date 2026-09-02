@@ -117,3 +117,35 @@ def test_unknown_top_level_field_is_rejected(validator: Draft202012Validator) ->
 
 def test_additional_fields_are_keyed_by_name(validator: Draft202012Validator) -> None:
     validator.validate(minimal(additional_fields={"Product Area": {"value": "API"}}))
+
+
+@pytest.mark.parametrize("source", ["supplied", "proposed-and-approved"])
+def test_estimate_provenance_is_recordable(validator: Draft202012Validator, source: str) -> None:
+    """A bulk-approved estimate must be distinguishable from a groomed one.
+
+    Asking twenty-nine times does not scale, so the skill is allowed to propose a
+    table of estimates and take one approval. The cost of that concession is that
+    the provenance has to survive onto the issue, which it cannot do if the input
+    format has nowhere to put it.
+    """
+    validator.validate(minimal(estimate_source=source))
+
+
+def test_unknown_estimate_provenance_is_invalid(validator: Draft202012Validator) -> None:
+    with pytest.raises(ValidationError):
+        validator.validate(minimal(estimate_source="guessed"))
+
+
+def test_dependencies_can_be_machine_readable(validator: Draft202012Validator) -> None:
+    """Native issue links need edges, not prose.
+
+    Plan-local ids are accepted alongside real keys because a batch describes
+    dependencies between stories that do not have keys yet.
+    """
+    validator.validate(minimal(id=2, blocked_by=[1, "ABC-9"], blocks=["3"]))
+
+
+def test_edge_lists_reject_structured_items(validator: Draft202012Validator) -> None:
+    """An edge is an id or a key. Anything else is a prose dependency."""
+    with pytest.raises(ValidationError):
+        validator.validate(minimal(blocked_by=[{"key": "ABC-9"}]))

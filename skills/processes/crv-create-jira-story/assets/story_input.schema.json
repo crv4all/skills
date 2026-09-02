@@ -11,7 +11,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 255,
-      "description": "The story title. Jira rejects summaries over 255 characters, so the bound is enforced here rather than discovered at create time."
+      "description": "The story title. Jira rejects summaries over 255 characters, so the bound is enforced here rather than discovered at create time. The house rule is stricter and is checked by the skill rather than the schema: at most 80 characters and 12 words, sentence case, opening with an imperative verb, no em dash, and no plan-local numbering."
     },
     "parent": {
       "type": "string",
@@ -22,6 +22,26 @@
       "type": "integer",
       "minimum": 1,
       "description": "Estimate. Required: an un-estimated story is the failure this skill exists to prevent. Deliberately not restricted to a Fibonacci sequence -- teams use their own scales, and a roll-up of several items lands on no ladder at all."
+    },
+    "estimate_source": {
+      "type": "string",
+      "enum": ["supplied", "proposed-and-approved"],
+      "default": "supplied",
+      "description": "Where the estimate came from. \"proposed-and-approved\" means the agent proposed it in a batch table and the user approved the table rather than grooming the story. That provenance is recorded on the issue and in the report, because once a number is in Jira an invented estimate is indistinguishable from an agreed one."
+    },
+    "id": {
+      "type": ["string", "integer"],
+      "description": "Plan-local identifier for this candidate, used only to express dependencies between candidates in the same batch. Never written into Jira: Jira keys do not exist until the create call returns."
+    },
+    "blocked_by": {
+      "type": "array",
+      "items": { "type": ["string", "integer"] },
+      "description": "Plan-local ids of candidates in this batch, or real Jira keys, that must land before this one. Validated for self-references, unknown ids and cycles before anything is created, then written as native Blocks links in a second pass."
+    },
+    "blocks": {
+      "type": "array",
+      "items": { "type": ["string", "integer"] },
+      "description": "The same relationship stated from the other side. Supply whichever direction is natural; both are folded into one edge per dependency, so stating an edge twice does not create two links."
     },
     "project_key": {
       "type": "string",
@@ -74,7 +94,8 @@
     },
     "dependencies": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 }
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Prose dependencies for the description, including waits on a team or on access that no issue represents. A dependency on another issue belongs in blocked_by or blocks as well, because a prose Dependencies heading drives no board view, no dependency report and no automation."
     },
     "out_of_scope": {
       "type": "array",
