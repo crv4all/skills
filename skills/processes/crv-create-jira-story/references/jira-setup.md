@@ -93,6 +93,29 @@ If the create-metadata capability is genuinely absent, say so and stop. Guessing
 field identifiers is the failure mode both skills exist to prevent, and a tenant
 where they cannot be read is a tenant where these skills cannot run correctly.
 
+### Absent in a subagent, present in the main session
+
+Nothing on this page fixes this one, which is why it is called out here.
+
+MCP servers are granted per agent. A spawned subagent can enumerate no
+Atlassian tools at all while the session that spawned it has them, and both
+skills run in a subagent by default. The symptom is identical to a server that
+was never installed, so it gets reported as a setup problem and the user goes
+looking for an installation that is already there.
+
+Tell them apart before reporting: if the spawning session had the tools, this is
+tool inheritance, not setup. Say which of the two it is, create nothing, and
+say what to do:
+
+> Spawned as a subagent with no Atlassian MCP tools available. The tools exist
+> in the main session, so this is tool inheritance, not Jira setup. Re-run this
+> skill inline in the main session, or grant the subagent the Atlassian server.
+
+**Running inline is the correct fallback, not a rule being broken.** The
+subagent exists to keep intermediate reasoning out of the user's conversation,
+which is worth less than the run happening at all. Say that you ran inline, and
+keep the report short to make up for it.
+
 ## 2. Machine configuration
 
 Run the bundled script. It records the site and the default project key in the
