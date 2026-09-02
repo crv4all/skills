@@ -2,9 +2,12 @@
 
 The schema is optional -- a caller may describe stories in prose instead -- but
 when it is used it must enforce exactly what ``crv-create-jira-story`` enforces
-conversationally. The rule worth testing is the estimate: an un-estimated story
-is the failure the skill exists to prevent, and a story-point value that is
-merely unusual is not the same thing as an invalid one.
+conversationally. Two rules are worth pinning. An estimate is optional, because
+sizing belongs to the team in grooming and a number invented at filing time is
+indistinguishable from an agreed one, but a value that is *present* and invalid
+is still invalid, and a value that is merely unusual is not. And Priority is
+refused outright, since it is the field that produced a broken icon on the board
+the last time something chose one.
 """
 
 from __future__ import annotations
@@ -33,7 +36,6 @@ def minimal(**overrides: Any) -> dict[str, Any]:
     story: dict[str, Any] = {
         "summary": "Reject expired tokens at the ingest endpoint",
         "parent": "ABC-123",
-        "story_points": 3,
     }
     story.update(overrides)
     return story
@@ -48,7 +50,7 @@ def test_shipped_example_matches_its_own_schema(validator: Draft202012Validator)
     validator.validate(json.loads(EXAMPLE_PATH.read_text(encoding="utf-8")))
 
 
-@pytest.mark.parametrize("field", ["summary", "parent", "story_points"])
+@pytest.mark.parametrize("field", ["summary", "parent"])
 def test_each_required_field_is_required(validator: Draft202012Validator, field: str) -> None:
     story = minimal()
     del story[field]
@@ -56,6 +58,33 @@ def test_each_required_field_is_required(validator: Draft202012Validator, field:
         validator.validate(story)
     assert excinfo.value.validator == "required"
     assert field in excinfo.value.message
+
+
+def test_story_points_are_optional(validator: Draft202012Validator) -> None:
+    """A story with no estimate is valid, and is the normal case.
+
+    Requiring an estimate forced the skill to either block the batch or invent a
+    number. Blocking means re-running the whole decomposition over a value that
+    takes five seconds to set in grooming; inventing means a number that is
+    summed into a sprint commitment and cannot be told apart from an agreed one.
+    """
+    story = minimal()
+    assert "story_points" not in story
+    validator.validate(story)
+
+
+def test_unsized_provenance_rejects_a_number_beside_it(
+    validator: Draft202012Validator,
+) -> None:
+    """A story cannot claim it was filed unsized and carry an estimate.
+
+    Both together would put a provenance on the issue that contradicts the field
+    next to it, which is worse than either alone: the reader cannot tell which
+    of the two is the mistake.
+    """
+    validator.validate(minimal(estimate_source="unsized"))
+    with pytest.raises(ValidationError):
+        validator.validate(minimal(estimate_source="unsized", story_points=3))
 
 
 def test_empty_object_is_invalid(validator: Draft202012Validator) -> None:
@@ -119,7 +148,28 @@ def test_additional_fields_are_keyed_by_name(validator: Draft202012Validator) ->
     validator.validate(minimal(additional_fields={"Product Area": {"value": "API"}}))
 
 
-@pytest.mark.parametrize("source", ["supplied", "proposed-and-approved"])
+@pytest.mark.parametrize("key", ["Priority", "priority"])
+def test_priority_cannot_be_smuggled_through_additional_fields(
+    validator: Draft202012Validator, key: str
+) -> None:
+    """Priority has its own key, so the generic escape hatch must refuse it.
+
+    The skill never picks a priority: grooming decides it against the whole
+    backlog, and a value invented at filing time cannot be told apart from an
+    agreed one. A priority a *person* chose is legitimate, which is why the
+    top-level ``priority`` key exists. Routing one through ``additional_fields``
+    instead is how a recorded default or a guess arrives looking supplied, so
+    that path stays closed and setting a priority stays a deliberate act.
+    """
+    with pytest.raises(ValidationError):
+        validator.validate(minimal(additional_fields={key: {"name": "High"}}))
+
+
+def test_a_person_chosen_priority_has_a_home(validator: Draft202012Validator) -> None:
+    validator.validate(minimal(priority="High"))
+
+
+@pytest.mark.parametrize("source", ["supplied", "proposed-and-approved", "unsized"])
 def test_estimate_provenance_is_recordable(validator: Draft202012Validator, source: str) -> None:
     """A bulk-approved estimate must be distinguishable from a groomed one.
 
