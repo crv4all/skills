@@ -12,6 +12,33 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Issues are written to be read, not to be impressive.** A shared
+  `issue-writing.md` now caps a story description at 200 words and an epic at
+  400, caps Context at three sentences and acceptance criteria at five, and
+  catalogues the patterns that make text read as generated with the rewrite for
+  each: padding, false shape, the overused vocabulary, and the formatting tells.
+  The templates dropped from eight required sections to four for a story and
+  five for an epic, and an optional heading is now dropped rather than filled.
+  Written after a batch whose stories were each three times longer than anyone
+  would read, which is how a team learns to skim acceptance criteria. The
+  pattern catalogue is adapted from
+  [`blader/humanizer`](https://github.com/blader/humanizer) (MIT) and recorded
+  in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- **The team field is asked, not defaulted.** `Assigned Team(s)`, `Team` or
+  `Squad`, resolved by name, with the allowed values read from create-metadata
+  and offered to the user in one question for the whole batch. `none` is a valid
+  answer and is reported as the user's choice. A recorded default is now the
+  starting point for that question rather than a substitute for it, because a
+  default nobody is shown is a default nobody notices is wrong, and team
+  assignments change faster than anyone re-runs setup. This is the one field the
+  agent cannot derive: a spec does not say who will do the work.
+- **Documentation is part of the change.** [AGENTS.md](AGENTS.md) carries a
+  table of what else to update for each kind of change, and
+  [CONTRIBUTING.md](CONTRIBUTING.md) the short version, binding the user, every
+  session, and every subagent equally. `test_documentation_sync.py` enforces the
+  part that had already failed: two Jira skills shipped and sat unlisted in the
+  README for four commits. A skill nobody can find is a skill nobody uses.
+
 - **`crv-create-jira-epic`** (`processes`, draft). Files one Jira Epic through
   an Atlassian MCP server, with a description rendered from a fixed section
   template. Preflight is a hard stop: no MCP tools or no machine configuration
@@ -20,8 +47,58 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`crv-create-jira-story`** (`processes`, draft). Files Stories under a parent
   Epic. Searches the epic by JQL before the first create, so re-running a
   request that filed eight stories skips all eight rather than filing them
-  again. Story points are required and are not restricted to a Fibonacci
+  again. Story points are optional and are not restricted to a Fibonacci
   ladder: a roll-up of several items lands on no ladder at all.
+- **Read-back before reporting, in both skills.** A create call that returns
+  success proves an issue exists and nothing about what is in it: Jira accepts a
+  field identifier it does not recognise on that screen by ignoring it. Both
+  skills now re-read what they wrote and report the stored values, and the story
+  skill asserts row count, epic membership, estimates, applied defaults and the
+  point total against that read-back. Written after a run filed 29 stories with
+  no epic link and reported completion "under the epic".
+- **Epic membership resolved by name.** A company-managed project carries an
+  `Epic Link` custom field; a team-managed one carries `parent`. The field
+  reference now names both, with the payload shape each takes, and forbids
+  assuming a `customfield_` number. Sending the wrong one produces a batch of
+  orphans that reports as success.
+- **Two-pass creation, and native issue links.** Stories are created first, then
+  cross-references are backfilled with the keys Jira allocated, because a key
+  cannot be cited before it exists. Dependencies are also written as native
+  `Blocks` links, since blocked-by views, dependency reports and automation read
+  links and not a prose heading. The inward issue is the blocker, and the skill
+  verifies the direction against one read-back before creating the rest.
+- **Dependency-graph validation before the first create.** Self-references,
+  unknown references, and cycles of any length are caught on the candidate list.
+  A cycle is reported as a decomposition error with its path, not silently
+  resolved by dropping an edge.
+- **Per-project field defaults.** `jira_setup.py --field-default "NAME=VALUE"`
+  records what the organisation expects on every issue in a project, keyed by
+  human-readable field name and scoped by `--defaults-project`. A create screen
+  enforces what an administrator marked required, not what the team agreed to, so
+  a field like `Assigned Team(s)` was left unset and then patched one issue at a
+  time. Repeating a name stores a list; re-running the same command replaces
+  rather than appends, so it stays idempotent.
+- **Writing rules for titles and descriptions.** A shared `issue-writing.md`
+  caps summaries at 80 characters and 12 words, bans em dashes, en dashes,
+  arrows, plan-local numbering and field-duplicating prefixes, lists the words
+  that name nothing, and shows rewrites. A summary is the most-read text in Jira
+  and almost every place it appears truncates it.
+- **Remediation for a batch that succeeded incorrectly.** "Stop and report,
+  never improvise" covers a failure, not 29 issues created wrong. A shared
+  reference covers establishing what is actually stored, patching in place as the
+  default because keys are already in use elsewhere, one approval for one patch
+  table, and the narrow cases where refiling is right. Deleting stays the user's
+  call.
+- **Derivable configuration.** Absent site or project no longer hard-stops when
+  the answer was supplied: a board or issue URL in the conversation, or a single
+  accessible site. The value used, and where it came from, is reported along with
+  the command that records it. Two candidate sites, or a project named but not
+  keyed, is still a guess and still stops the run.
+- **Bulk estimation, sanctioned.** Asking for 29 estimates one at a time is 29
+  questions. The skills may propose every estimate in one table and take one
+  approval, provided each issue records that its number was proposed and
+  bulk-approved rather than groomed. `estimate_source` in the input schema
+  carries that provenance.
 - **Tenant configuration outside the repository.** Both skills bundle
   `jira_setup.py`, which records the Jira site and default project key in
   `${XDG_CONFIG_HOME:-$HOME/.config}/crv-agent-skills/jira.json` at mode `0600`.
@@ -32,13 +109,55 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   project create-metadata by field *name* on every run, since they differ per
   tenant and change when an administrator edits a screen.
 - **Drift guard.** `test_shared_jira_files.py` asserts that the setup script and
-  the two shared reference files are byte-identical across both skills. They are
+  the four shared reference files are byte-identical across both skills. They are
   duplicated on purpose — `install.sh` installs one skill at a time, so a skill
   reaching for a sibling's files would break silently — and nothing else in the
   repository would notice a one-sided edit.
 - **Story input schema.** `story_input.schema.json` with a contract test pinning
-  the required triple, the positive-integer estimate, and the deliberate absence
-  of a Fibonacci enum.
+  the required triple, the positive-integer estimate, the deliberate absence of a
+  Fibonacci enum, the estimate provenance, and machine-readable dependency edges.
+- **Setup-script tests.** `test_jira_setup.py` covers the field defaults end to
+  end: scalar against list, per-project scoping, idempotent re-runs, refusal of
+  `customfield_NNNNN` identifiers, and a hand-mangled defaults block reported as
+  malformed rather than absent.
+
+### Changed
+
+- **Story points are no longer mandatory.** Sizing belongs to the team, in
+  grooming, with the people who will do the work. A story with no estimate is
+  now filed with the field unset, recorded as unsized on the issue and in the
+  report, and counted separately in the total rather than folded in as zero.
+  Requiring an estimate left only two moves, and both were wrong: block the
+  batch over a value that takes five seconds to set in grooming, or invent a
+  number that gets summed into a sprint commitment and cannot be told apart from
+  an agreed one. `story_points` left the schema's required set, and
+  `estimate_source` gained `unsized`.
+- **Priority is never chosen by the skill.** Not from a recorded default, not
+  inferred from a spec, and never as `TBD`, which is not an allowed option value
+  on any tenant and renders as a broken icon on the board. That is what happened
+  and what prompted this. A priority a person names explicitly is still sent,
+  validated against the project's allowed options and reported as supplied; the
+  input schema gives it a dedicated `priority` key and refuses it through
+  `additional_fields`, so setting one stays a deliberate act.
+- **The tier is stated, not asked.** Every skill now says which tier it is
+  running on in one line and starts work. The rule was one prompt per
+  invocation, before any work happened, and in practice nobody answered it: the
+  user cannot judge the tier before seeing what the run involves, so it cost a
+  round trip every time and taught them the skill's questions are noise. A tier
+  named in the session or in the project's agent configuration is still honoured
+  and reported. Choosing one silently is still forbidden.
+- **A subagent with no Atlassian tools is diagnosed, not misreported.** MCP
+  servers are granted per agent, so a spawned subagent can see no Jira tools
+  while the session that spawned it has them, and the symptom is identical to a
+  server nobody installed. Both skills now tell the two apart and hand back for
+  an inline re-run instead of sending the user to reinstall something that is
+  already there. Running inline is the sanctioned fallback: the subagent exists
+  to keep intermediate reasoning out of the conversation, which is worth less
+  than the run happening at all.
+- **The story skill's failure table moved to `references/failure-modes.md`.** It
+  had grown into a lookup table, which is what a reference is for, and the body
+  keeps the non-negotiable stops. This brought `SKILL.md` back inside its token
+  budget.
 
 ## [0.1.0] — 2026-08-18
 

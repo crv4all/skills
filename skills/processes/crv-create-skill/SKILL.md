@@ -57,15 +57,13 @@ not.
 **Delegate to a subagent. Do not run this in the main session.** The interview and the drafting both accumulate context the user does not need afterwards, and the boundary test is cheap enough that spending a frontier model on it is waste.
 
 **Model tier: `economy`** — the cheapest model that can follow instructions and
-call tools. Before spawning the subagent, ask once:
+call tools. **State it, do not ask about it.** One line, then start work:
 
-> Running `crv-create-skill` in a subagent on the **economy** tier. Reply
-> `balanced` or `frontier` to run it on a stronger model, or continue to
-> accept the default.
+> Running `crv-create-skill` in a subagent on the economy tier.
 
-Ask once per invocation, before any work starts. Skip the question only when
-the user has already stated a tier preference in this session or in the
-project's agent configuration.
+A stated default the user can override beats a question they have to clear
+before any work starts. Honour a tier they name in this session or in the
+project's agent configuration, and say which one you used.
 
 **Never silently escalate.** If the subagent turns out to be out of its depth,
 stop and say so. Re-running on a bigger model without asking charges the user

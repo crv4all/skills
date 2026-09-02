@@ -116,8 +116,9 @@ not, one borderline — and see whether they route correctly.
 
 Target well under the budget. Structure that works:
 
-1. **Execution** — the mandatory block. Delegate to a subagent, state the model
-   tier, offer to change it once before starting. Copy it from
+1. **Execution** — the mandatory block. Delegate to a subagent and state the
+   model tier in one line. Do not stop to ask about the tier; a stated default
+   the user can override beats a prompt they have to clear. Copy it from
    `skills/processes/crv-create-skill/assets/skill-template/SKILL.md.template`;
    `validate_frontmatter.py` fails the build if the `## Execution` heading is
    missing, because metadata nobody acts on is decoration.

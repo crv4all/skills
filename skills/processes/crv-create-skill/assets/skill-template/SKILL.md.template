@@ -38,14 +38,13 @@ what context this skill accumulates that the user does not want left in their
 conversation.>
 
 **Model tier: `economy`** — the cheapest model that can follow instructions and
-call tools. Before spawning the subagent, ask once:
+call tools. **State it, do not ask about it.** One line, then start work:
 
-> Running `{{NAME}}` in a subagent on the **economy** tier. Reply `balanced` or
-> `frontier` to run it on a stronger model, or continue to accept the default.
+> Running `{{NAME}}` in a subagent on the economy tier.
 
-Ask once per invocation, before any work starts. Skip the question only when
-the user has already stated a tier preference in this session or in the
-project's agent configuration.
+A stated default the user can override beats a question they have to clear
+before any work starts. Honour a tier the user names in this session or in the
+project's agent configuration, and say which one you used.
 
 **Never silently escalate.** If the subagent is out of its depth, stop and say
 so rather than re-running on a bigger model.

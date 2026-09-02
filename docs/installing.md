@@ -58,9 +58,10 @@ Two things follow from that table, and they are why every CRV skill is prefixed
 ## Choosing the model a skill runs on
 
 Every CRV skill delegates its work to a subagent and declares a model tier in
-`metadata.model-tier`. Before it starts, it tells you which tier it will use and
-offers to change it. See
-[design-principles.md](design-principles.md#14-every-skill-runs-in-a-subagent-on-the-cheapest-adequate-model)
+`metadata.model-tier`. It tells you which tier it is using in one line and then
+starts work, rather than stopping to ask. To change it, say so at any point, or
+name a tier in the session or in your project's agent configuration. See
+[design-principles.md](design-principles.md#13-every-skill-runs-in-a-subagent-on-the-cheapest-adequate-model)
 for the tier-to-model mapping and how to set a standing override.
 
 ## Manual installation

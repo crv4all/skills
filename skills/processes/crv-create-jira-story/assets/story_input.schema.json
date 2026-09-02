@@ -4,14 +4,14 @@
   "title": "Jira story input",
   "description": "Optional structured input for crv-create-jira-story. A caller that already has stories in machine-readable form can pass this instead of describing them in prose. The conversational path enforces the same rules.",
   "type": "object",
-  "required": ["summary", "parent", "story_points"],
+  "required": ["summary", "parent"],
   "additionalProperties": false,
   "properties": {
     "summary": {
       "type": "string",
       "minLength": 1,
       "maxLength": 255,
-      "description": "The story title. Jira rejects summaries over 255 characters, so the bound is enforced here rather than discovered at create time."
+      "description": "The story title. Jira rejects summaries over 255 characters, so the bound is enforced here rather than discovered at create time. The house rule is stricter and is checked by the skill rather than the schema: at most 80 characters and 12 words, sentence case, opening with an imperative verb, no em dash, and no plan-local numbering."
     },
     "parent": {
       "type": "string",
@@ -21,7 +21,27 @@
     "story_points": {
       "type": "integer",
       "minimum": 1,
-      "description": "Estimate. Required: an un-estimated story is the failure this skill exists to prevent. Deliberately not restricted to a Fibonacci sequence -- teams use their own scales, and a roll-up of several items lands on no ladder at all."
+      "description": "Estimate. Optional: sizing belongs to the team, in grooming, and a number invented at filing time is indistinguishable from an agreed one once it is in Jira. Omit the key to file the story unsized, which the skill records rather than treating as an error. When present it must be a positive integer, and it is deliberately not restricted to a Fibonacci sequence -- teams use their own scales, and a roll-up of several items lands on no ladder at all."
+    },
+    "estimate_source": {
+      "type": "string",
+      "enum": ["supplied", "proposed-and-approved", "unsized"],
+      "default": "supplied",
+      "description": "Where the estimate came from. \"proposed-and-approved\" means the agent proposed it in a batch table and the user approved the table rather than grooming the story. \"unsized\" goes with an absent story_points and states that the story was filed deliberately without an estimate, for grooming to size. That provenance is recorded on the issue and in the report, because once a number is in Jira an invented estimate is indistinguishable from an agreed one."
+    },
+    "id": {
+      "type": ["string", "integer"],
+      "description": "Plan-local identifier for this candidate, used only to express dependencies between candidates in the same batch. Never written into Jira: Jira keys do not exist until the create call returns."
+    },
+    "blocked_by": {
+      "type": "array",
+      "items": { "type": ["string", "integer"] },
+      "description": "Plan-local ids of candidates in this batch, or real Jira keys, that must land before this one. Validated for self-references, unknown ids and cycles before anything is created, then written as native Blocks links in a second pass."
+    },
+    "blocks": {
+      "type": "array",
+      "items": { "type": ["string", "integer"] },
+      "description": "The same relationship stated from the other side. Supply whichever direction is natural; both are folded into one edge per dependency, so stating an edge twice does not create two links."
     },
     "project_key": {
       "type": "string",
@@ -74,7 +94,8 @@
     },
     "dependencies": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 }
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Prose dependencies for the description, including waits on a team or on access that no issue represents. A dependency on another issue belongs in blocked_by or blocks as well, because a prose Dependencies heading drives no board view, no dependency report and no automation."
     },
     "out_of_scope": {
       "type": "array",
@@ -88,10 +109,33 @@
       "type": "array",
       "items": { "type": "string", "pattern": "^[^\\s]+$" }
     },
+    "priority": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Priority name, and the only way to set one. Supply it only when a person chose it: the skill never picks a priority, because grooming decides it against the whole backlog and a value invented at filing time is indistinguishable from an agreed one. The value is validated against the project's allowed options before it is sent, since Jira accepts an unrecognised option by ignoring it, and it is reported as supplied. Placeholders such as TBD are not allowed values on any tenant and render as a broken icon. This key exists separately from additional_fields, which refuses Priority, so that setting one is always a deliberate act rather than something a default carried in."
+    },
     "additional_fields": {
       "type": "object",
-      "description": "Extra fields, keyed by their human-readable Jira name rather than a customfield_NNNNN identifier. The skill resolves names to identifiers from the project's create-metadata at run time, because identifiers differ per tenant and change when an administrator edits a screen.",
-      "additionalProperties": true
+      "description": "Extra fields, keyed by their human-readable Jira name rather than a customfield_NNNNN identifier. The skill resolves names to identifiers from the project's create-metadata at run time, because identifiers differ per tenant and change when an administrator edits a screen. Priority is rejected here and has its own top-level key: routing it through the generic escape hatch is how a recorded default or a guess reaches Jira looking like a supplied value.",
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["Priority"] },
+          { "required": ["priority"] }
+        ]
+      }
     }
-  }
+  },
+  "allOf": [
+    {
+      "$comment": "An unsized story has no number, and a story with a number was not filed unsized. Letting both through would put a provenance on the issue that contradicts the field beside it.",
+      "if": {
+        "properties": { "estimate_source": { "const": "unsized" } },
+        "required": ["estimate_source"]
+      },
+      "then": {
+        "not": { "required": ["story_points"] }
+      }
+    }
+  ]
 }

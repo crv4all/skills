@@ -1,10 +1,19 @@
 <!--
-Rendered into the Story description as markdown. Keep every heading, in this
-order. Delete this comment when rendering.
+Rendered into the Story description as markdown. Delete this comment when
+rendering.
 
-Optional sections are marked. Drop an optional heading entirely when it has no
-content; keep every required heading and fill it, using "None" where that is
-the honest answer.
+Four required headings, in this order: User story, Acceptance criteria, Test
+plan, Dependencies. Keep all four and fill them, using "None" where that is the
+honest answer.
+
+Every other heading is optional. Drop an optional heading entirely when it has
+no content. An empty optional heading is noise, and a story carrying eight
+headings for two facts is why the last batch was unreadable.
+
+Hard caps, checked before the create call: 200 words for the whole description,
+3 sentences in Context, 5 acceptance criteria of one line each. Cut rather than
+compress. The prose rules, the banned punctuation and the placeholder rules are
+in the issue-writing reference.
 -->
 
 ## User story
@@ -13,30 +22,45 @@ As a <role>
 I want <capability>
 So that <benefit>
 
-## Context
-
-<What the implementer needs that is not in the epic: the current behaviour, the
-file or service involved, the decision already taken. Link the epic rather than
-restating it.>
-
 ## Acceptance criteria
 
-- [ ] <A condition that is checkable by someone who did not write the code>
+- [ ] <A condition checkable by someone who did not write the code>
 - [ ] <Another>
 
 ## Test plan
 
-<How this gets verified, and by whom. Name the level -- unit, integration,
-manual -- because "tested" without a level is how a gap gets agreed to twice.>
+<How this gets verified, and by whom. Name the level, unit or integration or
+manual, because "tested" without a level is how a gap gets agreed to twice.>
 
 ## Dependencies
 
-<Other stories, teams, or access this waits on. "None" when there are none.>
+<Other stories, teams, or access this waits on. "None" when there are none.
+
+Name a real Jira key, never a plan-local number. During the first pass a key
+does not exist yet, so write the placeholder `[[dep:<n>]]` and replace it with
+the real key in the backfill pass. Every dependency named here also gets a
+native issue link; this section is for the human, the link is for every tool the
+team uses.>
+
+## Context (optional)
+
+<At most 3 sentences, and only what the implementer cannot get from the code or
+from the epic: the current behaviour, the file or service involved, the decision
+already taken. Link the epic rather than restating it. Drop this heading when
+the epic and the acceptance criteria already say everything.>
 
 ## Out of scope (optional)
 
 <What this story deliberately does not do, when a reader would assume it does.>
 
+## Estimate note (optional)
+
+<Only when the estimate was proposed by the agent and approved in bulk rather
+than groomed, or when the story was filed with no estimate. State which:
+"3 points proposed on 2026-09-02 and approved as part of a batch, not groomed by
+the team", or "Filed without an estimate, to be sized in grooming." An estimate
+whose provenance is unrecorded is indistinguishable from an agreed one.>
+
 ## Notes (optional)
 
-<Implementation hints, links, prior art.>
+<Implementation hints, links, prior art. Links, not copied content.>

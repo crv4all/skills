@@ -20,9 +20,9 @@ Two rules apply to every CRV skill, enforced in CI:
 
 - **It runs in a subagent, not the main session.** Skill work accumulates
   context the user does not want left in their conversation.
-- **It runs on the cheapest adequate model**, states which tier before starting,
-  and offers to change it. Following a written-down procedure rarely needs a
-  frontier model.
+- **It runs on the cheapest adequate model** and states which tier before
+  starting, in one line, without stopping to ask. Following a written-down
+  procedure rarely needs a frontier model.
 
 ## The skills
 
@@ -31,12 +31,17 @@ See [CATALOG.md](CATALOG.md), which is generated from frontmatter.
 | Skill | Layer | What it does |
 | --- | --- | --- |
 | [`crv-codebase-onboarding`](skills/processes/crv-codebase-onboarding/SKILL.md) | processes | Produces evidence-backed codebase context in `docs/codebase/`, every claim tied to a real path and stamped with the commit it was verified against |
+| [`crv-create-jira-epic`](skills/processes/crv-create-jira-epic/SKILL.md) | processes | Files one Jira Epic, resolving the project's fields by name at run time, and reads it back to report what was stored rather than what was sent |
+| [`crv-create-jira-story`](skills/processes/crv-create-jira-story/SKILL.md) | processes | Files Stories under an epic, searching for duplicates first, creating the native dependency links, and verifying the whole batch against a read-back |
 | [`crv-create-skill`](skills/processes/crv-create-skill/SKILL.md) | processes | Takes a skill idea through a boundary test, an interview, scaffolding, validation, and evals — and tells you when it should not be a skill |
 
-Both are `draft`. That is honest, not a placeholder: nobody outside the authors
-has completed a real task with either one yet. See
+All four are `draft`. That is honest, not a placeholder: nobody outside the
+authors has completed a real task with any of them yet. See
 [promotion](skills/processes/crv-create-skill/references/promotion.md) for what
 `stable` requires.
+
+This table is checked in CI. A new skill that is not listed here fails the
+build, because a skill nobody can find is a skill nobody uses.
 
 ## Install
 

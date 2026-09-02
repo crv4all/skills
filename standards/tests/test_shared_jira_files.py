@@ -28,6 +28,8 @@ SHARED = (
     "scripts/jira_setup.py",
     "references/jira-setup.md",
     "references/field-resolution.md",
+    "references/issue-writing.md",
+    "references/remediation.md",
 )
 
 

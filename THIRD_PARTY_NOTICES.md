@@ -2,12 +2,9 @@
 
 ## Current status
 
-**Nothing in this repository is adapted from third-party code.** Every skill,
-script, schema, and document here was written for it.
-
-This file exists so that the first time that stops being true, there is an
-obvious place to record it — and so its emptiness is a claim someone made
-deliberately rather than a file nobody created.
+One file is adapted, and it is recorded in the table below. Everything else
+here, every skill, script, schema, and document, was written for this
+repository.
 
 ## Prior art that informed the design
 
@@ -38,7 +35,8 @@ Two steps, both required.
 
 | File | Source | Licence | Copyright holder | What was adapted |
 | --- | --- | --- | --- | --- |
-| _(none yet)_ | | | | |
+| `skills/processes/crv-create-jira-epic/references/issue-writing.md` | [`blader/humanizer`](https://github.com/blader/humanizer) | MIT | Siqi Chen | The catalogue of patterns that mark generated text, under "Patterns that mark generated text": the pattern names, and the approach of naming them mechanically so they can be checked rather than felt. Every example was rewritten for Jira issues. The summary rules, the size caps, and the placeholder and Priority rules are ours. |
+| `skills/processes/crv-create-jira-story/references/issue-writing.md` | [`blader/humanizer`](https://github.com/blader/humanizer) | MIT | Siqi Chen | A byte-identical copy of the file above. Both Jira skills ship their own copy so each installs standalone; `test_shared_jira_files.py` keeps them identical. |
 
 Check the licence before adapting, not after. A permissive licence is not
 permission to omit attribution, and some licences that look permissive are not.

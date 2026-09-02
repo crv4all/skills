@@ -67,6 +67,25 @@ Changed frontmatter? Regenerate and commit:
 uv run standards/scripts/build_catalog.py --write
 ```
 
+## Documentation is part of the change
+
+A change is not done until every place that describes it agrees. The full table
+of what to update for what is in [AGENTS.md](AGENTS.md); the short version:
+
+- **Added a skill?** The `README.md` skills table, `CATALOG.md`, `CHANGELOG.md`.
+- **Changed a rule every skill follows?** `README.md`, the matching section of
+  [docs/design-principles.md](docs/design-principles.md),
+  [docs/authoring-skills.md](docs/authoring-skills.md), and the scaffold
+  template that new skills are copied from.
+- **Changed a skill's behaviour?** Its `evals/behaviour.md`.
+- **Adapted something third-party?** A header in the file and a row in
+  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+CI enforces two of these: catalogue drift, and a skill missing from the README
+table. The others rely on you, which is the reason they are written down. The
+same rule binds an agent doing the work on your behalf, so if you delegate,
+delegate this too.
+
 ## What review looks for
 
 - **Does the description trigger?** Show it alone to someone who has not read
