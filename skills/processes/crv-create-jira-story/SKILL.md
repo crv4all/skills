@@ -125,8 +125,14 @@ unreachable wastes the whole decomposition.
 2. **Site and project known?**
 
    ```bash
-   python3 scripts/jira_setup.py --check
+   python3 <this skill's directory>/scripts/jira_setup.py --check
    ```
+
+   The path is relative to this skill, not to the user's repository, which is
+   where the shell usually is. Run from there as `scripts/jira_setup.py`, it
+   fails with Python's exit `2`, which reads as a usage error rather than a
+   missing file. Every `jira_setup.py` command in this skill and its references
+   takes the same prefix.
 
    Exit `0` configured. Exit `1` names the missing keys. Exit `4` the
    configuration file is corrupt, a different problem with a different fix.

@@ -131,6 +131,10 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The setup script is called by the skill's path, not the shell's.** Both
+  skills said `python3 scripts/jira_setup.py`, which only works from inside the
+  skill folder. From the user's repository it exits `2`, which the skill
+  documents as a usage error, so the preflight failed with the wrong diagnosis.
 - **The epic skill checks it can fix what it files.** It told the agent to
   patch an epic in place when the read-back contradicted the write, but never
   required the edit capability, so on a server without it the only possible

@@ -120,7 +120,9 @@ keep the report short to make up for it.
 
 Run the bundled script. It records the site and the default project key in the
 user configuration directory, outside any repository, so nothing tenant-specific
-can reach version control by accident:
+can reach version control by accident. The commands below are written relative
+to the skill's own directory: run them from there, or put the skill's path in
+front of `scripts/`.
 
 ```bash
 python3 scripts/jira_setup.py --check
