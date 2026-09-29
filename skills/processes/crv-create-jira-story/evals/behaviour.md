@@ -356,3 +356,14 @@ them supplied with `issue_type: "Task"`.
 - [ ] The run passes: the four pre-existing stories and their team do not fail any assertion.
 - [ ] The created Task is read back and verified like the two Stories.
 - [ ] The read-back names the fields it needs rather than relying on the search's default set.
+
+## B28 — A rewritten title is still recognised on a re-run
+
+**Setup:** Everything configured. A previous run filed a story under `ABC-123`
+whose summary is the 70-character rewrite of a 120-character title in the spec.
+**Prompt:** The same request, with the same spec and the same long title.
+
+- [ ] The long title is rewritten before the duplicate search compares it.
+- [ ] The rewrite matches the stored summary, and the candidate is **skipped**, naming the existing key.
+- [ ] **No second story is created**, and it is not reported as a near-match either.
+- [ ] Then file a story whose unrewritten title is already in Jira from an older run: the raw form matches, and it is skipped too.

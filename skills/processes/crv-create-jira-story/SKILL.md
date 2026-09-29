@@ -184,7 +184,8 @@ is a plan nobody agreed to. Delete a task that restates a criterion. A step big
 enough to need its own owner or estimate stays in the list but is named in the
 report as a likely sub-task, because this skill does not create sub-tasks.
 
-Titles and prose follow [references/issue-writing.md](references/issue-writing.md),
+Rewrite every summary to those rules **here**, before Step 3 compares it against
+Jira. Titles and prose follow [references/issue-writing.md](references/issue-writing.md),
 which names the patterns that make text read as generated and gives the rewrite
 for each. The four rules broken most often: a summary over 80 characters, an em
 dash anywhere, a description padded with those patterns, and a `TBD` where the
@@ -211,8 +212,13 @@ parent = <EPIC-KEY>
 If the search errors, **stop**. Proceeding without duplicate detection
 is precisely the failure mode this step exists to prevent.
 
-Compare each candidate summary against the existing ones, normalising case and
-whitespace. On a match, **skip that candidate** and record the existing key. Do
+Compare against the summary **as it will be filed**, after the Step 2 title
+rules, and also against the summary as it was given. A re-run brings the raw
+120-character title again, and it never equals the 80-character rewrite already
+in Jira, so comparing only the raw text files the same story twice. Comparing
+only the rewrite misses a story an earlier run filed unrewritten.
+
+Normalise case and whitespace. When either form matches, **skip that candidate** and record the existing key. Do
 not update the existing story: the caller asked to create, and rewriting a story
 someone has already groomed is a worse surprise than a skip.
 

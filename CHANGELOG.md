@@ -131,6 +131,12 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Re-running a batch with long titles no longer duplicates it.** The
+  duplicate check compared the summaries as given, before they were rewritten
+  to the 80-character rule, so a re-run's raw title never equalled the rewrite
+  already in Jira and every such story was filed again as a "near match". Titles
+  are now rewritten first, and both the rewritten and the given form are
+  compared.
 - **The story read-back checks what the run created, and nothing else.** It
   queried every child of the epic and asserted that the row count equalled the
   number created, so any epic that already had stories failed a correct run,
