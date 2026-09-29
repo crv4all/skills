@@ -105,7 +105,8 @@ preference.
 | A heading restated in its first sentence | Delete the sentence. The heading already said it. |
 | Answering an objection nobody raised: "This is not about performance." | Say what it is about. |
 | Rejecting a fake alternative: introducing an approach only to dismiss it | State what happens. A discarded option belongs in Technical notes with the reason, or nowhere. |
-| A user story with nobody in it: "As a developer, I want OrderService refactored" | Write a Goal instead: what is true afterwards, and why it matters. |
+| A user story with nobody in it: "As a developer, I want OrderService refactored" | Open with a goal instead: what is true afterwards, and why it matters. |
+| A heading that repeats the field label: `## User story` or `## Description` as the first line of a description | Delete it. Jira labels the field, and the text below says what it is. |
 
 ### False shape
 

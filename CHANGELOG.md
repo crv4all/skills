@@ -134,9 +134,14 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **A story can open with a goal instead of a user story.** Refactors,
   migrations and platform changes have no real person to put in "As a ... I
   want", and forcing one produced "As a developer, I want the service split",
-  which is the kind of filler the writing reference bans. The first required
-  heading may now be Goal: one sentence on what is true afterwards and why. The
-  input schema takes `goal` or `user_story`, never both.
+  which is the kind of filler the writing reference bans. A story may now open
+  with a goal: one sentence on what is true afterwards and why. The input
+  schema takes `goal` or `user_story`, never both.
+- **A story opens with its user story, not a heading.** Jira already labels the
+  field Description, so a `## User story` heading as the first line repeated
+  the frame the "As a / I want / So that" lines already carry, and looked
+  wrong under the field label. The opening statement is now unheaded, and the
+  three sections after it keep theirs.
 - **Structured input has one rendering.** The story schema said what each field
   held but not where it went, so the same batch could render a test plan as a
   nested list on one story and a paragraph on the next. `structured-input.md`

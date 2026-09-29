@@ -10,8 +10,8 @@ Render in template order. Every schema property is in exactly one row below.
 
 | Field | Where it goes | How |
 | --- | --- | --- |
-| `user_story` | `## User story` | Three lines: `As a <role>`, `I want <capability>`, `So that <benefit>`. |
-| `goal` | `## Goal`, in place of User story | The sentence as a paragraph. |
+| `user_story` | The opening lines, with no heading | Three lines: `As a <role>`, `I want <capability>`, `So that <benefit>`. |
+| `goal` | The opening line, with no heading, in place of the user story | The sentence as a paragraph. |
 | `acceptance_criteria` | `## Acceptance criteria` | One `- [ ]` item each. A multi-line criterion keeps its line breaks, indented under its checkbox. |
 | `test_plan` | `## Test plan` | One bullet per item, `- <Level>: <title>`, or `- <title>` with no level. Steps as a numbered list nested under their item, because steps are ordered. |
 | `dependencies` | `## Dependencies` | One bullet each, `[[dep:<n>]]` kept verbatim for pass two. |

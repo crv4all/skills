@@ -71,7 +71,7 @@
     "goal": {
       "type": "string",
       "minLength": 1,
-      "description": "One sentence saying what is true afterwards and why it matters, rendered under a Goal heading in place of the user story. For work with no real person in the sentence, such as a refactor or a migration, where \"As a developer, I want\" would be filler. Supply this or user_story, not both."
+      "description": "One sentence saying what is true afterwards and why it matters, rendered as the unheaded opening line of the description in place of the user story. For work with no real person in the sentence, such as a refactor or a migration, where \"As a developer, I want\" would be filler. Supply this or user_story, not both."
     },
     "context": { "type": "string" },
     "acceptance_criteria": {

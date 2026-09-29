@@ -75,7 +75,8 @@ mechanism. Wording and reasoning:
 
 One or more Jira Stories under a named parent Epic, and a report. Specifically:
 
-- Each Story has a markdown description carrying the four required sections of
+- Each Story has a markdown description opening with its user story or goal,
+  with no heading above it, and carrying the four required sections of
   [assets/story-description.md.template](assets/story-description.md.template),
   complete enough to pick up without the conversation, and written to
   [references/issue-writing.md](references/issue-writing.md).
@@ -163,10 +164,11 @@ supplied `description_markdown`, which replaces rendering, not checking.
 Render [assets/story-description.md.template](assets/story-description.md.template)
 for each. Four headings are required and the rest are optional: drop an optional
 heading rather than filling it, and link the epic rather than restating it. A
-copy of the epic in eight descriptions is eight copies to go stale. The first
-heading is a **User story** when a real person is in the sentence, and a
-**Goal** when none is: "As a developer, I want the service split" is padding
-shaped like a user story.
+copy of the epic in eight descriptions is eight copies to go stale. The
+description **opens with the user story, with no heading**: Jira already labels
+the field, and "As a / I want / So that" names itself. When no real person is in
+the sentence, open with a one-sentence goal instead, also unheaded: "As a
+developer, I want the service split" is padding shaped like a user story.
 
 **Complete, not padded.** There is no word cap. Say everything the implementer
 needs that the code and the epic do not, including the files, contracts and
@@ -402,8 +404,8 @@ Before reporting done:
 - [ ] Preflight passed, or nothing was created.
 - [ ] A JQL search ran against the epic before the first create.
 - [ ] The issue-writing checklist ran on every candidate: summary cap, no em
-      or en dash, no padding pattern, four required headings, no `TBD`, no
-      `Priority:` line.
+      or en dash, no padding pattern, an unheaded opening user story or goal,
+      the three required headings, no `TBD`, no `Priority:` line.
 - [ ] No acceptance criterion or constraint from the source was dropped to
       shorten a description.
 - [ ] No story has a Priority in the read-back that the user did not name.

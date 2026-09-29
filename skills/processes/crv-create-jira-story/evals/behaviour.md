@@ -34,7 +34,7 @@ exits `0`. Epic `ABC-123` exists with no children.
 - [ ] A JQL search against `ABC-123` runs before the first create call.
 - [ ] Three stories are created, each a child of `ABC-123`.
 - [ ] Each carries a story-point value of `3` as a number, not a string.
-- [ ] Each description contains the four required headings from `assets/story-description.md.template` and renders as markdown in Jira.
+- [ ] Each description opens with the "As a / I want / So that" lines and **no heading above them**, then carries the three required headings from `assets/story-description.md.template`, and renders as markdown in Jira.
 - [ ] Every acceptance criterion in the spec appears in a created story. None is dropped to shorten a description.
 - [ ] No description carries an optional heading with nothing under it.
 - [ ] **No story has a Priority value**, and no description contains a `Priority:` line.
@@ -299,11 +299,11 @@ acceptance criteria covering two separable behaviours.
 `OrderService` into pricing and persistence, with no end user affected.
 **Prompt:** "File this under ABC-123."
 
-- [ ] The description opens with a `Goal` heading, not `User story`.
+- [ ] The description opens with a one-sentence goal and no heading: neither `Goal` nor `User story`.
 - [ ] No description contains "As a developer" or "As a system".
 - [ ] The goal states what is true afterwards and why, in one sentence.
-- [ ] The other three required headings are present as usual.
-- [ ] Then file a candidate with a real user in it: it opens with `User story`, as before.
+- [ ] The three required headings are present as usual.
+- [ ] Then file a candidate with a real user in it: it opens with the "As a / I want / So that" lines, also unheaded.
 
 ## B24 — A pre-rendered description is checked like a rendered one
 
