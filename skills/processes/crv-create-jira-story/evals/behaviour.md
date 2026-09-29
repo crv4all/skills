@@ -304,3 +304,15 @@ acceptance criteria covering two separable behaviours.
 - [ ] The goal states what is true afterwards and why, in one sentence.
 - [ ] The other three required headings are present as usual.
 - [ ] Then file a candidate with a real user in it: it opens with `User story`, as before.
+
+## B24 — A pre-rendered description is checked like a rendered one
+
+**Setup:** Everything configured. `ABC-123` empty. One candidate supplied
+against the schema with `description_markdown` set: it contains an em dash, a
+`TBD`, and no `Test plan` heading.
+**Prompt:** "File this under ABC-123."
+
+- [ ] The issue-writing checklist runs on the supplied markdown, before the create call.
+- [ ] The created description contains no em dash and no `TBD`.
+- [ ] The missing `Test plan` heading is asked about, not silently filed without and not invented.
+- [ ] The report shows what was changed in the supplied text, so the caller can object.

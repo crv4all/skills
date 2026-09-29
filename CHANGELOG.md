@@ -137,6 +137,11 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   which is the kind of filler the writing reference bans. The first required
   heading may now be Goal: one sentence on what is true afterwards and why. The
   input schema takes `goal` or `user_story`, never both.
+- **A pre-rendered description is checked like any other.** The schema said
+  `description_markdown` was "used as-is", which read as permission to skip the
+  writing checks and the required headings. It now says the field replaces
+  rendering, not checking, so the one input path with no template behind it is
+  not also the one with no rules.
 - **Filing an epic twice files it once.** `crv-create-jira-epic` now searches
   the project for an epic with the same summary before creating one, as the
   story skill always has. It used to search only after a create call errored,

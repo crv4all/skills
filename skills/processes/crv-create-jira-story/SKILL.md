@@ -156,7 +156,8 @@ Structured input may be supplied against
 [assets/story_input.schema.json](assets/story_input.schema.json), with
 [assets/story_input.example.json](assets/story_input.example.json) as a worked
 one. Otherwise build candidates conversationally; the rules below apply either
-way, since the schema cannot check a conversation.
+way, since the schema cannot check a conversation. They also apply to a
+supplied `description_markdown`, which replaces rendering, not checking.
 
 Render [assets/story-description.md.template](assets/story-description.md.template)
 for each. Four headings are required and the rest are optional: drop an optional

@@ -56,7 +56,7 @@
     },
     "description_markdown": {
       "type": "string",
-      "description": "A fully rendered description. When present it is used as-is and the structured fields below are ignored."
+      "description": "A fully rendered description, used in place of the structured fields below, which are then ignored. It replaces rendering, not checking: it passes the same issue-writing checks and required headings as a rendered description, and text that fails them is rewritten before the create call and shown in the report so the caller can object."
     },
     "user_story": {
       "type": "object",
