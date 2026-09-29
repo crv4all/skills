@@ -11,7 +11,8 @@ Three outcomes appear in the right column, and they are not interchangeable:
   batch reported accurately is recoverable; one reported as success is not.
 - **Not a failure.** File without the value and say so in the report. A field
   that resolved fine and has nothing to write is not an error.
-- **Ask.** One question, then continue. Never a guess in place of the question.
+- **Ask.** At the checkpoint, with every other question, then continue on the
+  answer or its stated default. Never a guess in place of the question.
 
 ## Preflight and configuration
 

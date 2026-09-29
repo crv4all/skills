@@ -49,6 +49,14 @@ project's agent configuration, and say which one you used.
 **Never silently escalate.** If the subagent is out of its depth, stop and say
 so rather than re-running on a bigger model.
 
+**It hands back exactly once before creating anything**, because a subagent
+cannot wait for an answer. The hand-back holds the epic drafted as it will be
+filed, summary and full description, and every question at once: missing
+sections, team, Priority, and any near-match the Step 3 search found. Each
+question names what an unanswered one means. The main session shows it to the
+user and passes the answers back, never answering for them, and the run
+re-runs the Step 3 search before creating.
+
 **A subagent may not inherit the Atlassian MCP server**, and that looks exactly
 like a server nobody installed. If the tools are absent here but the spawning
 session had them, this is tool inheritance and not setup: say so, create
@@ -145,7 +153,8 @@ wrong project is far more expensive than a refusal, and much harder to notice.
 ## Step 1. Gather the content
 
 Render [assets/epic-description.md.template](assets/epic-description.md.template).
-Ask for what is missing, in one batch rather than one question at a time.
+Collect what is missing. It is asked at the checkpoint in Step 3, with every
+other question, not one at a time as you find it.
 
 You need a summary and enough for the five required sections. Dependencies,
 Technical notes and Links are optional: drop an optional heading rather than
@@ -222,10 +231,15 @@ normalising case and whitespace:
 - **Exact match: create nothing.** Report the existing key, its status, and
   that nothing was created. Do not update it: the user asked to create, and
   rewriting an epic someone has already groomed is a worse surprise than a skip.
-- **Near match**, the same outcome in different words: ask whether it is the
-  same epic, in one question, before creating. Asking about one epic is cheap.
-  Two epics that each hold half the stories are not.
-- **No match:** create.
+- **Near match**, the same outcome in different words: ask at the checkpoint
+  whether it is the same epic. Unanswered, create nothing: two epics that each
+  hold half the stories cost far more than one question.
+- **No match:** go on.
+
+**Check in once**, as described under Execution: the drafted epic and every
+question, with its default. Unanswered, a missing section reads "Not yet
+decided", the team takes the recorded default and says so, and Priority keeps
+the project default. On resuming, re-run the search above.
 
 Then call the create-issue capability with the resolved field identifiers, sending the
 description as **markdown**, using whatever content-format parameter the server

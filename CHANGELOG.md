@@ -131,6 +131,17 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **One check-in, with the draft, before anything is filed.** Both skills run
+  in a subagent, which cannot wait for an answer, yet the story skill asked
+  about team, estimates, splits and cycles in three different steps, and the
+  person filing first saw the stories in Jira, where each correction is an edit
+  call. Each skill now builds everything, hands back once with the draft and
+  every question numbered, each with the default an unanswered one takes, and
+  re-runs the duplicate search before creating. A partial answer applies what
+  was answered; it never starts a second round. The story skill also proposes
+  an epic the conversation already mentioned, instead of asking cold, and
+  files nothing until the user confirms it. Sprint, components and fix versions
+  are asked only where the project has them, and left unset otherwise.
 - **The setup script is called by the skill's path, not the shell's.** Both
   skills said `python3 scripts/jira_setup.py`, which only works from inside the
   skill folder. From the user's repository it exits `2`, which the skill

@@ -186,3 +186,17 @@ shows the team field empty although the user answered Empower.
 - [ ] The epic is patched in place with the edit capability, and a second read-back shows Empower.
 - [ ] No second epic is created, and nothing is deleted.
 - [ ] Then run with a server that has no edit capability: preflight names it as missing before any content is gathered, and nothing is created.
+
+## B16 — One hand-back, with the draft, before the epic exists
+
+**Setup:** Everything configured. The request gives an outcome and a scope but
+no success criteria, and the project has `Assigned Team(s)`, a Priority default
+of TBD, and an existing epic whose summary is close to the new one.
+**Prompt:** "Create a Jira epic for the ingest rewrite."
+
+- [ ] **Exactly one hand-back happens before the create call**, and no epic exists while it is open.
+- [ ] It shows the summary and the full description as they would be filed.
+- [ ] It asks, in one message, for the success criteria, the team, whether to set a Priority, and whether the close epic is the same one.
+- [ ] Answer only the team: the epic is **not** created, because the near-match was not answered.
+- [ ] Then answer "different epic" as well: it is created, success criteria read "Not yet decided", Priority holds the project default and the report says so.
+- [ ] The duplicate search runs again after the answers and before the create call.

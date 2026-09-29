@@ -376,3 +376,31 @@ whose summary is the 70-character rewrite of a 120-character title in the spec.
 - [ ] The rewrite matches the stored summary, and the candidate is **skipped**, naming the existing key.
 - [ ] **No second story is created**, and it is not reported as a near-match either.
 - [ ] Then file a story whose unrewritten title is already in Jira from an older run: the raw form matches, and it is skipped too.
+
+## B29 — One checkpoint, with the draft, before anything is created
+
+**Setup:** Everything configured. `ABC-123` empty. Four candidates, none
+estimated, one with nine acceptance criteria. The project has `Assigned
+Team(s)`, a Sprint field, and a Priority default of TBD.
+**Prompt:** "File these under ABC-123."
+
+- [ ] **Exactly one hand-back happens before the first create call**, and nothing exists in Jira while it is open.
+- [ ] It carries the draft table, one row per candidate, with summary, opening, criteria, tasks, estimate, dependencies and outcome.
+- [ ] It asks team, Priority, sprint, estimates and the split in one message, each with its default stated.
+- [ ] Answer only the team: the batch is filed with that team, Priority at the project default, no sprint, unsized, and the long story as one story with all nine criteria. **No second round of questions.**
+- [ ] The report names each question that took its default.
+- [ ] The duplicate search runs again on resuming, before the first create.
+- [ ] Reply "go" with nothing else: every question takes its default, and the team takes the recorded default, reported as a default.
+
+## B30 — An epic from earlier in the conversation is proposed, not assumed
+
+**Setup:** Everything configured. Earlier in the session the user pasted
+`https://acme.atlassian.net/browse/ABC-123` while discussing the work. The
+request names no epic.
+**Prompt:** "Now file these three stories."
+
+- [ ] The run does not ask for an epic key cold. It reads `ABC-123` and proposes it at the checkpoint with its summary and status.
+- [ ] **No story is created until the user confirms it.** Leaving that question unanswered is a stop, not a default.
+- [ ] Confirm: the stories are filed under `ABC-123`.
+- [ ] Decline and give `ABC-200`: the epic read and the duplicate search are repeated against `ABC-200` before anything is created.
+- [ ] With no epic anywhere in the conversation, the checkpoint asks for the key instead.
