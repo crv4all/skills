@@ -46,6 +46,7 @@ of these is cheap to check on a list and expensive to find in Jira.
 | No cycles, of any length | A blocks B and B blocks A. Neither can start, and no board view can order them. |
 | Direction is stated, not implied | "Related to story 7" hides whether story 7 is a blocker. |
 | A dependency on work outside the batch names a real key or a real team | "Waits on the platform work" is not actionable. |
+| A real key named as a dependency exists | A typo that becomes a link to nothing. Read each one; one that does not resolve goes to the checkpoint and gets no link until answered. |
 
 Cycle detection on a list this size is a walk of the graph: for each node, follow
 its blockers depth first, and if the walk reaches the node it started from, the
@@ -67,6 +68,10 @@ ticket; the link is for every other tool the team uses. Create both.
 Use the create-issue-link capability, and read the available link types first
 rather than assuming a name. The types most tenants ship are `Blocks`,
 `Relates`, `Duplicate` and `Cloners`.
+
+**If there is no `Blocks` type**, create the stories and no dependency links.
+Do not substitute `Relates`, for the reason below. Report every dependency as
+prose-only, so someone with admin rights can add the type and the links.
 
 ### Direction
 

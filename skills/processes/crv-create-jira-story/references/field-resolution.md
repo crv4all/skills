@@ -81,7 +81,9 @@ a placeholder is a value nobody chose.
    `project_defaults` map, keyed by project key, of field names the organisation
    expects on every issue whether or not the create screen requires them. Resolve
    those names the same way, apply the values at create time, and list each one
-   in the report as a default rather than a supplied value.
+   in the report as a default rather than a supplied value. A list field the
+   input also sets, such as Labels, gets both: the default and the supplied
+   values merged, never one replacing the other.
 5. **Stop if anything is unresolved.** See below.
 6. **Build the create payload** using the resolved identifiers, never the names.
 
@@ -120,6 +122,22 @@ re-runs setup.
 
 If the create screen marks the team field required, an unanswered question is a
 stop, not a default.
+
+## Sprint, components and fix versions: only when named
+
+None of these is required on most screens, and none can be derived from a spec.
+Ask about each at the checkpoint only when the project has it, and components
+and fix versions only when create-metadata lists allowed values for them. No
+answer leaves the field unset: a story in the backlog is where grooming expects
+to find it.
+
+- **Sprint** takes a sprint id, and create-metadata lists none. When the user
+  names one ("the current sprint", "Sprint 42"), find it on an issue already in
+  it: search `project = <KEY> AND sprint in openSprints()`, read the Sprint
+  field of a result, and match the name. No match, or two open sprints and the
+  user said "current": say so, list the names found, and leave it unset.
+- **Components and fix versions** are option lists. Validate a named value
+  against the allowed values, as for any option field.
 
 ## Epic membership: always `parent`
 

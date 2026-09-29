@@ -404,3 +404,18 @@ request names no epic.
 - [ ] Confirm: the stories are filed under `ABC-123`.
 - [ ] Decline and give `ABC-200`: the epic read and the duplicate search are repeated against `ABC-200` before anything is created.
 - [ ] With no epic anywhere in the conversation, the checkpoint asks for the key instead.
+
+## B31 — Fields nobody named stay unset, and named ones resolve
+
+**Setup:** Everything configured. The project has a Sprint field with one open
+sprint, "Sprint 42", no components, and a recorded Labels default of
+`breeding`. One candidate supplies the label `dq`. The tenant has no `Blocks`
+link type, and one candidate is blocked by another in the batch.
+**Prompt:** "File these under ABC-123."
+
+- [ ] The checkpoint asks about the sprint and does not ask about components.
+- [ ] Unanswered: no story has a sprint.
+- [ ] Answer "the current sprint": it is resolved to Sprint 42 through an issue already in it, and the read-back shows it.
+- [ ] The candidate with `dq` is filed with both `breeding` and `dq`.
+- [ ] The stories are created, **no link is created**, no `Relates` link is substituted, and the report lists the dependency as prose-only.
+- [ ] A dependency on `ABC-999`, which does not exist, is raised at the checkpoint and gets no link.

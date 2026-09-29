@@ -131,6 +131,15 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Rules for the fields nobody mentioned.** Sprint, components and fix
+  versions had no rule, so a request for "the current sprint" had nowhere to
+  go. They are now asked only where the project has them and left unset
+  otherwise, and a named sprint is resolved through an issue already in it,
+  since create-metadata lists none. Supplied labels merge with a recorded
+  default instead of replacing it. A tenant without a `Blocks` link type gets
+  its stories and a prose-only dependency list, never a `Relates` link standing
+  in for one, and a dependency on a key that does not exist is asked about
+  before it becomes a link to nothing.
 - **One check-in, with the draft, before anything is filed.** Both skills run
   in a subagent, which cannot wait for an answer, yet the story skill asked
   about team, estimates, splits and cycles in three different steps, and the
