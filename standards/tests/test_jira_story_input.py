@@ -13,6 +13,7 @@ the last time something chose one.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SKILL = REPO_ROOT / "skills" / "processes" / "crv-create-jira-story"
 SCHEMA_PATH = SKILL / "assets" / "story_input.schema.json"
 EXAMPLE_PATH = SKILL / "assets" / "story_input.example.json"
+RENDERING_PATH = SKILL / "references" / "structured-input.md"
 
 
 @pytest.fixture(scope="module")
@@ -204,6 +206,23 @@ def test_a_story_cannot_carry_both_a_goal_and_a_user_story(
     )
     with pytest.raises(ValidationError):
         validator.validate(story)
+
+
+def test_every_schema_field_has_a_rendering_rule() -> None:
+    """A field the rendering table does not name gets rendered however a run likes.
+
+    That is how one story's test plan ends up a nested list and the next one's a
+    paragraph, so adding a property to the schema without a row in
+    ``structured-input.md`` fails here rather than in a batch.
+    """
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    rows = [
+        line.split("|")[1]
+        for line in RENDERING_PATH.read_text(encoding="utf-8").splitlines()
+        if line.startswith("| `")
+    ]
+    named = {name for row in rows for name in re.findall(r"`([a-z_]+)`", row)}
+    assert set(schema["properties"]) == named
 
 
 def test_dependencies_can_be_machine_readable(validator: Draft202012Validator) -> None:

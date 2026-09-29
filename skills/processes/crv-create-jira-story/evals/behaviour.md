@@ -316,3 +316,15 @@ against the schema with `description_markdown` set: it contains an em dash, a
 - [ ] The created description contains no em dash and no `TBD`.
 - [ ] The missing `Test plan` heading is asked about, not silently filed without and not invented.
 - [ ] The report shows what was changed in the supplied text, so the caller can object.
+
+## B25 — Structured input renders the same way every time
+
+**Setup:** Everything configured. `ABC-123` empty. Two candidates supplied
+against the schema, one of them `assets/story_input.example.json`.
+**Prompt:** "File these under ABC-123."
+
+- [ ] Headings appear in template order, and each field lands under the heading `references/structured-input.md` gives it.
+- [ ] Each test-plan item is one bullet with its level, and its steps are a numbered list nested under it, on both stories.
+- [ ] `blocked_by: [1]` appears under Dependencies and as a native `Blocks` link.
+- [ ] No label, estimate, priority, project key or plan-local `id` appears in either description.
+- [ ] A candidate supplied with no `test_plan` is asked about, not filed with an invented one.

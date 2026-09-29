@@ -137,6 +137,12 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   which is the kind of filler the writing reference bans. The first required
   heading may now be Goal: one sentence on what is true afterwards and why. The
   input schema takes `goal` or `user_story`, never both.
+- **Structured input has one rendering.** The story schema said what each field
+  held but not where it went, so the same batch could render a test plan as a
+  nested list on one story and a paragraph on the next. `structured-input.md`
+  now maps every schema field to its heading or Jira field, and says what a
+  missing required section does: it is asked about, never invented. A test
+  fails if a schema field is added without a row.
 - **A pre-rendered description is checked like any other.** The schema said
   `description_markdown` was "used as-is", which read as permission to skip the
   writing checks and the required headings. It now says the field replaces

@@ -155,7 +155,8 @@ does not resolve is a typo worth catching before eight create calls fail.
 Structured input may be supplied against
 [assets/story_input.schema.json](assets/story_input.schema.json), with
 [assets/story_input.example.json](assets/story_input.example.json) as a worked
-one. Otherwise build candidates conversationally; the rules below apply either
+one, and rendered field by field as
+[references/structured-input.md](references/structured-input.md) says. Otherwise build candidates conversationally; the rules below apply either
 way, since the schema cannot check a conversation. They also apply to a
 supplied `description_markdown`, which replaces rendering, not checking.
 
@@ -432,6 +433,7 @@ is what made the last wrong batch look right.
 - [references/field-resolution.md](references/field-resolution.md): resolving fields by name, epic membership, verifying the write
 - [references/issue-writing.md](references/issue-writing.md): title length, banned punctuation, vocabulary, rewrites
 - [references/dependency-links.md](references/dependency-links.md): two-pass creation, cycle validation, native link direction
+- [references/structured-input.md](references/structured-input.md): where each structured-input field goes, and what a missing one does
 - [references/failure-modes.md](references/failure-modes.md): every failure, what it means, and which of stop, file-anyway or ask it takes
 - [references/remediation.md](references/remediation.md): fixing a batch that was created wrongly
 - `scripts/jira_setup.py`: records site, project, and per-project field defaults; stores no credentials
