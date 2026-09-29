@@ -27,7 +27,7 @@
       "type": "string",
       "enum": ["supplied", "proposed-and-approved", "unsized"],
       "default": "supplied",
-      "description": "Where the estimate came from. \"proposed-and-approved\" means the agent proposed it in a batch table and the user approved the table rather than grooming the story. \"unsized\" goes with an absent story_points and states that the story was filed deliberately without an estimate, for grooming to size. That provenance is recorded on the issue and in the report, because once a number is in Jira an invented estimate is indistinguishable from an agreed one."
+      "description": "Where the estimate came from. \"proposed-and-approved\" means the agent proposed it in a batch table and the user approved the table rather than grooming the story. \"unsized\" goes with an absent story_points and states that the story was filed deliberately without an estimate, for grooming to size. A proposed-and-approved estimate is recorded as a comment on the issue, which stays true after re-sizing, and in the report, because once a number is in Jira an invented estimate is indistinguishable from an agreed one. An unsized story needs no record beyond its empty field."
     },
     "id": {
       "type": ["string", "integer"],

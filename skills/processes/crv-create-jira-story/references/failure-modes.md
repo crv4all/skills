@@ -32,7 +32,7 @@ Three outcomes appear in the right column, and they are not interchangeable:
 | Epic-membership field unresolvable | Neither `parent` nor `Epic Link` is present under any known name | Stop. Name the field and list the available names. A batch of orphans reports as success and is expensive to find. |
 | Story Points unresolvable, and some candidate has an estimate | The number would be accepted and silently dropped | Stop. Name the field and list the available names. |
 | Story Points unresolvable, and nobody estimated | Nothing to write | Not a failure. File without it and say so. |
-| Missing estimate on a candidate | Nothing to write, and nothing to invent | File the story unsized. Record it in the Estimate note and in the report. Never block the batch, never assign a number. |
+| Missing estimate on a candidate | Nothing to write, and nothing to invent | File the story unsized and name it in the report. The empty field is the record. Never block the batch, never assign a number. |
 | No team field on the project | Not every project has one | Not a failure. Say so and file without it. Do not substitute a label. |
 | Team answer not among the allowed values | A typo, or a team that was renamed | List the allowed values and ask again. Do not send it: Jira accepts the payload and drops the value. |
 | Priority marked required on the create screen | One of only two cases where a Priority is sent, the other being one the user named | Stop and ask which value, then send the answer. Never choose one to get past the screen, and never send `TBD`. |

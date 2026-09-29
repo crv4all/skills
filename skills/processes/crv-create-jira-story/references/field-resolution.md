@@ -184,7 +184,8 @@ at all. Reject only what is genuinely invalid: zero, negatives, and non-integers
 happens in grooming, with the people who will do the work. Three rules follow:
 
 - No estimate supplied, and none agreed: omit the field and file the story. Say
-  in the report and in the story's Estimate note that it was filed unsized.
+  so in the report. Do not also say it in the description: the empty field is
+  the record, and a sentence saying so goes stale the moment grooming sizes it.
 - Never write a number the user did not agree to. Once a number is in Jira an
   invented estimate is indistinguishable from a groomed one, and it gets summed
   into a sprint commitment.

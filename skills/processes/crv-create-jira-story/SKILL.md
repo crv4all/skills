@@ -14,8 +14,8 @@ description: >-
 license: Apache-2.0
 compatibility: >-
   Requires an Atlassian MCP server with create-issue, read-issue, edit-issue,
-  JQL search, issue-link, and project create-metadata capabilities, authenticated
-  by the harness. Requires Python 3.9+ for the bundled setup script. Stores no
+  JQL search, issue-link, and project create-metadata capabilities, plus
+  add-comment when estimates are bulk-approved, authenticated by the harness. Requires Python 3.9+ for the bundled setup script. Stores no
   credentials.
 metadata:
   owner: cloudforce-team-data
@@ -108,7 +108,8 @@ unreachable wastes the whole decomposition.
 
 1. **Atlassian MCP server available?** Enumerate available tools and match on
    capability, not name. Needed here: create, read and edit an issue, search by
-   JQL, read project create-metadata, list and create issue links.
+   JQL, read project create-metadata, list and create issue links. Adding a
+   comment is needed only if estimates are bulk-approved, in Step 7.
 
    Absent here but present in the spawning session: tool inheritance, so hand
    back for an inline re-run rather than sending the user to setup. Absent
@@ -227,12 +228,15 @@ the path and ask which arrow is backwards. Procedure:
 grooming, with the people who will do the work.
 
 - An estimate the user supplied is used as given.
-- No estimate: **file the story with the field unset.** Do not block the batch,
-  and do not assign a number. Say so in the story's "Estimate note" section and
-  in the report.
+- No estimate: **file the story with the field unset**, and name it in the
+  report. Do not block the batch, do not assign a number, and do not write
+  "filed unsized" into the description. The empty field is the record, and an
+  `is EMPTY` query on it is a grooming list that stays right after grooming. A
+  line in the description is wrong the moment someone sizes the story.
 - You may offer once, for the whole batch: one table of proposed numbers, one
-  approval. On approval each story records that its number was proposed and
-  bulk-approved rather than groomed. On a decline or no answer, file unsized.
+  approval. On approval, each story gets a comment recording that its number
+  was proposed and bulk-approved rather than groomed, in Step 7. On a decline
+  or no answer, file unsized.
 
 An unsized story is a five-second fix in grooming. An invented number is
 indistinguishable from an agreed one the moment it is in Jira, and it gets summed
@@ -301,6 +305,12 @@ created the issue.
 3. Direction is easy to get backwards. For a `Blocks` link the **inward issue
    is the blocker**. Create the first link, read one of the two issues back,
    confirm the rendered relationship says what you meant, then create the rest.
+4. For every bulk-approved estimate, add one comment to that story: "3 points
+   proposed during filing and approved as part of a batch on 2026-09-29, not
+   groomed with the team." A comment is dated history, so it stays true after
+   the story is re-sized, where a line in the description would not. If the
+   server has no comment capability, say so and carry the provenance in the
+   report only.
 
 Link types and what not to link:
 [references/dependency-links.md](references/dependency-links.md).
@@ -325,6 +335,7 @@ Use the `"Epic Link" = <EPIC-KEY>` form on a company-managed project. Then check
 | Priority unset unless the user named one, no `TBD` or `Priority:` line | A default or a placeholder that got sent anyway |
 | Every applied organisation default is present | Same, for the other recorded defaults |
 | Point total summed from these rows, over the ones that have a number | A total reported from the plan is arithmetic nobody checked |
+| Every bulk-approved estimate has its provenance comment | A proposed number that now looks groomed |
 | No `[[dep:` remains in any description | An unfinished pass two |
 | Each asserted dependency has a link, in the right direction | A dependency that exists only as prose |
 
@@ -392,6 +403,8 @@ Before reporting done:
       shorten a description.
 - [ ] No story has a Priority in the read-back that the user did not name.
 - [ ] No estimate was invented, and every unsized story is named in the report.
+- [ ] Every bulk-approved estimate carries its provenance comment, or the report
+      says the server could not add one.
 - [ ] The team field holds what the user gave, or is unset because they said so,
       and the report says which.
 - [ ] Every created story is a child of the named epic **according to the Step 8

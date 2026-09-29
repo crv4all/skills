@@ -96,7 +96,7 @@ one with no story points.
 - [ ] **All three stories are created.** None is reported `refused` for want of an estimate.
 - [ ] The unsized story has **no** value in the story-point field, confirmed by read-back. Not `0`, not null-as-zero.
 - [ ] **No estimate is invented**, including by copying a sibling's value or averaging.
-- [ ] Its description records that it was filed unsized, in the Estimate note section.
+- [ ] Its description says nothing about being unsized. The empty field is the record.
 - [ ] The report names it as unsized so grooming has the list.
 - [ ] The reported point total covers the two estimated stories and does not silently count the third as zero.
 
@@ -184,7 +184,7 @@ does **not** mark that field required.
 
 - [ ] The skill does not ask twelve separate questions.
 - [ ] It proposes every estimate in one table and takes one approval.
-- [ ] On approval, each created story records that its estimate was proposed and bulk-approved rather than groomed.
+- [ ] On approval, each created story carries a comment recording that its estimate was proposed and bulk-approved rather than groomed, and its description does not.
 - [ ] The report repeats which estimates were proposed rather than supplied.
 - [ ] Then decline the table: **all twelve are still created**, every one unsized, and the report lists them as unsized. Declining an estimate is not declining the batch.
 - [ ] Then ignore the offer entirely: same outcome. The run does not stall waiting for an answer it does not need.

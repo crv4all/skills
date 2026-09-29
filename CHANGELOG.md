@@ -102,9 +102,11 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   keyed, is still a guess and still stops the run.
 - **Bulk estimation, sanctioned.** Asking for 29 estimates one at a time is 29
   questions. The skills may propose every estimate in one table and take one
-  approval, provided each issue records that its number was proposed and
-  bulk-approved rather than groomed. `estimate_source` in the input schema
-  carries that provenance.
+  approval, provided each issue carries a comment recording that its number was
+  proposed and bulk-approved rather than groomed. `estimate_source` in the input
+  schema carries that provenance. A comment rather than a line in the
+  description, because a comment is dated history and stays true after the
+  story is re-sized, where the description would contradict the field.
 - **Tenant configuration outside the repository.** Both skills bundle
   `jira_setup.py`, which records the Jira site and default project key in
   `${XDG_CONFIG_HOME:-$HOME/.config}/crv-agent-skills/jira.json` at mode `0600`.
@@ -137,8 +139,8 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   names the existing key. A near match is asked about once.
 - **Story points are no longer mandatory.** Sizing belongs to the team, in
   grooming, with the people who will do the work. A story with no estimate is
-  now filed with the field unset, recorded as unsized on the issue and in the
-  report, and counted separately in the total rather than folded in as zero.
+  now filed with the field unset, named in the report, and counted separately
+  in the total rather than folded in as zero.
   Requiring an estimate left only two moves, and both were wrong: block the
   batch over a value that takes five seconds to set in grooming, or invent a
   number that gets summed into a sprint commitment and cannot be told apart from

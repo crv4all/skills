@@ -54,14 +54,6 @@ acceptance criteria already say everything.>
 
 <What this story deliberately does not do, when a reader would assume it does.>
 
-## Estimate note (optional)
-
-<Only when the estimate was proposed by the agent and approved in bulk rather
-than groomed, or when the story was filed with no estimate. State which:
-"3 points proposed on 2026-09-02 and approved as part of a batch, not groomed by
-the team", or "Filed without an estimate, to be sized in grooming." An estimate
-whose provenance is unrecorded is indistinguishable from an agreed one.>
-
 ## Technical notes (optional)
 
 <The detail the implementer would otherwise go looking for: the files, tables,
