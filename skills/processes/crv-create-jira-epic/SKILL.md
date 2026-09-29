@@ -3,7 +3,7 @@ name: crv-create-jira-epic
 description: >-
   Files a Jira Epic through the Atlassian MCP, resolving the required fields of
   the target project at run time instead of assuming custom-field IDs from any
-  particular tenant, rendering a short description as markdown from a section
+  particular tenant, rendering the description as markdown from a section
   template, asking which team the work belongs to, and reading the created epic
   back to prove what was stored. Use when someone wants to create, file, or
   raise an epic in Jira, including "create a Jira epic", "open an epic for this
@@ -12,8 +12,9 @@ description: >-
   on, or transitioning an issue that already exists.
 license: Apache-2.0
 compatibility: >-
-  Requires an Atlassian MCP server with create-issue, read-issue, JQL search, and
-  project create-metadata capabilities, authenticated by the harness. Requires
+  Requires an Atlassian MCP server with create-issue, read-issue, edit-issue,
+  JQL search, and project create-metadata capabilities, authenticated by the
+  harness. Requires
   Python 3.9+ for the bundled setup script. Stores no credentials.
 metadata:
   owner: cloudforce-team-data
@@ -27,8 +28,7 @@ metadata:
 
 Filing an epic is easy to do and easy to do wrong. Three failures matter:
 creating it in a tenant the skill guessed at, creating it missing a field the
-project requires, and creating it long, padded, and carrying values nobody
-chose. The first two look like success in the transcript and become someone
+project requires, and creating it padded and carrying values nobody chose. The first two look like success in the transcript and become someone
 else's problem later. The third tells the team nobody owned the ticket.
 
 ## Execution
@@ -49,6 +49,14 @@ project's agent configuration, and say which one you used.
 **Never silently escalate.** If the subagent is out of its depth, stop and say
 so rather than re-running on a bigger model.
 
+**It hands back exactly once before creating anything**, because a subagent
+cannot wait for an answer. The hand-back holds the epic drafted as it will be
+filed, summary and full description, and every question at once: missing
+sections, team, Priority, and any near-match the Step 3 search found. Each
+question names what an unanswered one means. The main session shows it to the
+user and passes the answers back, never answering for them, and the run
+re-runs the Step 3 search before creating.
+
 **A subagent may not inherit the Atlassian MCP server**, and that looks exactly
 like a server nobody installed. If the tools are absent here but the spawning
 session had them, this is tool inheritance and not setup: say so, create
@@ -61,20 +69,22 @@ mechanism. Wording and reasoning:
 
 One Jira Epic, and a report naming it. Specifically:
 
-- An Epic in the target project, with a markdown description under 400 words,
-  carrying the five required sections of
+- An Epic in the target project, with a markdown description carrying the five
+  required sections of
   [assets/epic-description.md.template](assets/epic-description.md.template) in
   order and written to [references/issue-writing.md](references/issue-writing.md).
 - The team the user named, or none because they said so.
-- No Priority unless the user named one, and no placeholder value in the text.
+- No Priority the run chose: the user's named value, or the project's own
+  default, reported as such. No placeholder value in the text.
 - Every field the project marks required on the create screen, and every recorded
   organisation default, populated.
 - A report giving the issue key, its browse URL, the project and issue type used,
   the values read back from the created epic, and any field whose value was
   inferred rather than supplied.
 
-Or: nothing created, and a report saying exactly what was missing. Those are the
-only two outcomes. There is no partial success.
+Or: nothing created because the epic already exists, and a report naming its
+key. Or: nothing created, and a report saying exactly what was missing. Those
+are the only three outcomes. There is no partial success.
 
 ## When not to use this
 
@@ -94,8 +104,10 @@ differently and are fixed differently, so check them in order and report what is
 actually blocking.
 
 1. **Atlassian MCP server available?** Enumerate the available tools and match on
-   capability, not on name. Needed here: create an issue, read an issue, search by
-   JQL, read project create-metadata, list visible projects.
+   capability, not on name. Needed here: create, read and edit an issue, search
+   by JQL, read project create-metadata, list visible projects. Edit is for the
+   one case where the read-back contradicts the write, and the fix is a patch
+   in place: without it, a wrong epic can only be reported, not corrected.
 
    If MCP tools are **absent and the spawning session had them**: tool
    inheritance. Hand back for an inline re-run, not to setup.
@@ -106,15 +118,22 @@ actually blocking.
    If MCP tools are **present but every call returns unauthorised**: OAuth is not
    complete. Say so explicitly and point to the authentication instructions.
 
-   Read-issue is required, not optional: Step 4 verifies the epic by reading it
-   back, and a create call that cannot be verified is a create call whose result
-   is unknown.
+   Read-issue and JQL search are required, not optional. Step 3 searches for an
+   existing epic before creating one, and without that a re-run files a second
+   copy. Step 4 verifies the epic by reading it back, and a create call that
+   cannot be verified is a create call whose result is unknown.
 
 2. **Site and project known?**
 
    ```bash
-   python3 scripts/jira_setup.py --check
+   python3 <this skill's directory>/scripts/jira_setup.py --check
    ```
+
+   The path is relative to this skill, not to the user's repository, which is
+   where the shell usually is. Run from there as `scripts/jira_setup.py`, it
+   fails with Python's exit `2`, which reads as a usage error rather than a
+   missing file. Every `jira_setup.py` command in this skill and its references
+   takes the same prefix.
 
    Exit `0` means configured. Exit `1` names the missing keys. Exit `4` means the
    configuration file is corrupt, which is a different problem with a different
@@ -134,7 +153,8 @@ wrong project is far more expensive than a refusal, and much harder to notice.
 ## Step 1. Gather the content
 
 Render [assets/epic-description.md.template](assets/epic-description.md.template).
-Ask for what is missing, in one batch rather than one question at a time.
+Collect what is missing. It is asked at the checkpoint in Step 3, with every
+other question, not one at a time as you find it.
 
 You need a summary and enough for the five required sections. Dependencies,
 Technical notes and Links are optional: drop an optional heading rather than
@@ -143,9 +163,9 @@ decided" in words. Never delete a required heading to hide that it was
 unanswered, and never write `TBD` in it: the first destroys the signal that the
 question was asked, the second reads as an oversight nobody comes back to.
 
-**400 words for the whole description.** An epic is read to decide whether work
-belongs in it, and that decision needs the outcome and the boundary, not a
-narrative.
+**No word cap, and no padding.** An epic is read to decide whether work belongs
+in it. Give that decision the outcome and the boundary in full, and leave out
+the narrative around them.
 
 The summary is a noun phrase naming the outcome, at most 80 characters and 12
 words. Prose and title rules, the patterns that mark generated text, and the
@@ -182,19 +202,46 @@ Two fields need naming here:
   the work, so this is the one field that cannot be derived. `none` is a valid
   answer and gets reported as the user's choice.
   [field-resolution.md § Team](references/field-resolution.md#team-ask-the-user-do-not-assume).
-- **Priority: never choose one.** Not from a recorded default, not inferred from
-  the spec, and never as `TBD`, which is not an allowed value and renders as a
-  broken icon. Priority is groomed against the whole backlog. Two exceptions,
-  both a value from a person: a priority the user names explicitly, sent after
-  validating it against the allowed values and reported as supplied, and a
-  create screen that marks it required, where you stop and ask.
+- **Priority: never choose one.** Not from a recorded default and not inferred
+  from the spec. Priority is groomed against the whole backlog. Send nothing
+  unless the user names a value, validated against the allowed values and
+  reported as supplied. Where the project has a Priority default (BAPP's is an
+  option named `TBD`), Jira stores it anyway: that is the project's value, not
+  the run's, so the read-back expects it and the report names it as the
+  default. Required with no default: stop and ask.
+  [field-resolution.md § Priority](references/field-resolution.md#fields-that-must-be-resolved-by-name-every-run).
 
 **If a required field cannot be filled, stop and say which one.** Do not create
 the epic and mention the gap afterwards.
 
-## Step 3. Create
+## Step 3. Search, then create
 
-Call the create-issue capability with the resolved field identifiers, sending the
+**Search before you create, every time.** A re-run of the same request, or a
+teammate who filed the epic yesterday, otherwise leaves two epics splitting the
+same stories between them. One query, before the create call, across every
+status:
+
+```text
+project = <KEY> AND issuetype = Epic AND summary ~ "<two or three distinctive words>"
+```
+
+`~` is a text search and matches loosely, so compare the results yourself,
+normalising case and whitespace:
+
+- **Exact match: create nothing.** Report the existing key, its status, and
+  that nothing was created. Do not update it: the user asked to create, and
+  rewriting an epic someone has already groomed is a worse surprise than a skip.
+- **Near match**, the same outcome in different words: ask at the checkpoint
+  whether it is the same epic. Unanswered, create nothing: two epics that each
+  hold half the stories cost far more than one question.
+- **No match:** go on.
+
+**Check in once**, as described under Execution: the drafted epic and every
+question, with its default. Unanswered, a missing section reads "Not yet
+decided", the team takes the recorded default and says so, and Priority keeps
+the project default. On resuming, re-run the search above.
+
+Then call the create-issue capability with the resolved field identifiers, sending the
 description as **markdown**, using whatever content-format parameter the server
 exposes. Do not hand-build Atlassian Document Format: a subtly malformed node
 yields an epic whose description renders blank, which is a failure that reports
@@ -217,9 +264,9 @@ values before reporting anything.
 | The key exists and is of the Epic issue type | A create that landed as the wrong type |
 | It is in the intended project | A default project nobody stated |
 | Every required heading is present in the stored description | A truncated or blank render |
-| The description is under 400 words and has no `TBD` or `Priority:` line | Padding and placeholders that survived |
+| The description has no `TBD` or `Priority:` line | Placeholders that survived |
 | The team field holds the user's answer, or nothing if they said `none` | A team field Jira accepted and dropped |
-| Priority is unset unless the user named one | A default or a guess that got sent anyway |
+| Priority is the user's named value, or the project default, or unset where there is no default | A recorded default or a guess that got sent |
 | Every applied default holds the value sent | A field identifier Jira ignored |
 
 Then report: the issue key, the browse URL built from the recorded site, the
@@ -241,7 +288,9 @@ Then say what to do next: stories under this epic are `crv-create-jira-story`.
 | Required field unresolvable | Screen expects something not supplied | Stop. Name the field and the available field names. |
 | No team field on the project | Not every project has one | Not a failure. Say so and file without it. |
 | Team answer not among the allowed values | Typo, or a renamed team | List the allowed values and ask again. Do not send it. |
-| Priority required on the create screen | The only case that sets Priority | Stop. Ask which value, then send the answer. |
+| Priority required on the create screen, with no default | The only case the run must ask about | Stop. Ask which value, then send the answer. |
+| An epic with the same summary exists | A re-run, or someone filed it first | Not a failure. Create nothing, and report the existing key and its status. |
+| An epic with a similar summary exists | Possibly the same work in other words | Ask once whether it is the same epic, then create or stop on the answer. |
 | Create call errors | Varies | Search for the summary before any retry. Report the error text verbatim. |
 | Read-back contradicts the write | The epic exists and is wrong | Do not report done. Patch in place and verify again. |
 
@@ -260,10 +309,12 @@ Before reporting done:
 - [ ] Preflight passed, or nothing was created.
 - [ ] The description carries every required heading, in order, and says so from
       the read-back rather than from the payload.
+- [ ] A JQL search for an existing epic ran before the create call.
 - [ ] Every field the project marks required has a value.
 - [ ] The issue-writing checklist ran: summary at most 80 characters, no em or
-      en dash, description under 400 words, no `TBD`, no `Priority:` line.
-- [ ] The epic has no Priority in the read-back that the user did not name.
+      en dash, no padding pattern, no `TBD`, no `Priority:` line.
+- [ ] The epic's Priority in the read-back is the user's named value or the
+      project default, and the report says which.
 - [ ] The team field holds what the user gave, or is unset because they said so,
       and the report says which.
 - [ ] The description states no count of child stories.

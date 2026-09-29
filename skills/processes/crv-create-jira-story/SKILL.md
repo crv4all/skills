@@ -2,8 +2,8 @@
 name: crv-create-jira-story
 description: >-
   Files Jira Stories under a parent Epic through the Atlassian MCP, searching
-  for duplicates by JQL before creating anything, writing short descriptions
-  that do not read as generated text, asking who the work is assigned to,
+  for duplicates by JQL before creating anything, writing descriptions that
+  carry what the implementer needs and do not read as generated text, asking who the work is assigned to,
   resolving the epic-membership and Story Points fields from the target project
   at run time, creating the native dependency links, and reading every created
   story back to prove what was stored. Use when someone wants to create, file,
@@ -14,9 +14,9 @@ description: >-
 license: Apache-2.0
 compatibility: >-
   Requires an Atlassian MCP server with create-issue, read-issue, edit-issue,
-  JQL search, issue-link, and project create-metadata capabilities, authenticated
-  by the harness. Requires Python 3.9+ for the bundled setup script. Stores no
-  credentials.
+  JQL search, issue-link, and project create-metadata capabilities, plus
+  add-comment when estimates are bulk-approved, authenticated by the harness.
+  Requires Python 3.9+ for the bundled setup script. Stores no credentials.
 metadata:
   owner: cloudforce-team-data
   layer: processes
@@ -38,11 +38,11 @@ The quiet way is worse. Twenty-nine stories are created, every call returns
 success, and none of them is attached to the epic. Nothing in the transcript says
 so. So **read every write back and report what was stored, never what was sent.**
 
-The third way is the one the team notices first. Every story is three times as
-long as it needs to be, padded with the shapes that mark generated text, and
-carries a Priority nobody chose and an estimate nobody agreed to. It reads as
-though no person owned the ticket, because none did. So **write short, cut the
-padding, and invent no values.**
+The third way is the one the team notices first. Every story is padded with the
+shapes that mark generated text, and carries a Priority nobody chose and an
+estimate nobody agreed to. It reads as though no person owned the ticket,
+because none did. So **cut the padding, not the content, and invent no
+values.**
 
 ## Execution
 
@@ -56,42 +56,40 @@ call tools. **State it, do not ask about it.** One line, then start work:
 
 > Running `crv-create-jira-story` in a subagent on the economy tier.
 
-A stated default the user can override beats a question they have to clear
-before any work starts. Honour a tier they name in the session or in the
-project's agent configuration, and say which one you used.
+Honour a tier the user names in the session or in the project's agent
+configuration, and say which one you used.
 
 **Never silently escalate.** If the subagent is out of its depth, stop and say
 so rather than re-running on a bigger model.
 
-**A subagent may not inherit the Atlassian MCP server**, and that looks exactly
-like a server nobody installed. If the tools are absent here but the spawning
-session had them, this is tool inheritance and not setup: say so, create
-nothing, and hand back for an inline re-run. Running inline is the sanctioned
-fallback, not a rule being broken. Same if the harness has no subagent
-mechanism. Wording and reasoning:
+**Pass the subagent what it cannot see:** the spec or notes, and every epic key,
+browse URL, or epic filed earlier in this session that the conversation
+mentions. It proposes one of those rather than asking cold.
+
+**It hands back exactly once before creating anything**, with the drafted batch
+and every question at once, and resumes with the answers. The main session shows
+that message to the user and passes the answers back, never answering for them.
+[references/checkpoint.md](references/checkpoint.md).
+
+**A subagent may not inherit the Atlassian MCP server**, which looks exactly
+like one nobody installed. Tools absent here but present in the spawning
+session: say it is tool inheritance, create nothing, and hand back for an
+inline re-run, the sanctioned fallback. Same with no subagent mechanism:
 [references/jira-setup.md](references/jira-setup.md#absent-in-a-subagent-present-in-the-main-session).
 
 ## What this produces
 
 One or more Jira Stories under a named parent Epic, and a report. Specifically:
 
-- Each Story has a markdown description under 200 words, carrying the four
-  required sections of
-  [assets/story-description.md.template](assets/story-description.md.template)
-  and written to [references/issue-writing.md](references/issue-writing.md).
-- Each Story is a child of the named epic, verified by reading it back.
-- Each Story carries the team the user named, or none because they said so.
-- No Story has a Priority the run chose, and no description a placeholder value.
-- Every required field is populated. Story points are set where a number was
-  supplied or agreed, and left unset otherwise.
-- Every dependency the decomposition asserts exists as a native issue link, not
-  only as prose.
-- A per-candidate report: created with its key, skipped as a duplicate naming
-  the existing key, or refused naming what was missing. Totals come from the
-  read-back, not the plan.
-
-Every candidate appears in the report with one of those three outcomes. A
-candidate that is silently absent is a bug.
+- Each Story is a child of the named epic, with a markdown description built
+  from [assets/story-description.md.template](assets/story-description.md.template)
+  and written to [references/issue-writing.md](references/issue-writing.md),
+  complete enough to pick up without the conversation.
+- The team, Priority and estimate a person chose, or the documented default,
+  and no value the run invented. Every dependency as a native link.
+- A report with every candidate as created, skipped as a duplicate, or refused
+  naming what was missing, quoted from the read-back. A candidate silently
+  absent from it is a bug.
 
 ## When not to use this
 
@@ -108,42 +106,44 @@ unreachable wastes the whole decomposition.
 
 1. **Atlassian MCP server available?** Enumerate available tools and match on
    capability, not name. Needed here: create, read and edit an issue, search by
-   JQL, read project create-metadata, list and create issue links.
+   JQL, read project create-metadata, list and create issue links. Adding a
+   comment is needed only if estimates are bulk-approved, in Step 7.
 
-   Absent here but present in the spawning session: tool inheritance, so hand
-   back for an inline re-run rather than sending the user to setup. Absent
-   everywhere: point at [references/jira-setup.md#1-the-atlassian-mcp-server](references/jira-setup.md#1-the-atlassian-mcp-server).
-   Present but every call unauthorised: OAuth is incomplete, so point at the
-   authentication instructions. Say which of the three it is.
-
-   **JQL search and read-issue are not optional.** Step 3 is the reason this
-   skill is safe to invoke twice, and Step 8 is the only thing standing between
-   a wrong batch and a report that calls it done. Neither runs without them.
+   Say which of three it is: absent here but present in the spawning session
+   (tool inheritance: hand back for an inline re-run), absent everywhere
+   ([jira-setup.md § 1](references/jira-setup.md#1-the-atlassian-mcp-server)),
+   or present with every call unauthorised (OAuth incomplete). **JQL search and
+   read-issue are not optional**: Steps 3 and 8 are what make a re-run safe and
+   a report true.
 
 2. **Site and project known?**
 
    ```bash
-   python3 scripts/jira_setup.py --check
+   python3 <this skill's directory>/scripts/jira_setup.py --check
    ```
 
-   Exit `0` configured. Exit `1` names the missing keys. Exit `4` the
-   configuration file is corrupt, a different problem with a different fix.
+   The path is the skill's, not the user's repository's: from there a bare
+   `scripts/jira_setup.py` exits `2`, which reads as a usage error. Every
+   `jira_setup.py` command here takes the same prefix. Exit `0` configured,
+   `1` names the missing keys, `4` the file is corrupt, a different fix.
 
-   Exit `1` is not automatically a stop. A value is **supplied** if the user named
-   it in this session, including inside a board or issue URL they pasted, or if
-   the accessible-sites capability returns exactly one site. Use it, say where it
-   came from, and give the `--set ... --confirm` command that records it. Anything
-   less certain is a **guess**: two candidate sites, no project key anywhere, a
-   project name that is not a key. Guesses stop the run.
+   Exit `1` is a stop only for a **guess**: two candidate sites, no project key
+   anywhere, a project name that is not a key. A value is **supplied** if the
+   user named it in this session, including in a pasted URL or issue key, or if
+   exactly one site is accessible. Use it, say where it came from, and give the
+   `--set ... --confirm` command that records it.
 
 **On a stop, create nothing** and report which check failed. Do not attempt the
 call to see what happens.
 
 ## Step 1. Read the parent epic
 
-Every story needs a parent Epic key. If none was given, ask; do not file
-orphans, and do not create an epic to hold them. That is `crv-create-jira-epic`,
-and it is a decision the user should make knowingly.
+Every story needs a parent Epic key. If the request names none, look for one the
+conversation mentioned: a key, a browse URL, or an epic filed earlier in this
+session. Read it and propose it at the checkpoint, with its summary and status.
+If there is none, the checkpoint asks for the key. Never file orphans, and never
+create an epic to hold them: that is `crv-create-jira-epic`, and a decision the
+user makes knowingly.
 
 Read the epic. It gives you the project to file into, the context the
 descriptions should not restate, and confirmation the key exists. A key that
@@ -151,53 +151,64 @@ does not resolve is a typo worth catching before eight create calls fail.
 
 ## Step 2. Build each candidate
 
-Structured input may be supplied against
-[assets/story_input.schema.json](assets/story_input.schema.json), with
-[assets/story_input.example.json](assets/story_input.example.json) as a worked
-one. Otherwise build candidates conversationally; the rules below apply either
-way, since the schema cannot check a conversation.
+Input may be structured, against
+[assets/story_input.schema.json](assets/story_input.schema.json) and rendered as
+[references/structured-input.md](references/structured-input.md) says, or
+conversational. The rules below apply either way, including to a supplied
+`description_markdown`, which replaces rendering, not checking.
 
 Render [assets/story-description.md.template](assets/story-description.md.template)
-for each. Four headings are required and the rest are optional: drop an optional
-heading rather than filling it, and link the epic rather than restating it. A
-copy of the epic in eight descriptions is eight copies to go stale.
+for each. Four sections are required: an unheaded opening, then the Acceptance
+criteria, Test plan and Dependencies headings. Drop an optional heading rather
+than filling it, and link the epic rather than restating it. The description
+**opens with the user story, with no heading**: Jira already labels the field.
+With no real person in the sentence, open with a one-sentence goal instead:
+"As a developer, I want the service split" is padding shaped like a story.
 
-**Small is the requirement, not the aspiration.** 200 words per description,
-3 sentences of context, 5 acceptance criteria. A story nobody reads to the end
-gets picked up wrong.
+**Complete, not padded.** There is no word cap. Say everything the implementer
+needs that the code and the epic do not, including the files, contracts and
+examples, and nothing else. More than about seven acceptance criteria usually
+means two stories: say so and offer the split, but if the user wants one story,
+file one and drop no criterion to shorten it.
 
-Titles and prose follow [references/issue-writing.md](references/issue-writing.md),
-which names the patterns that make text read as generated and gives the rewrite
-for each. The four rules broken most often: a summary over 80 characters, an em
-dash anywhere, a description padded past the cap, and a `TBD` where the honest
-answer is "Not yet decided" or an unset field. All four are checked in Step 4,
-before anything is created, because fixing them afterwards is one edit call per
-issue and an edit history that suggests the batch was filed carelessly.
+**Tasks only when the source has steps.** Criteria say what is true when the
+story is done; tasks say how to get there. Take them from what the person or the
+spec listed, never generate them, and drop the heading when there are none. A
+step that needs its own owner stays, and is named in the report as a likely
+sub-task.
+
+Rewrite every summary to the title rules **here**, before Step 3 compares it
+against Jira. Titles and prose follow [references/issue-writing.md](references/issue-writing.md),
+which names the patterns that read as generated and the rewrite for each. They
+are checked in Step 4, before anything is created, because fixing them
+afterwards is one edit call per issue.
 
 Cross-references between candidates use the `[[dep:<n>]]` placeholder, never a
-plan-local number like "story 4" and never a guessed key. Why, and how the
-placeholders get resolved: [references/dependency-links.md](references/dependency-links.md).
+plan-local number or a guessed key:
+[references/dependency-links.md](references/dependency-links.md).
 
 ## Step 3. Search for duplicates before creating anything
 
-Search the epic for existing children, once, before the first create:
+Search the epic for existing children of **every** issue type, since a Task
+with the same summary is as much a duplicate as a Story:
 
 ```text
-parent = <EPIC-KEY> AND issuetype = Story
+parent = <EPIC-KEY>
 ```
 
-If `parent` is unsupported on this tenant, fall back to `"Epic Link" =
-<EPIC-KEY>`. If neither works, **stop**. Proceeding without duplicate detection
-is precisely the failure mode this step exists to prevent.
+If the search errors, **stop**: proceeding without duplicate detection is the
+failure this step exists to prevent.
 
-Compare each candidate summary against the existing ones, normalising case and
-whitespace. On a match, **skip that candidate** and record the existing key. Do
-not update the existing story: the caller asked to create, and rewriting a story
+Compare both the summary **as it will be filed** and the summary as given,
+normalising case and whitespace. A re-run's raw long title never equals the
+80-character rewrite already in Jira, and an older story may be unrewritten.
+When either form matches, **skip that candidate** and record the existing key.
+Do not update the existing story: the caller asked to create, and rewriting a story
 someone has already groomed is a worse surprise than a skip.
 
-Report near-matches rather than acting on them. When a summary is close but not
-equal, create it and name the key it resembles. A human can merge two stories in
-a minute, but cannot recover one that was never filed.
+A summary close but not equal is a near-match: create it, and name the key it
+resembles. Merging two stories takes a minute; recovering one never filed does
+not.
 
 ## Step 4. Validate the batch, before the first create
 
@@ -205,9 +216,7 @@ Per candidate:
 
 - Run the text checklist in
   [issue-writing.md § Checking a batch before it is filed](references/issue-writing.md#checking-a-batch-before-it-is-filed).
-  It covers the summary caps, the banned punctuation, the size caps, and the
-  placeholder and Priority rules. Any hit is a rewrite before the create call,
-  not a note in the report.
+  Any hit is a rewrite before the create call, not a note in the report.
 - Story points, **if supplied**, is an integer of at least 1. Reject `0`,
   negatives, and non-integers, but not values off a Fibonacci ladder. A
   candidate with no estimate is valid.
@@ -216,24 +225,16 @@ Per candidate:
 
 Then validate the dependency graph across the batch: no self-references, no
 cycles of any length, and no reference to work outside the batch that names
-neither a real key nor a real team. A cycle is a decomposition error, so report
-the path and ask which arrow is backwards. Procedure:
+neither a real key nor a real team. A cycle is a decomposition error: the
+checkpoint shows its path and asks which arrow is backwards. Procedure:
 [references/dependency-links.md](references/dependency-links.md).
 
-**Estimates are optional and never invented.** Sizing belongs to the team, in
-grooming, with the people who will do the work.
-
-- An estimate the user supplied is used as given.
-- No estimate: **file the story with the field unset.** Do not block the batch,
-  and do not assign a number. Say so in the story's "Estimate note" section and
-  in the report.
-- You may offer once, for the whole batch: one table of proposed numbers, one
-  approval. On approval each story records that its number was proposed and
-  bulk-approved rather than groomed. On a decline or no answer, file unsized.
-
-An unsized story is a five-second fix in grooming. An invented number is
-indistinguishable from an agreed one the moment it is in Jira, and it gets summed
-into a sprint commitment.
+**Story points are never required, asked for, or invented.** Sizing belongs
+to the team, in grooming. An estimate the user supplied is used as given. With
+none, the field stays empty and nothing mentions it: not a question at the
+checkpoint, not a list in the report, not a line in the description. Only if
+the user asks for proposed estimates does the checkpoint show a table of them;
+an approved number then gets a provenance comment in Step 7.
 
 ## Step 5. Resolve fields
 
@@ -243,50 +244,49 @@ whole batch. Resolve every field by name. Full procedure and matching rules:
 
 Four of them decide whether this batch is usable:
 
-- **Epic membership.** `parent` in a team-managed project, `Epic Link` in a
-  company-managed one. Read create-metadata to see which exists; never assume a
-  `customfield_` number. The wrong field means a batch of orphans that reports
-  as success.
-- **Team.** `Assigned Team(s)`, `Team`, or `Squad`. **Ask the user, once, for
-  the whole batch**, offering the allowed values and the recorded default:
-
-  > `Assigned Team(s)` for this batch: Platform, Empower, Insight. Recorded
-  > default is Platform. Reply with one or more, or `none` to leave it unset.
-
-  This is the one field the agent cannot derive, because a spec does not say who
-  will do the work, and the one the organisation notices is missing. `none` is a
-  valid answer, reported as the user's choice. Why a recorded default does not
-  replace the question:
+- **Epic membership.** Always `parent`, in either project style. Ignore a
+  legacy `Epic Link` field if the screen also offers one. If `parent` is not on
+  the screen, stop: the wrong field means a batch of orphans that reports as
+  success.
+- **Team.** `Assigned Team(s)`, `Team`, or `Squad`, with its allowed values.
+  Asked at the checkpoint, once for the whole batch: a spec does not say who
+  will do the work, and a recorded default does not replace the question.
   [field-resolution.md § Team](references/field-resolution.md#team-ask-the-user-do-not-assume).
 - **Story Points.** `Story Points`, or `Story point estimate` on some tenants.
-  Resolve it only if some candidate has an estimate.
-- **Priority: never choose one.** Not from a recorded default, not inferred from
-  the spec, and never as `TBD`, which is not an allowed value and renders as a
-  broken icon. Priority is groomed against the whole backlog. Two exceptions,
-  both a value from a person: a priority the user names explicitly, sent after
-  validating it against the allowed values and reported as supplied, and a
-  create screen that marks it required, where you stop and ask.
+  Resolve it whenever it exists, since the read-back checks that no story got a
+  number nobody gave. Its absence stops the run only when there is an estimate
+  to write.
+- **Priority: never choose one.** Send nothing unless the user names a value.
+  Read the project default, if any: Jira stores it anyway (on BAPP, an option
+  named `TBD`), so the read-back expects it and the report names it as the
+  project's. Required with no default: ask at the checkpoint.
+  [field-resolution.md § Priority](references/field-resolution.md#fields-that-must-be-resolved-by-name-every-run).
 
-**If epic membership cannot be resolved, stop before creating anything**, and
-likewise Story Points when there is an estimate to write. A field Jira accepts
-and ignores is worse than a refusal. A field that resolved and has no value to
-write is not a stop, it is a line in the report.
+A field Jira accepts and ignores is worse than a refusal, so an unresolvable
+field with a value to write is a stop. A resolved field with nothing to write is
+a line in the report. Apply the recorded `project_defaults` from
+`jira_setup.py --show` and list each as a default, except the team, which is
+asked, and Priority, which is ignored.
 
-`jira_setup.py --show` reports this project's `project_defaults`: values the team
-expects on every issue that the create screen does not require. Apply them and
-list each as a default. Two carve-outs: the team field is asked rather than
-defaulted, and a recorded Priority default is ignored.
+## Step 6. Check in once, then create (pass one)
 
-## Step 6. Create, pass one
+Hand back the checkpoint: the draft table and every question that applies, each
+with its default. Nothing is created before the answers come back. What goes in
+it, the default for each unanswered question, and how to resume:
+[references/checkpoint.md](references/checkpoint.md). On resuming, re-run the
+Step 3 search immediately before the first create.
 
-Create the stories one at a time, sending descriptions as **markdown**, never
+Then create the stories one at a time, sending descriptions as **markdown**, never
 hand-built ADF. Keep a map of plan-local number to returned key as you go.
 Placeholders stay in the text during this pass, because a key cannot be cited
 before it is allocated.
 
-If a create call errors, stop the batch, report which stories were created and
-which were not, and do not retry blind. An ambiguous timeout may already have
-created the issue.
+If a create call errors, stop creating, and do not retry blind: an ambiguous
+timeout may already have created the issue. Still run pass two **among the
+stories that were created**, and report the run as unfinished. A re-run may
+backfill a placeholder an earlier run left, the one exception to leaving
+existing stories alone. Details:
+[references/failure-modes.md](references/failure-modes.md#the-batch-itself).
 
 ## Step 7. Backfill references and create the links, pass two
 
@@ -298,50 +298,62 @@ created the issue.
 3. Direction is easy to get backwards. For a `Blocks` link the **inward issue
    is the blocker**. Create the first link, read one of the two issues back,
    confirm the rendered relationship says what you meant, then create the rest.
+4. For every bulk-approved estimate, add one comment: "<n> points proposed
+   during filing and approved as part of a batch on <today, YYYY-MM-DD>, not
+   groomed with the team." A comment is dated history, so it stays true after
+   re-sizing. No comment capability: say so, and the report carries it.
 
 Link types and what not to link:
 [references/dependency-links.md](references/dependency-links.md).
 
 ## Step 8. Read the batch back and verify it
 
-The create responses are not evidence. Run one JQL query and assert against what
-comes back:
+The create responses are not evidence. Read back **exactly the keys this run
+created**, not the whole epic, which may hold stories other people filed.
 
 ```text
-parent = <EPIC-KEY> AND issuetype = Story ORDER BY created ASC
+key in (<every key this run created>) ORDER BY created ASC
 ```
 
-Use the `"Epic Link" = <EPIC-KEY>` form on a company-managed project. Then check:
+Name the fields you assert on, since a search returns a short default set:
+summary, issuetype, parent, priority, description, issuelinks, and the resolved
+team and story-point fields. Page through a large batch. Comments need a read of
+each story that got one, asking for the comment field.
+
+Then check:
 
 | Assertion | Failure it catches |
 | --- | --- |
-| Row count equals the number created | A create that reported success and stored nothing |
-| Every created key is in the result | The batch of orphans this step exists to catch |
+| Every created key comes back | A create that reported success and stored nothing |
+| Every row's `parent` is `<EPIC-KEY>` | The batch of orphans this step exists to catch |
 | Every estimated row holds its number, and no other row has one | A field Jira accepted and ignored, or a number nobody agreed to |
 | Every row holds the team the user named, or none if they said `none` | A team field Jira accepted and dropped |
-| Priority unset unless the user named one, no `TBD` or `Priority:` line | A default or a placeholder that got sent anyway |
+| Priority is the user's named value, or the project default, or unset where there is no default. No `Priority:` line | A value the run chose, or a recorded default that got sent |
 | Every applied organisation default is present | Same, for the other recorded defaults |
 | Point total summed from these rows, over the ones that have a number | A total reported from the plan is arithmetic nobody checked |
+| Every bulk-approved estimate has its provenance comment | A proposed number that now looks groomed |
 | No `[[dep:` remains in any description | An unfinished pass two |
 | Each asserted dependency has a link, in the right direction | A dependency that exists only as prose |
 
-**Quote the read-back values in the report**, not the intended ones. If any
-assertion fails the run is not done: go to remediation below, and say what was
-wrong before saying what was fixed.
+**Quote the read-back values in the report**, not the intended ones. A failed
+assertion means the run is not done: remediate, and say what was wrong before
+what was fixed.
 
 ## Step 9. Report
 
 A table, one row per candidate: summary, outcome (`created` / `skipped` /
 `refused`), key, note. Then:
 
-- totals from the Step 8 read-back, counting unsized stories separately rather
-  than folding them in as zero
+- when any story has points, the total summed from the Step 8 read-back
 - the epic key and URL
 - the team applied and where it came from: the user's answer, the recorded
   default, or `none` at their request
-- every story filed unsized, so grooming has the list
-- every estimate proposed and bulk-approved rather than groomed
-- every value inferred, defaulted, or fuzzy-matched rather than supplied
+- every estimate proposed and bulk-approved rather than groomed, if the user
+  asked for proposals
+- every task that looks like it needs its own owner or estimate, as a likely
+  sub-task
+- every value inferred, defaulted, or fuzzy-matched rather than supplied,
+  including each checkpoint question that took its default
 - every link created, with its direction
 - anything still outstanding
 
@@ -350,30 +362,18 @@ without naming the remaining work reads as completion.
 
 ## When a step fails
 
-Look it up, do not decide. The full table, with the reason behind each row, is
-[references/failure-modes.md](references/failure-modes.md). Every failure lands
-in one of three outcomes, and they are not interchangeable: **stop** and create
-nothing further, **not a failure** so file without the value and say so, or
-**ask** one question and continue.
-
-These are the stops, and none of them is negotiable:
-
-- No JQL search, so no duplicate detection and no read-back.
-- Epic key does not resolve, or the epic-membership field cannot be resolved.
-- Story Points unresolvable while some candidate has an estimate to write.
-- Configuration corrupt, or site and project only guessable.
-- A create call errored mid-batch. Report created and not-created separately and
-  do not retry blind.
-
-**Stop and report, never improvise.** A partial batch that is reported
-accurately is recoverable; one that is reported as success is not.
+Look it up, do not decide:
+[references/failure-modes.md](references/failure-modes.md). Every failure is one
+of **stop** and create nothing further, **not a failure** so file without the
+value and say so, or **ask** at the checkpoint. **Stop and report, never
+improvise.** A partial batch reported accurately is recoverable; one reported
+as success is not.
 
 ## When the batch succeeded incorrectly
 
-Different problem, different rules. The issues exist and the values are wrong.
-Establish what is stored before touching anything, patch in place because the
-keys are already in use elsewhere, propose the patch as one table for one
-approval, and never delete without explicit authorisation. Procedure:
+The issues exist and the values are wrong. Read what is stored first, patch in
+place because the keys are already in use, propose the patch as one table for
+one approval, and never delete without explicit authorisation:
 [references/remediation.md](references/remediation.md).
 
 ## Validation
@@ -381,37 +381,33 @@ approval, and never delete without explicit authorisation. Procedure:
 Before reporting done:
 
 - [ ] Preflight passed, or nothing was created.
-- [ ] A JQL search ran against the epic before the first create.
-- [ ] The issue-writing checklist ran on every candidate: summary caps, no em
-      or en dash, description under 200 words, four required headings, no
-      `TBD`, no `Priority:` line.
-- [ ] No story has a Priority in the read-back that the user did not name.
-- [ ] No estimate was invented, and every unsized story is named in the report.
-- [ ] The team field holds what the user gave, or is unset because they said so,
-      and the report says which.
-- [ ] Every created story is a child of the named epic **according to the Step 8
-      read-back**, not according to the create call.
-- [ ] The reported point total was summed from the read-back rows.
-- [ ] No `[[dep:` placeholder survives in any description.
-- [ ] Every asserted dependency has a native link, in a direction that was
-      verified once against a read-back.
-- [ ] Descriptions were sent as markdown, not ADF.
+- [ ] The checkpoint was handed back, and answered, before the first create.
+- [ ] A duplicate search ran against the epic before the first create, and
+      again on resuming.
+- [ ] The issue-writing checklist ran on every candidate: summary cap, no em
+      or en dash, no padding pattern, an unheaded opening user story or goal,
+      the three required headings, no `TBD`, no `Priority:` line.
+- [ ] No acceptance criterion or constraint from the source was dropped, no
+      task was invented, and no estimate was invented.
+- [ ] Every Step 8 assertion held, **quoted from the read-back**, not from the
+      create calls.
 - [ ] Every candidate appears in the report as created, skipped, or refused.
-- [ ] No pre-existing story was modified.
+- [ ] No pre-existing story was modified, except to backfill a `[[dep:`
+      placeholder an earlier run of this skill left behind.
 
 Fix and re-check anything that fails. Never report completion with a known
-failure, and never report a check as passed that you did not run. A checklist
-item ticked without the query behind it is worse than no checklist, because it
-is what made the last wrong batch look right.
+failure, and never report a check as passed that you did not run: a box ticked
+without the query behind it is what made the last wrong batch look right.
 
 ## References
 
-- [references/jira-setup.md](references/jira-setup.md): MCP prerequisites, configuration, project defaults, exit codes, troubleshooting
-- [references/field-resolution.md](references/field-resolution.md): resolving fields by name, epic membership, verifying the write
-- [references/issue-writing.md](references/issue-writing.md): title length, banned punctuation, vocabulary, rewrites
-- [references/dependency-links.md](references/dependency-links.md): two-pass creation, cycle validation, native link direction
-- [references/failure-modes.md](references/failure-modes.md): every failure, what it means, and which of stop, file-anyway or ask it takes
-- [references/remediation.md](references/remediation.md): fixing a batch that was created wrongly
-- `scripts/jira_setup.py`: records site, project, and per-project field defaults; stores no credentials
-- `assets/story-description.md.template`: the description sections
-- `assets/story_input.schema.json`: optional structured input, with `assets/story_input.example.json`
+- [references/jira-setup.md](references/jira-setup.md): prerequisites, configuration, troubleshooting
+- [references/field-resolution.md](references/field-resolution.md): fields by name, epic, Priority, team
+- [references/issue-writing.md](references/issue-writing.md): titles, padding patterns, rewrites
+- [references/dependency-links.md](references/dependency-links.md): two passes, cycles, link direction
+- [references/checkpoint.md](references/checkpoint.md): the one hand-back, defaults, resuming
+- [references/structured-input.md](references/structured-input.md): where each input field goes
+- [references/failure-modes.md](references/failure-modes.md): stop, file anyway, or ask
+- [references/remediation.md](references/remediation.md): fixing a batch created wrongly
+- `scripts/jira_setup.py`: site, project and field defaults; no credentials
+- `assets/`: the description template, and the optional input schema with an example

@@ -13,14 +13,20 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **Issues are written to be read, not to be impressive.** A shared
-  `issue-writing.md` now caps a story description at 200 words and an epic at
-  400, caps Context at three sentences and acceptance criteria at five, and
-  catalogues the patterns that make text read as generated with the rewrite for
-  each: padding, false shape, the overused vocabulary, and the formatting tells.
-  The templates dropped from eight required sections to four for a story and
-  five for an epic, and an optional heading is now dropped rather than filled.
-  Written after a batch whose stories were each three times longer than anyone
-  would read, which is how a team learns to skim acceptance criteria. The
+  `issue-writing.md` caps the summary at 80 characters and catalogues the
+  patterns that make text read as generated, with the rewrite for each:
+  padding, false shape, the overused vocabulary, and the formatting tells. The
+  templates dropped from eight required sections to four for a story and five
+  for an epic, and an optional heading is now dropped rather than filled.
+  Written after a batch whose stories were padded to three times the length
+  anyone would read, which is how a team learns to skim acceptance criteria.
+  Descriptions carry **no word cap**. An earlier draft capped a story at 200
+  words and an epic at 400, and even the skill's own example story used 172 of
+  its 200. The cap measured length when the failure was padding, so it cut the
+  files, contracts and edge cases an implementer needs along with the filler.
+  A story now keeps all of its content, gains an optional Technical notes
+  section for exactly that detail, and more than about seven acceptance criteria
+  prompts an offer to split rather than a cut. The
   pattern catalogue is adapted from
   [`blader/humanizer`](https://github.com/blader/humanizer) (MIT) and recorded
   in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
@@ -96,9 +102,11 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   keyed, is still a guess and still stops the run.
 - **Bulk estimation, sanctioned.** Asking for 29 estimates one at a time is 29
   questions. The skills may propose every estimate in one table and take one
-  approval, provided each issue records that its number was proposed and
-  bulk-approved rather than groomed. `estimate_source` in the input schema
-  carries that provenance.
+  approval, provided each issue carries a comment recording that its number was
+  proposed and bulk-approved rather than groomed. `estimate_source` in the input
+  schema carries that provenance. A comment rather than a line in the
+  description, because a comment is dated history and stays true after the
+  story is re-sized, where the description would contradict the field.
 - **Tenant configuration outside the repository.** Both skills bundle
   `jira_setup.py`, which records the Jira site and default project key in
   `${XDG_CONFIG_HOME:-$HOME/.config}/crv-agent-skills/jira.json` at mode `0600`.
@@ -123,10 +131,118 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Story points are never pushed.** They were already optional, but the
+  check-in asked about them on every batch, and the report listed each story
+  without points "so grooming has the list", which treated an empty field as a
+  gap. An empty estimate is the normal state before grooming. The skill now
+  sets points only when the person gives them, proposes numbers only when
+  asked to, and otherwise says nothing about sizing.
+- **Rules for the fields nobody mentioned.** Sprint, components and fix
+  versions had no rule, so a request for "the current sprint" had nowhere to
+  go. They are now asked only where the project has them and left unset
+  otherwise, and a named sprint is resolved through an issue already in it,
+  since create-metadata lists none. Supplied labels merge with a recorded
+  default instead of replacing it. A tenant without a `Blocks` link type gets
+  its stories and a prose-only dependency list, never a `Relates` link standing
+  in for one, and a dependency on a key that does not exist is asked about
+  before it becomes a link to nothing.
+- **One check-in, with the draft, before anything is filed.** Both skills run
+  in a subagent, which cannot wait for an answer, yet the story skill asked
+  about team, estimates, splits and cycles in three different steps, and the
+  person filing first saw the stories in Jira, where each correction is an edit
+  call. Each skill now builds everything, hands back once with the draft and
+  every question numbered, each with the default an unanswered one takes, and
+  re-runs the duplicate search before creating. A partial answer applies what
+  was answered; it never starts a second round. The story skill also proposes
+  an epic the conversation already mentioned, instead of asking cold, and
+  files nothing until the user confirms it. Sprint, components and fix versions
+  are asked only where the project has them, and left unset otherwise.
+- **The setup script is called by the skill's path, not the shell's.** Both
+  skills said `python3 scripts/jira_setup.py`, which only works from inside the
+  skill folder. From the user's repository it exits `2`, which the skill
+  documents as a usage error, so the preflight failed with the wrong diagnosis.
+- **The epic skill checks it can fix what it files.** It told the agent to
+  patch an epic in place when the read-back contradicted the write, but never
+  required the edit capability, so on a server without it the only possible
+  outcome was a wrong epic reported as wrong. Edit is now a preflight
+  requirement, as it already was for stories.
+- **A failed batch finishes what it can.** After a create error the story skill
+  said to stop, and the failure table said to finish pass two, so created
+  stories kept their `[[dep:` placeholders and had no links. Pass two now runs
+  among the stories that exist, the rest is reported, and a re-run backfills
+  the leftovers. The same pass fixed text an economy model would follow the
+  wrong way: a heading count left over from the unheaded opening, an example
+  date it would copy literally, and two evals that contradicted the skill.
+- **Re-running a batch with long titles no longer duplicates it.** The
+  duplicate check compared the summaries as given, before they were rewritten
+  to the 80-character rule, so a re-run's raw title never equalled the rewrite
+  already in Jira and every such story was filed again as a "near match". Titles
+  are now rewritten first, and both the rewritten and the given form are
+  compared.
+- **The story read-back checks what the run created, and nothing else.** It
+  queried every child of the epic and asserted that the row count equalled the
+  number created, so any epic that already had stories failed a correct run,
+  and the team check judged stories other people had filed. Both it and the
+  duplicate search also filtered on `issuetype = Story`, which made a candidate
+  filed as a Task invisible to each. The duplicate search now covers every
+  child type, and the read-back is `key in (<created keys>)` with the fields it
+  needs named explicitly.
+- **A project's own Priority default is not a failure.** The skills claimed
+  `TBD` was not an allowed value on any tenant and expected Priority unset after
+  every create. On BAPP, `TBD` is a real option and the project default, with
+  an icon hosted off-site that renders broken, so Jira stores it on every issue
+  created without a Priority, and the read-back would have failed every run.
+  The skills still never choose a Priority. They now read the default from
+  create-metadata, accept it in the read-back as the project's value, name it
+  in the report, and offer the user the chance to set a real one.
+- **Epic membership is always `parent`.** The skills told a company-managed
+  project to use the legacy `Epic Link` field and treated `parent` there as a
+  different relationship. That rule is out of date: Jira Cloud moved epic
+  membership onto `parent` for both project styles, and a company-managed
+  BAPP story holds its epic in `parent` while the create screen still offers
+  `Epic Link` beside it. The skills now send `parent` only, search and read
+  back with `parent = <key>`, and stop if `parent` is absent rather than
+  falling back.
+- **A story can open with a goal instead of a user story.** Refactors,
+  migrations and platform changes have no real person to put in "As a ... I
+  want", and forcing one produced "As a developer, I want the service split",
+  which is the kind of filler the writing reference bans. A story may now open
+  with a goal: one sentence on what is true afterwards and why. The input
+  schema takes `goal` or `user_story`, never both.
+- **Stories can carry a Tasks checklist.** Acceptance criteria say what is true
+  when a story is done, and teams also want the steps to get there in the
+  story itself. Tasks is an optional `- [ ]` section filled only from steps the
+  person or the spec gave, since a generated task list is a plan nobody agreed
+  to. A task that restates a criterion is dropped, and one big enough for its
+  own owner is flagged in the report as a likely sub-task. It is called Tasks
+  rather than TODO because TODO is a banned placeholder, and the pre-create
+  check would fail every story that used it.
+- **A story opens with its user story, not a heading.** Jira already labels the
+  field Description, so a `## User story` heading as the first line repeated
+  the frame the "As a / I want / So that" lines already carry, and looked
+  wrong under the field label. The opening statement is now unheaded, and the
+  three sections after it keep theirs.
+- **Structured input has one rendering.** The story schema said what each field
+  held but not where it went, so the same batch could render a test plan as a
+  nested list on one story and a paragraph on the next. `structured-input.md`
+  now maps every schema field to its heading or Jira field, and says what a
+  missing required section does: it is asked about, never invented. A test
+  fails if a schema field is added without a row.
+- **A pre-rendered description is checked like any other.** The schema said
+  `description_markdown` was "used as-is", which read as permission to skip the
+  writing checks and the required headings. It now says the field replaces
+  rendering, not checking, so the one input path with no template behind it is
+  not also the one with no rules.
+- **Filing an epic twice files it once.** `crv-create-jira-epic` now searches
+  the project for an epic with the same summary before creating one, as the
+  story skill always has. It used to search only after a create call errored,
+  so re-running a request, or filing an epic a teammate had already filed, left
+  two epics splitting the same stories. An exact match creates nothing and
+  names the existing key. A near match is asked about once.
 - **Story points are no longer mandatory.** Sizing belongs to the team, in
   grooming, with the people who will do the work. A story with no estimate is
-  now filed with the field unset, recorded as unsized on the issue and in the
-  report, and counted separately in the total rather than folded in as zero.
+  now filed with the field unset, named in the report, and counted separately
+  in the total rather than folded in as zero.
   Requiring an estimate left only two moves, and both were wrong: block the
   batch over a value that takes five seconds to set in grooming, or invent a
   number that gets summed into a sprint commitment and cannot be told apart from

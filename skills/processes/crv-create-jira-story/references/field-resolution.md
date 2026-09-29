@@ -14,7 +14,7 @@ So: resolve by **field name**, per project, per run.
 | Field | Why it varies |
 | --- | --- |
 | Story Points | `Story Points` on most tenants, `Story point estimate` on others. |
-| Epic membership | `parent` in a team-managed project, an `Epic Link` custom field in a company-managed one. See below. |
+| Epic membership | Always `parent`, even where the screen also offers the legacy `Epic Link`. See below. |
 | Team | `Team`, `Assigned Team(s)`, `Squad`, or absent. Asked, never assumed. See below. |
 | Sprint | Numbered per tenant, and rejected outright on some boards. |
 | Any option field | The allowed values are per project, not per tenant. |
@@ -27,14 +27,24 @@ or not it has a recorded default. Reasons, in order:
   everything else in the backlog. A value chosen at filing time by something
   that has not seen the backlog is a guess, and once it is in Jira it is
   indistinguishable from an agreed one.
-- It is an option field, so an invented value is rejected or, on some screens,
-  stored as an unrecognised option and rendered as a broken icon.
-- A written-out placeholder is worse. `TBD` is not one of the allowed values, so
-  a `Priority` field or a `Priority: TBD` line in the description produces
-  exactly that broken icon and a value nobody can filter on.
+- It is an option field, so an invented value is rejected or silently ignored.
+- A `Priority: TBD` line in the description duplicates the real field, and the
+  two then disagree.
 
-An unset Priority is honest, searchable, and one bulk edit away from being set
-by the person entitled to set it.
+**Many projects fill Priority themselves.** When create-metadata reports
+`hasDefaultValue: true` for Priority, Jira stores its `defaultValue` on every
+issue created without one. On BAPP that default is an option literally named
+`TBD`, with an icon hosted off-site that renders broken. That value is the
+project's, not the run's: it is what an issue filed by hand gets too. So:
+
+- Read the default from create-metadata along with the allowed values.
+- Send nothing, and expect the default in the read-back. A stored value equal to
+  the default is a pass, reported as "the project default, not set by this run".
+- Name it in the checkpoint question, so the user can set a real one: "Priority:
+  the project default is TBD. Name one, or leave it." No answer leaves it.
+
+Without a default, an unset Priority is honest, searchable, and one bulk edit
+away from being set by the person entitled to set it.
 
 Two exceptions, and both turn on the value coming from a person rather than from
 the run:
@@ -43,9 +53,10 @@ the run:
   question. That is a supplied value, so send it. Validate it against the
   allowed values from create-metadata first, because Jira accepts an
   unrecognised option by ignoring it, and report it as supplied.
-- **The create screen marks Priority required.** Stop and ask which value, then
-  send the answer. Do not choose one to get past the screen, and never send
-  `TBD` to satisfy it.
+- **The create screen marks Priority required and has no default.** Stop and
+  ask which value, then send the answer. Do not choose one to get past the
+  screen. A required Priority with a default is not a stop: Jira fills it, as
+  above.
 
 What is forbidden is the run deciding. A priority inferred from the tone of a
 spec, copied from a sibling issue, taken from a recorded default, or written as
@@ -70,7 +81,9 @@ a placeholder is a value nobody chose.
    `project_defaults` map, keyed by project key, of field names the organisation
    expects on every issue whether or not the create screen requires them. Resolve
    those names the same way, apply the values at create time, and list each one
-   in the report as a default rather than a supplied value.
+   in the report as a default rather than a supplied value. A list field the
+   input also sets, such as Labels, gets both: the default and the supplied
+   values merged, never one replacing the other.
 5. **Stop if anything is unresolved.** See below.
 6. **Build the create payload** using the resolved identifiers, never the names.
 
@@ -110,41 +123,45 @@ re-runs setup.
 If the create screen marks the team field required, an unanswered question is a
 stop, not a default.
 
-## Epic membership: `parent` or `Epic Link`
+## Sprint, components and fix versions: only when named
+
+None of these is required on most screens, and none can be derived from a spec.
+Ask about each at the checkpoint only when the project has it, and components
+and fix versions only when create-metadata lists allowed values for them. No
+answer leaves the field unset: a story in the backlog is where grooming expects
+to find it.
+
+- **Sprint** takes a sprint id, and create-metadata lists none. When the user
+  names one ("the current sprint", "Sprint 42"), find it on an issue already in
+  it: search `project = <KEY> AND sprint in openSprints()`, read the Sprint
+  field of a result, and match the name. No match, or two open sprints and the
+  user said "current": say so, list the names found, and leave it unset.
+- **Components and fix versions** are option lists. Validate a named value
+  against the allowed values, as for any option field.
+
+## Epic membership: always `parent`
 
 Getting this wrong produces the most expensive failure in either skill: a batch
 of stories that exist, look correct, and belong to no epic. Nothing in the create
 response says so, because the field was simply not set.
 
-Which mechanism a project uses depends on how the project was created, and both
-are current:
-
-| Project style | Field | Payload |
-| --- | --- | --- |
-| Team-managed (next-gen) | `parent` | `{"parent": {"key": "ABC-123"}}` |
-| Company-managed (classic) | `Epic Link`, a custom field | `{"customfield_NNNNN": "ABC-123"}`, the key as a bare string |
-
-How to tell, without guessing: read create-metadata and look at which of the two
-appears. A company-managed project's Story create screen carries a field named
-`Epic Link` and its `parent` field, when present at all, is for a different
-relationship. A team-managed project carries `parent` and has no `Epic Link`.
+**A story's epic is its `parent`**, sent as `{"parent": {"key": "ABC-123"}}`.
+That holds in company-managed projects too: Jira Cloud moved epic membership
+onto `parent` for both project styles. A company-managed create screen may still
+offer a legacy `Epic Link` custom field beside it. Ignore it. Sending both is two
+writes of one relationship that can disagree, and a skill that picks `Epic Link`
+because the project is company-managed is following a rule Jira retired.
 
 Rules:
 
-- Resolve `Epic Link` by name exactly as any other custom field. Never assume
-  `customfield_10008` or any other number, even though that is the common value.
-- Send the epic key as a string for `Epic Link`, and as `{"key": ...}` for
-  `parent`. The two shapes are not interchangeable and the wrong one is rejected
-  or, worse, accepted and dropped.
-- If neither field can be resolved, **stop**. Do not create the stories and plan
-  to link them afterwards. A batch of orphans is harder to find than a refusal.
+- Confirm `parent` appears in create-metadata for the Story issue type. If it
+  does not, **stop** and list the fields that do appear. Do not fall back to
+  `Epic Link`, and do not create the stories planning to link them afterwards: a
+  batch of orphans is harder to find than a refusal.
+- Search and read back with `parent = <EPIC-KEY>`. It works on both project
+  styles.
 - Verify by reading the issues back after creating them. The create response is
   not evidence that membership was set.
-
-Some tenants also reject `Epic Link` on the create call but accept it on an
-edit. If create fails on that field alone, creating and then patching is
-acceptable, provided the patch is verified by a read-back and the report says
-that is what happened.
 
 ## When a field cannot be resolved: stop
 
@@ -180,11 +197,13 @@ Do not restrict the value to a Fibonacci sequence. Teams use their own scales,
 and a story-point total rolled up from several smaller items lands on no ladder
 at all. Reject only what is genuinely invalid: zero, negatives, and non-integers.
 
-**An estimate is optional and never invented.** Sizing is the team's job and it
-happens in grooming, with the people who will do the work. Three rules follow:
+**An estimate is never required, never asked for, and never invented.** Sizing
+is the team's job and it happens in grooming, with the people who will do the
+work. Three rules follow:
 
-- No estimate supplied, and none agreed: omit the field and file the story. Say
-  in the report and in the story's Estimate note that it was filed unsized.
+- No estimate supplied: omit the field and file the story, and say nothing
+  about it. Not a question, not a list in the report, not a line in the
+  description. An empty field is the normal state before grooming, not a gap.
 - Never write a number the user did not agree to. Once a number is in Jira an
   invented estimate is indistinguishable from a groomed one, and it gets summed
   into a sprint commitment.

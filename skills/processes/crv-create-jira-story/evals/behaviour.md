@@ -17,8 +17,11 @@ company-managed project. Every one of them is a failure that happened, reported
 itself as success, and cost rework. They are the cases most worth running.
 
 B18 to B21 come from the same run's second review, where the issues were correct
-and unusable: three times longer than anyone would read, padded with the shapes
-that mark generated text, and carrying a Priority nobody chose.
+and unusable: padded with the shapes that mark generated text, and carrying a
+Priority nobody chose. That review first produced a word cap. B20 and B22 now
+assert the opposite of a cap, because the cap cut real content along with the
+padding: what is cut is the padding, and no content from the source is dropped
+to make a story shorter.
 
 ## B1 — The main path
 
@@ -31,10 +34,10 @@ exits `0`. Epic `ABC-123` exists with no children.
 - [ ] A JQL search against `ABC-123` runs before the first create call.
 - [ ] Three stories are created, each a child of `ABC-123`.
 - [ ] Each carries a story-point value of `3` as a number, not a string.
-- [ ] Each description contains the four required headings from `assets/story-description.md.template` and renders as markdown in Jira.
-- [ ] Each description is under 200 words, counted.
+- [ ] Each description opens with the "As a / I want / So that" lines and **no heading above them**, then carries the three required headings from `assets/story-description.md.template`, and renders as markdown in Jira.
+- [ ] Every acceptance criterion in the spec appears in a created story. None is dropped to shorten a description.
 - [ ] No description carries an optional heading with nothing under it.
-- [ ] **No story has a Priority value**, and no description contains a `Priority:` line.
+- [ ] **No create payload contains a Priority**, each story's stored Priority is the project default or empty, and no description contains a `Priority:` line.
 - [ ] Create-metadata is read **once**, not once per story.
 - [ ] A JQL read-back runs after the creates, and the report quotes the values it returned.
 - [ ] The reported point total equals the sum of the read-back rows, checked by hand.
@@ -63,10 +66,13 @@ stories.
 
 ## B4 — Guard: machine not configured
 
-**Setup:** MCP configured. `jira_setup.py --check` exits `1`.
+**Setup:** MCP configured. `jira_setup.py --check` exits `1`, and two sites are
+accessible. The prompt's epic key supplies the project, but nothing supplies the
+site.
 **Prompt:** "File three stories under ABC-123."
 
-- [ ] The skill stops at preflight and gives the exact `--set … --confirm` command.
+- [ ] The skill stops at preflight, naming the site as the missing value, and gives the exact `--set … --confirm` command.
+- [ ] It does not pick one of the two sites.
 - [ ] **No stories are created.**
 
 ## B5 — Guard: Story Points unresolvable while an estimate was supplied
@@ -82,7 +88,7 @@ or `Story point estimate`.
 Then repeat with the same project and **no estimate in the prompt**:
 
 - [ ] The skill does **not** stop. Three stories are created with no estimate.
-- [ ] The report says the project has no story-point field.
+- [ ] The report does not raise the missing story-point field: nobody had a number to write.
 
 ## B6 — A candidate with no estimate is filed, not refused
 
@@ -93,8 +99,8 @@ one with no story points.
 - [ ] **All three stories are created.** None is reported `refused` for want of an estimate.
 - [ ] The unsized story has **no** value in the story-point field, confirmed by read-back. Not `0`, not null-as-zero.
 - [ ] **No estimate is invented**, including by copying a sibling's value or averaging.
-- [ ] Its description records that it was filed unsized, in the Estimate note section.
-- [ ] The report names it as unsized so grooming has the list.
+- [ ] Its description says nothing about being unsized. The empty field is the record.
+- [ ] **Nobody is asked for its estimate**, and the report does not list it as unsized or missing anything.
 - [ ] The reported point total covers the two estimated stories and does not silently count the third as zero.
 
 ## B7 — Estimates off the Fibonacci ladder are accepted
@@ -109,9 +115,14 @@ one with no story points.
 ## B8 — A partial batch is reported honestly
 
 **Setup:** Everything configured. The third of five create calls errors.
+Candidate two is blocked by candidate one, and candidate one is blocked by
+candidate four.
 **Prompt:** "File these five stories under ABC-123."
 
 - [ ] The batch stops at the error; candidates four and five are not attempted blind.
+- [ ] Pass two still runs among the created stories: candidate two's placeholder for one is backfilled, and that link is created.
+- [ ] Candidate one's placeholder for four stays, and the report lists it as pointing at a story not yet filed.
+- [ ] On a re-run, one and two are skipped as duplicates, four and five are created, and candidate one's leftover placeholder is backfilled.
 - [ ] The report lists created and not-created separately, with keys for the created ones.
 - [ ] The error text is reported verbatim.
 - [ ] **The run is not reported as successful.**
@@ -119,15 +130,15 @@ one with no story points.
 ## B9 — Epic membership on a company-managed project
 
 **Setup:** Everything configured. `ABC-123` lives in a **company-managed**
-project, whose Story create screen carries an `Epic Link` custom field and no
-usable `parent`.
+project whose Story create screen offers both `Parent` and a legacy `Epic Link`
+custom field, as BAPP's does.
 **Prompt:** "File these four stories under ABC-123."
 
-- [ ] Create-metadata is consulted to decide which field carries epic membership.
-- [ ] No `customfield_` number is assumed, including `customfield_10008`.
-- [ ] The epic key is sent in the shape that field takes.
+- [ ] Every create payload sets `parent` to `{"key": "ABC-123"}`.
+- [ ] **No payload sets `Epic Link`**, even though the screen offers it and the project is company-managed.
+- [ ] The duplicate search and the read-back both use `parent = ABC-123`.
 - [ ] A read-back confirms all four are children of `ABC-123`, and the report quotes it.
-- [ ] **Four orphan stories reported as filed under the epic is the failure this case exists to catch.** If the field cannot be resolved, nothing is created.
+- [ ] **Four orphan stories reported as filed under the epic is the failure this case exists to catch.** Then remove `Parent` from the screen: the skill stops, lists the available fields, and creates nothing.
 
 ## B10 — Cross-references become real keys
 
@@ -165,25 +176,30 @@ a blocker.
 ## B13 — Organisation defaults are applied without being asked for
 
 **Setup:** Everything configured, and `jira_setup.py --show` reports a
-`project_defaults` entry for this project setting a team field. The create screen
-does **not** mark that field required.
+`project_defaults` entry for this project setting `Pipeline` to
+`Improvement`. The create screen does **not** mark that field required.
 **Prompt:** "File these three stories under ABC-123."
 
 - [ ] The recorded default is resolved by name against create-metadata.
 - [ ] All three stories carry it, confirmed by read-back.
 - [ ] The report lists it as a default rather than as a supplied value.
 - [ ] The user is not asked for it, and does not have to patch it afterwards.
+- [ ] This applies to every recorded default **except the team field**, which is always asked: see B18.
 
-## B14 — Bulk estimation asks once, and records the provenance
+## B14 — Estimates are never pushed, and proposed only on request
 
 **Setup:** Everything configured. Twelve candidates, none with an estimate.
 **Prompt:** "File these twelve under ABC-123."
 
-- [ ] The skill does not ask twelve separate questions.
-- [ ] It proposes every estimate in one table and takes one approval.
-- [ ] On approval, each created story records that its estimate was proposed and bulk-approved rather than groomed.
+- [ ] **No estimate is offered, proposed, or asked about.** The checkpoint has no estimate question and no Estimate column.
+- [ ] All twelve are filed with the story-point field empty, and the report says nothing about sizing.
+
+Then prompt "File these twelve under ABC-123, and propose story points for them":
+
+- [ ] It proposes every estimate in one table at the checkpoint and takes one approval.
+- [ ] On approval, each created story carries a comment recording that its estimate was proposed and bulk-approved rather than groomed, and its description does not.
 - [ ] The report repeats which estimates were proposed rather than supplied.
-- [ ] Then decline the table: **all twelve are still created**, every one unsized, and the report lists them as unsized. Declining an estimate is not declining the batch.
+- [ ] Then decline the table: **all twelve are still created**, with no points. Declining an estimate is not declining the batch.
 - [ ] Then ignore the offer entirely: same outcome. The run does not stall waiting for an answer it does not need.
 
 ## B15 — Titles are held to the house rule
@@ -246,19 +262,22 @@ optional, with a default of Medium. `jira_setup.py --show` also records a
 - [ ] **No create payload contains a Priority field.**
 - [ ] The recorded Priority default is ignored, and the report says it was ignored rather than applied.
 - [ ] No description contains a `Priority:` line or the text `TBD`.
-- [ ] The read-back confirms no story has a Priority value.
+- [ ] The read-back shows Medium, the screen's default, on every story, and **this counts as a pass**: the report names it as the project default, not as set by the run.
+- [ ] Repeat on a screen whose Priority default is an option named `TBD`, as on BAPP: same outcome, and the run does not flag `TBD` as a placeholder it wrote.
 - [ ] Then prompt "file these three under ABC-123, all high priority": Priority **is** set to High, because the user chose it. It is validated against the allowed values first and reported as supplied, not as a default.
 - [ ] Then prompt with a priority that is not an allowed value: it is not sent, and the allowed values are listed.
-- [ ] Then make Priority **required** on the create screen with no priority in the prompt: the skill stops and asks which value, rather than choosing one or sending `TBD`.
+- [ ] Then make Priority **required with no default** and no priority in the prompt: the skill stops and asks which value, rather than choosing one. Required **with** a default is not a stop.
 
-## B20 — Descriptions are short and do not read as generated
+## B20 — Descriptions keep the content and drop the padding
 
 **Setup:** Everything configured. A long, discursive spec of roughly 2,000 words
-for three stories.
+for three stories, mixing motivation and history with concrete constraints: two
+endpoint names, a sample payload, and a rate limit.
 **Prompt:** "Break this into three stories under ABC-123 and file them."
 
-- [ ] Every created description is under 200 words, counted rather than judged.
-- [ ] No Context section runs past three sentences, and a story whose epic covers the context has no Context section at all.
+- [ ] Every concrete constraint in the spec, including both endpoint names, the sample payload and the rate limit, appears in the story it belongs to.
+- [ ] No description is shortened by dropping a constraint or an acceptance criterion. The skill applies no word count.
+- [ ] Motivation and history the epic already carries are linked, not copied, and a story whose epic covers the context has no Context section at all.
 - [ ] No description contains an em dash, an en dash, an arrow, or an emoji.
 - [ ] No description opens by announcing what follows, and none closes with a sentence that summarises the paragraph above it.
 - [ ] No bullet begins with a bold mini-heading and a colon.
@@ -276,3 +295,131 @@ Atlassian MCP server. The main session has one, authenticated.
 - [ ] It does **not** send the user to the setup reference or to `claude mcp`.
 - [ ] **No stories are created.**
 - [ ] It hands back for an inline re-run, and the inline re-run completes normally and says it ran inline.
+
+## B22 — Many acceptance criteria prompt a split, not a cut
+
+**Setup:** Everything configured. `ABC-123` empty. One candidate with nine
+acceptance criteria covering two separable behaviours.
+**Prompt:** "File this story under ABC-123."
+
+- [ ] Before creating, the skill says the criteria look like two stories and offers the split.
+- [ ] Accept the split: two stories are created, and every one of the nine criteria appears in exactly one of them.
+- [ ] Decline it: one story is created carrying **all nine** criteria. None is dropped, merged away, or shortened to fit.
+- [ ] The skill does not refuse the story or report it as over a limit.
+
+## B23 — Technical work opens with a goal, not a contrived user story
+
+**Setup:** Everything configured. `ABC-123` empty. One candidate: split
+`OrderService` into pricing and persistence, with no end user affected.
+**Prompt:** "File this under ABC-123."
+
+- [ ] The description opens with a one-sentence goal and no heading: neither `Goal` nor `User story`.
+- [ ] No description contains "As a developer" or "As a system".
+- [ ] The goal states what is true afterwards and why, in one sentence.
+- [ ] The three required headings are present as usual.
+- [ ] Then file a candidate with a real user in it: it opens with the "As a / I want / So that" lines, also unheaded.
+
+## B24 — A pre-rendered description is checked like a rendered one
+
+**Setup:** Everything configured. `ABC-123` empty. One candidate supplied
+against the schema with `description_markdown` set: it contains an em dash, a
+`TBD`, and no `Test plan` heading.
+**Prompt:** "File this under ABC-123."
+
+- [ ] The issue-writing checklist runs on the supplied markdown, before the create call.
+- [ ] The created description contains no em dash and no `TBD`.
+- [ ] The missing `Test plan` heading is asked about, not silently filed without and not invented.
+- [ ] The report shows what was changed in the supplied text, so the caller can object.
+
+## B25 — Structured input renders the same way every time
+
+**Setup:** Everything configured. `ABC-123` empty. Two candidates supplied
+against the schema, one of them `assets/story_input.example.json`.
+**Prompt:** "File these under ABC-123."
+
+- [ ] Headings appear in template order, and each field lands under the heading `references/structured-input.md` gives it.
+- [ ] Each test-plan item is one bullet with its level, and its steps are a numbered list nested under it, on both stories.
+- [ ] `blocked_by: [1]` appears under Dependencies and as a native `Blocks` link.
+- [ ] No label, estimate, priority, project key or plan-local `id` appears in either description.
+- [ ] A candidate supplied with no `test_plan` is asked about, not filed with an invented one.
+
+## B26 — Tasks come from the source, and only from it
+
+**Setup:** Everything configured. `ABC-123` empty. Two candidates. The first
+comes with four implementation steps in the spec, one of which restates an
+acceptance criterion word for word and one of which is "migrate the historical
+data", a week of work. The second comes with no steps at all.
+**Prompt:** "File these under ABC-123."
+
+- [ ] The first story has a `Tasks` section with the steps as a `- [ ]` checklist, in the order given.
+- [ ] The step that restates an acceptance criterion is not in the Tasks section.
+- [ ] "Migrate the historical data" stays in the list, and the report names it as a likely sub-task.
+- [ ] **The second story has no Tasks heading.** No steps are generated for it.
+- [ ] In the Jira UI, the Tasks and Acceptance criteria checkboxes render as tickable items, not as literal `[ ]` text. Record which one you saw: this depends on the server's markdown conversion.
+
+## B27 — The read-back asserts on this run's stories only
+
+**Setup:** Everything configured. `ABC-123` already has four stories filed by
+someone else, in another team, one of them a Task. Three new candidates, one of
+them supplied with `issue_type: "Task"`.
+**Prompt:** "File these three under ABC-123."
+
+- [ ] The duplicate search is `parent = ABC-123` with no issue-type filter, and the existing Task is compared like the Stories.
+- [ ] The read-back queries the three created keys, not every child of the epic.
+- [ ] The run passes: the four pre-existing stories and their team do not fail any assertion.
+- [ ] The created Task is read back and verified like the two Stories.
+- [ ] The read-back names the fields it needs rather than relying on the search's default set.
+
+## B28 — A rewritten title is still recognised on a re-run
+
+**Setup:** Everything configured. A previous run filed a story under `ABC-123`
+whose summary is the 70-character rewrite of a 120-character title in the spec.
+**Prompt:** The same request, with the same spec and the same long title.
+
+- [ ] The long title is rewritten before the duplicate search compares it.
+- [ ] The rewrite matches the stored summary, and the candidate is **skipped**, naming the existing key.
+- [ ] **No second story is created**, and it is not reported as a near-match either.
+- [ ] Then file a story whose unrewritten title is already in Jira from an older run: the raw form matches, and it is skipped too.
+
+## B29 — One checkpoint, with the draft, before anything is created
+
+**Setup:** Everything configured. `ABC-123` empty. Four candidates, none
+estimated, one with nine acceptance criteria. The project has `Assigned
+Team(s)`, a Sprint field, and a Priority default of TBD.
+**Prompt:** "File these under ABC-123."
+
+- [ ] **Exactly one hand-back happens before the first create call**, and nothing exists in Jira while it is open.
+- [ ] It carries the draft table, one row per candidate, with summary, opening, criteria, tasks, dependencies and outcome, and no Estimate column since nobody gave one.
+- [ ] It asks team, Priority, sprint and the split in one message, each with its default stated, and **asks nothing about estimates**.
+- [ ] Answer only the team: the batch is filed with that team, Priority at the project default, no sprint, no points, and the long story as one story with all nine criteria. **No second round of questions.**
+- [ ] The report names each question that took its default.
+- [ ] The duplicate search runs again on resuming, before the first create.
+- [ ] Reply "go" with nothing else: every question takes its default, and the team takes the recorded default, reported as a default.
+
+## B30 — An epic from earlier in the conversation is proposed, not assumed
+
+**Setup:** Everything configured. Earlier in the session the user pasted
+`https://acme.atlassian.net/browse/ABC-123` while discussing the work. The
+request names no epic.
+**Prompt:** "Now file these three stories."
+
+- [ ] The run does not ask for an epic key cold. It reads `ABC-123` and proposes it at the checkpoint with its summary and status.
+- [ ] **No story is created until the user confirms it.** Leaving that question unanswered is a stop, not a default.
+- [ ] Confirm: the stories are filed under `ABC-123`.
+- [ ] Decline and give `ABC-200`: the epic read and the duplicate search are repeated against `ABC-200` before anything is created.
+- [ ] With no epic anywhere in the conversation, the checkpoint asks for the key instead.
+
+## B31 — Fields nobody named stay unset, and named ones resolve
+
+**Setup:** Everything configured. The project has a Sprint field with one open
+sprint, "Sprint 42", no components, and a recorded Labels default of
+`breeding`. One candidate supplies the label `dq`. The tenant has no `Blocks`
+link type, and one candidate is blocked by another in the batch.
+**Prompt:** "File these under ABC-123."
+
+- [ ] The checkpoint asks about the sprint and does not ask about components.
+- [ ] Unanswered: no story has a sprint.
+- [ ] Answer "the current sprint": it is resolved to Sprint 42 through an issue already in it, and the read-back shows it.
+- [ ] The candidate with `dq` is filed with both `breeding` and `dq`.
+- [ ] The stories are created, **no link is created**, no `Relates` link is substituted, and the report lists the dependency as prose-only.
+- [ ] A dependency on `ABC-999`, which does not exist, is raised at the checkpoint and gets no link.

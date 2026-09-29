@@ -35,7 +35,7 @@ Two steps, both required.
 
 | File | Source | Licence | Copyright holder | What was adapted |
 | --- | --- | --- | --- | --- |
-| `skills/processes/crv-create-jira-epic/references/issue-writing.md` | [`blader/humanizer`](https://github.com/blader/humanizer) | MIT | Siqi Chen | The catalogue of patterns that mark generated text, under "Patterns that mark generated text": the pattern names, and the approach of naming them mechanically so they can be checked rather than felt. Every example was rewritten for Jira issues. The summary rules, the size caps, and the placeholder and Priority rules are ours. |
+| `skills/processes/crv-create-jira-epic/references/issue-writing.md` | [`blader/humanizer`](https://github.com/blader/humanizer) | MIT | Siqi Chen | The catalogue of patterns that mark generated text, under "Patterns that mark generated text": the pattern names, and the approach of naming them mechanically so they can be checked rather than felt. Every example was rewritten for Jira issues. The summary rules and cap, and the placeholder and Priority rules, are ours. |
 | `skills/processes/crv-create-jira-story/references/issue-writing.md` | [`blader/humanizer`](https://github.com/blader/humanizer) | MIT | Siqi Chen | A byte-identical copy of the file above. Both Jira skills ship their own copy so each installs standalone; `test_shared_jira_files.py` keeps them identical. |
 
 Check the licence before adapting, not after. A permissive licence is not

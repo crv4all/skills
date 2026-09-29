@@ -13,6 +13,7 @@ the last time something chose one.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SKILL = REPO_ROOT / "skills" / "processes" / "crv-create-jira-story"
 SCHEMA_PATH = SKILL / "assets" / "story_input.schema.json"
 EXAMPLE_PATH = SKILL / "assets" / "story_input.example.json"
+RENDERING_PATH = SKILL / "references" / "structured-input.md"
 
 
 @pytest.fixture(scope="module")
@@ -184,6 +186,53 @@ def test_estimate_provenance_is_recordable(validator: Draft202012Validator, sour
 def test_unknown_estimate_provenance_is_invalid(validator: Draft202012Validator) -> None:
     with pytest.raises(ValidationError):
         validator.validate(minimal(estimate_source="guessed"))
+
+
+def test_a_goal_can_replace_the_user_story(validator: Draft202012Validator) -> None:
+    """Technical work has no real person to put in "As a ... I want".
+
+    Forcing one produces "As a developer, I want the service split", which is the
+    filler the writing reference bans, so a goal is a first-class alternative.
+    """
+    validator.validate(minimal(goal="OrderService is split so pricing deploys alone"))
+
+
+def test_a_story_cannot_carry_both_a_goal_and_a_user_story(
+    validator: Draft202012Validator,
+) -> None:
+    story = minimal(
+        goal="OrderService is split so pricing deploys alone",
+        user_story={"role": "operator", "capability": "a split service", "benefit": "less risk"},
+    )
+    with pytest.raises(ValidationError):
+        validator.validate(story)
+
+
+def test_every_schema_field_has_a_rendering_rule() -> None:
+    """A field the rendering table does not name gets rendered however a run likes.
+
+    That is how one story's test plan ends up a nested list and the next one's a
+    paragraph, so adding a property to the schema without a row in
+    ``structured-input.md`` fails here rather than in a batch.
+    """
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    rows = [
+        line.split("|")[1]
+        for line in RENDERING_PATH.read_text(encoding="utf-8").splitlines()
+        if line.startswith("| `")
+    ]
+    named = {name for row in rows for name in re.findall(r"`([a-z_]+)`", row)}
+    assert set(schema["properties"]) == named
+
+
+def test_tasks_are_a_list_of_steps(validator: Draft202012Validator) -> None:
+    validator.validate(minimal(tasks=["Add a freshness check", "Route failures to the channel"]))
+
+
+@pytest.mark.parametrize("tasks", [[""], "Add a freshness check", [{"title": "x"}]])
+def test_malformed_tasks_are_invalid(validator: Draft202012Validator, tasks: Any) -> None:
+    with pytest.raises(ValidationError):
+        validator.validate(minimal(tasks=tasks))
 
 
 def test_dependencies_can_be_machine_readable(validator: Draft202012Validator) -> None:

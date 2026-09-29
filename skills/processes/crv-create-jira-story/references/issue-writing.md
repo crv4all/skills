@@ -4,8 +4,8 @@ Adapted from https://github.com/blader/humanizer (MIT, Copyright (c) 2025 Siqi C
 The pattern catalogue under "Patterns that mark generated text" is adapted from
 that project's list of AI writing patterns: the pattern names and the idea of
 naming them mechanically are its contribution. Every example here was rewritten
-for Jira issues, and the size caps, the summary rules and the placeholder rules
-are ours. See THIRD_PARTY_NOTICES.md.
+for Jira issues, and the summary cap, the summary rules and the placeholder
+rules are ours. See THIRD_PARTY_NOTICES.md.
 -->
 
 # Writing the title and the description
@@ -16,34 +16,45 @@ the team pastes it into. Almost all of those places truncate it. The description
 is read once by the person who picks the issue up, and again by whoever argues
 about scope later.
 
-Both fail the same three ways. They are too long, so the part that carries the
-meaning is cut off or skimmed past. They are padded, so a reader learns to skip
-whole sections. Or they read as generated text, which tells the team that nobody
-owned the ticket.
+They fail in different ways. A summary that is too long is cut off where the
+meaning is. A description that is padded teaches the reader to skip whole
+sections, and one that reads as generated text tells the team that nobody owned
+the ticket.
 
-## Size caps
+## Length
 
-An issue is a working instruction, not a document. These are hard caps, checked
-before the create call.
+**One hard cap, on the summary: 80 characters and 12 words.** Jira accepts 255.
+Boards, backlog rows, sprint reports and chat previews cut well before that, and
+the cut lands mid-phrase. Going over it is a rewrite, not a warning.
 
-| Text | Cap | Reason |
-| --- | --- | --- |
-| Story summary | 80 characters, 12 words | Jira accepts 255. Boards, backlog rows, sprint reports and chat previews cut well before that, and the cut lands mid-phrase. |
-| Story description | 200 words | Past that the reader skims, and a skimmed acceptance criterion is an ungroomed one. A story that genuinely needs more is usually two stories. |
-| Context section | 3 sentences | It exists to say what the code and the epic do not. Anything longer is restating one of them. |
-| Acceptance criteria | 5 bullets, one line each | Six criteria on one story is a decomposition that has not finished. |
-| Epic description | 400 words | An epic is read to decide whether work belongs in it. That decision needs the outcome and the boundary, not a narrative. |
-| Any single sentence | 25 words | One idea per sentence. Two ideas joined by a comma is two sentences. |
+**The description has no word cap.** A word cap measures the wrong thing. The
+batch that prompted these rules was unreadable because it was padded, not
+because it was long, and a cap cut real content from the stories that needed it
+along with the padding from the ones that did not. The implementer needs the
+current behaviour, the wanted behaviour, the files and contracts involved, and
+how anyone will know it worked. Write all of that.
 
-Going over a cap is a rewrite, not a warning. Cut, do not compress: dropping
-the padding is what gets a description under 200 words, and reflowing the same
-content into denser prose does not.
+What gets cut is the padding. Every pattern in the catalogue below is a rewrite,
+not a preference, and a description with none of them in it is exactly as long
+as its content.
+
+Two length signals are worth acting on, because they point at the decomposition
+rather than the prose:
+
+- **Acceptance criteria running past about seven** usually means the story
+  covers two pieces of work. Say so and offer the split. If the user wants it
+  filed as one, file it as one, and drop no criterion to make it shorter.
+- **A description that restates the epic or the code** carries a second copy
+  that will go stale. Link instead.
+
+The only ceiling on the description is Jira's own, 32,767 characters on most
+tenants. A story that approaches it belongs in a linked document.
 
 ## The summary line
 
 | Rule | Reason |
 | --- | --- |
-| At most 80 characters and 12 words | See the caps above. |
+| At most 80 characters and 12 words | See Length above. |
 | Sentence case, no trailing full stop | Matches how Jira renders every other title. Title Case reads like a document heading. |
 | A story starts with an imperative verb | "Reject expired tokens at the ingest endpoint". The verb states what changes, which is what a reader scanning a sprint wants. |
 | An epic names the outcome as a noun phrase | "Token expiry enforced across ingest". An epic is a state to reach, not a task to do. |
@@ -64,13 +75,15 @@ Three legitimate moves when a value is unknown:
 1. **Say the state in words.** "Not yet decided" and "None known" are real
    answers, and the templates use them by name. Say who decides, if anyone does.
 2. **Leave the field unset.** An empty Jira field is honest and searchable. A
-   field containing `TBD` is neither, and on an option or priority field it
-   renders as a broken icon because `TBD` is not one of the allowed values.
+   text field containing `TBD` is neither. An option field the project itself
+   defaults to a `TBD` option is a different case: that value is the
+   project's, and the field-resolution reference covers it.
 3. **Stop and ask**, when the value is one the issue cannot be filed without.
 
 **Never choose a Priority.** Priority is a scheduling decision the team makes
 in grooming against everything else in the backlog, so a value the run picked is
-either wrong or a guess that gets treated as agreed. Leave the field unset. A
+either wrong or a guess that gets treated as agreed. Send nothing, and let the
+project default stand where there is one. A
 priority the **user** names explicitly is a supplied value and does get sent,
 validated against the allowed values first; the field-resolution reference has
 the two exceptions. Either way, do not write a `Priority` line in the
@@ -94,6 +107,8 @@ preference.
 | A heading restated in its first sentence | Delete the sentence. The heading already said it. |
 | Answering an objection nobody raised: "This is not about performance." | Say what it is about. |
 | Rejecting a fake alternative: introducing an approach only to dismiss it | State what happens. A discarded option belongs in Technical notes with the reason, or nowhere. |
+| A user story with nobody in it: "As a developer, I want OrderService refactored" | Open with a goal instead: what is true afterwards, and why it matters. |
+| A heading that repeats the field label: `## User story` or `## Description` as the first line of a description | Delete it. Jira labels the field, and the text below says what it is. |
 
 ### False shape
 
@@ -184,14 +199,13 @@ anyone will know it worked.
 
 ## Checking a batch before it is filed
 
-Mechanical rules, so they can be checked rather than felt. For each candidate:
+For each candidate, first the mechanical rules, which can be checked rather than
+felt:
 
 - summary at most 80 characters and 12 words
-- description within its word cap, and no section over its own cap
-- summary contains none of `—`, `–`, `->`, `=>`, `:` followed by a second clause
+- summary contains none of `—`, `–`, `->`, `=>`
 - summary does not start with the project key, a component in brackets, or a
   number
-- summary starts with a verb (story) or a noun phrase naming a state (epic)
 - neither summary nor description contains `#` followed by a digit as a
   reference to another candidate
 - description contains no em dash or en dash
@@ -199,15 +213,23 @@ Mechanical rules, so they can be checked rather than felt. For each candidate:
   line
 - no Priority field appears in the create payload
 
-When candidate text is prepared in a file first, three of those are one command
-each:
+Then the ones that need reading:
+
+- summary starts with a verb (story) or a noun phrase naming a state (epic)
+- summary carries one subject, with no `and` or colon introducing a second one
+- description carries none of the patterns catalogued above
+
+When candidate text is prepared in a file first, three of the mechanical rules
+are one command each. The third assumes one summary per line, and counts bytes
+on the macOS `awk`, so a title with accented characters can flag a few
+characters early:
 
 ```bash
 grep -n '[—–]' candidates.md
 grep -nEi '\b(TBD|TODO|N/A)\b' candidates.md
-awk 'BEGIN{RS="";} {print NF, FILENAME}' candidates.md
+awk 'length($0) > 80 || NF > 12' summaries.txt
 ```
 
-Any hit on the first two is a rewrite. Fix it before the create call, because
+Any hit is a rewrite. Fix it before the create call, because
 editing 30 issues afterwards costs 30 calls and leaves an edit history that
 suggests the batch was filed carelessly.

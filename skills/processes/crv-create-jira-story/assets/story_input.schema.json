@@ -27,7 +27,7 @@
       "type": "string",
       "enum": ["supplied", "proposed-and-approved", "unsized"],
       "default": "supplied",
-      "description": "Where the estimate came from. \"proposed-and-approved\" means the agent proposed it in a batch table and the user approved the table rather than grooming the story. \"unsized\" goes with an absent story_points and states that the story was filed deliberately without an estimate, for grooming to size. That provenance is recorded on the issue and in the report, because once a number is in Jira an invented estimate is indistinguishable from an agreed one."
+      "description": "Where the estimate came from. \"proposed-and-approved\" means the agent proposed it in a batch table and the user approved the table rather than grooming the story. \"unsized\" goes with an absent story_points and states that the story was filed deliberately without an estimate, for grooming to size. A proposed-and-approved estimate is recorded as a comment on the issue, which stays true after re-sizing, and in the report, because once a number is in Jira an invented estimate is indistinguishable from an agreed one. An unsized story needs no record beyond its empty field."
     },
     "id": {
       "type": ["string", "integer"],
@@ -56,7 +56,7 @@
     },
     "description_markdown": {
       "type": "string",
-      "description": "A fully rendered description. When present it is used as-is and the structured fields below are ignored."
+      "description": "A fully rendered description, used in place of the structured fields below, which are then ignored. It replaces rendering, not checking: it passes the same issue-writing checks and required headings as a rendered description, and text that fails them is rewritten before the create call and shown in the report so the caller can object."
     },
     "user_story": {
       "type": "object",
@@ -68,7 +68,17 @@
         "benefit": { "type": "string", "minLength": 1 }
       }
     },
+    "goal": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One sentence saying what is true afterwards and why it matters, rendered as the unheaded opening line of the description in place of the user story. For work with no real person in the sentence, such as a refactor or a migration, where \"As a developer, I want\" would be filler. Supply this or user_story, not both."
+    },
     "context": { "type": "string" },
+    "tasks": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Implementation steps the implementer ticks off, rendered as a checklist under the Tasks heading. Steps, not outcomes: an outcome belongs in acceptance_criteria. Only steps a person or the spec gave, never generated ones. Omit the key when there are none, and the heading is dropped."
+    },
     "acceptance_criteria": {
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
@@ -103,7 +113,8 @@
     },
     "notes": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 }
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Rendered under the Technical notes heading: files, contracts, a sample payload, prior art, links. Nothing here is length-capped."
     },
     "labels": {
       "type": "array",
@@ -112,7 +123,7 @@
     "priority": {
       "type": "string",
       "minLength": 1,
-      "description": "Priority name, and the only way to set one. Supply it only when a person chose it: the skill never picks a priority, because grooming decides it against the whole backlog and a value invented at filing time is indistinguishable from an agreed one. The value is validated against the project's allowed options before it is sent, since Jira accepts an unrecognised option by ignoring it, and it is reported as supplied. Placeholders such as TBD are not allowed values on any tenant and render as a broken icon. This key exists separately from additional_fields, which refuses Priority, so that setting one is always a deliberate act rather than something a default carried in."
+      "description": "Priority name, and the only way to set one. Supply it only when a person chose it: the skill never picks a priority, because grooming decides it against the whole backlog and a value invented at filing time is indistinguishable from an agreed one. The value is validated against the project's allowed options before it is sent, since Jira accepts an unrecognised option by ignoring it, and it is reported as supplied. Where the project defaults Priority (some tenants to an option named TBD), omitting this key leaves that default, which the skill reports as the project's value rather than its own. This key exists separately from additional_fields, which refuses Priority, so that setting one is always a deliberate act rather than something a default carried in."
     },
     "additional_fields": {
       "type": "object",
@@ -127,6 +138,10 @@
     }
   },
   "allOf": [
+    {
+      "$comment": "A story opens with a user story or a goal, never both: two statements of intent on one story are two chances to disagree.",
+      "not": { "required": ["user_story", "goal"] }
+    },
     {
       "$comment": "An unsized story has no number, and a story with a number was not filed unsized. Letting both through would put a provenance on the issue that contradicts the field beside it.",
       "if": {

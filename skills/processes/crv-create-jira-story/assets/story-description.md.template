@@ -2,21 +2,30 @@
 Rendered into the Story description as markdown. Delete this comment when
 rendering.
 
-Four required headings, in this order: User story, Acceptance criteria, Test
-plan, Dependencies. Keep all four and fill them, using "None" where that is the
-honest answer.
+Four required sections, in this order: the opening statement, then the
+Acceptance criteria, Test plan and Dependencies headings. Keep all four and
+fill them, using "None" where that is the honest answer.
+
+The opening statement has no heading. Jira already labels the field
+Description, and "As a / I want / So that" says what it is, so a "User story"
+heading above it only repeats the frame.
+
+When no real person is in the sentence (a refactor, a migration, a platform
+change), open with a goal instead: one sentence saying what is true afterwards
+and why it matters, also with no heading. "As a developer, I want OrderService
+split" is filler shaped like a user story. "OrderService is split into pricing
+and persistence, so a pricing change deploys without a database migration" is
+a goal.
 
 Every other heading is optional. Drop an optional heading entirely when it has
 no content. An empty optional heading is noise, and a story carrying eight
 headings for two facts is why the last batch was unreadable.
 
-Hard caps, checked before the create call: 200 words for the whole description,
-3 sentences in Context, 5 acceptance criteria of one line each. Cut rather than
-compress. The prose rules, the banned punctuation and the placeholder rules are
-in the issue-writing reference.
+There is no word cap. Say everything the implementer needs that the code and
+the epic do not already say, and cut the padding rather than the content. The
+prose rules, the banned punctuation and the placeholder rules are in the
+issue-writing reference.
 -->
-
-## User story
 
 As a <role>
 I want <capability>
@@ -24,7 +33,8 @@ So that <benefit>
 
 ## Acceptance criteria
 
-- [ ] <A condition checkable by someone who did not write the code>
+- [ ] <A condition checkable by someone who did not write the code. A
+  Given/When/Then over several lines is fine when the condition needs it.>
 - [ ] <Another>
 
 ## Test plan
@@ -44,23 +54,27 @@ team uses.>
 
 ## Context (optional)
 
-<At most 3 sentences, and only what the implementer cannot get from the code or
-from the epic: the current behaviour, the file or service involved, the decision
-already taken. Link the epic rather than restating it. Drop this heading when
-the epic and the acceptance criteria already say everything.>
+<What the implementer cannot get from the code or from the epic: the current
+behaviour, the file or service involved, the decision already taken. Link the
+epic rather than restating it. Drop this heading when the epic and the
+acceptance criteria already say everything.>
+
+## Tasks (optional)
+
+- [ ] <A step the implementer ticks off on the way to the acceptance criteria.
+  Only steps the person or the spec gave: an invented task list is a plan
+  nobody agreed to. A step that restates an acceptance criterion is deleted,
+  since the criterion already tracks it. A step that needs its own owner or
+  estimate is a sub-task, not a line here.>
 
 ## Out of scope (optional)
 
 <What this story deliberately does not do, when a reader would assume it does.>
 
-## Estimate note (optional)
+## Technical notes (optional)
 
-<Only when the estimate was proposed by the agent and approved in bulk rather
-than groomed, or when the story was filed with no estimate. State which:
-"3 points proposed on 2026-09-02 and approved as part of a batch, not groomed by
-the team", or "Filed without an estimate, to be sized in grooming." An estimate
-whose provenance is unrecorded is indistinguishable from an agreed one.>
-
-## Notes (optional)
-
-<Implementation hints, links, prior art. Links, not copied content.>
+<The detail the implementer would otherwise go looking for: the files, tables,
+endpoints and contracts involved, a sample payload or query, prior art, and
+anything already ruled out with the reason. Copy in what is short and belongs to
+this story. Link what lives and changes elsewhere, because a copy of it goes
+stale where it sits.>
