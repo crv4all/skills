@@ -131,6 +131,14 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Epic membership is always `parent`.** The skills told a company-managed
+  project to use the legacy `Epic Link` field and treated `parent` there as a
+  different relationship. That rule is out of date: Jira Cloud moved epic
+  membership onto `parent` for both project styles, and a company-managed
+  BAPP story holds its epic in `parent` while the create screen still offers
+  `Epic Link` beside it. The skills now send `parent` only, search and read
+  back with `parent = <key>`, and stop if `parent` is absent rather than
+  falling back.
 - **A story can open with a goal instead of a user story.** Refactors,
   migrations and platform changes have no real person to put in "As a ... I
   want", and forcing one produced "As a developer, I want the service split",

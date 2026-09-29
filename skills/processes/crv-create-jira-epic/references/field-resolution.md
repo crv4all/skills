@@ -14,7 +14,7 @@ So: resolve by **field name**, per project, per run.
 | Field | Why it varies |
 | --- | --- |
 | Story Points | `Story Points` on most tenants, `Story point estimate` on others. |
-| Epic membership | `parent` in a team-managed project, an `Epic Link` custom field in a company-managed one. See below. |
+| Epic membership | Always `parent`, even where the screen also offers the legacy `Epic Link`. See below. |
 | Team | `Team`, `Assigned Team(s)`, `Squad`, or absent. Asked, never assumed. See below. |
 | Sprint | Numbered per tenant, and rejected outright on some boards. |
 | Any option field | The allowed values are per project, not per tenant. |
@@ -110,41 +110,29 @@ re-runs setup.
 If the create screen marks the team field required, an unanswered question is a
 stop, not a default.
 
-## Epic membership: `parent` or `Epic Link`
+## Epic membership: always `parent`
 
 Getting this wrong produces the most expensive failure in either skill: a batch
 of stories that exist, look correct, and belong to no epic. Nothing in the create
 response says so, because the field was simply not set.
 
-Which mechanism a project uses depends on how the project was created, and both
-are current:
-
-| Project style | Field | Payload |
-| --- | --- | --- |
-| Team-managed (next-gen) | `parent` | `{"parent": {"key": "ABC-123"}}` |
-| Company-managed (classic) | `Epic Link`, a custom field | `{"customfield_NNNNN": "ABC-123"}`, the key as a bare string |
-
-How to tell, without guessing: read create-metadata and look at which of the two
-appears. A company-managed project's Story create screen carries a field named
-`Epic Link` and its `parent` field, when present at all, is for a different
-relationship. A team-managed project carries `parent` and has no `Epic Link`.
+**A story's epic is its `parent`**, sent as `{"parent": {"key": "ABC-123"}}`.
+That holds in company-managed projects too: Jira Cloud moved epic membership
+onto `parent` for both project styles. A company-managed create screen may still
+offer a legacy `Epic Link` custom field beside it. Ignore it. Sending both is two
+writes of one relationship that can disagree, and a skill that picks `Epic Link`
+because the project is company-managed is following a rule Jira retired.
 
 Rules:
 
-- Resolve `Epic Link` by name exactly as any other custom field. Never assume
-  `customfield_10008` or any other number, even though that is the common value.
-- Send the epic key as a string for `Epic Link`, and as `{"key": ...}` for
-  `parent`. The two shapes are not interchangeable and the wrong one is rejected
-  or, worse, accepted and dropped.
-- If neither field can be resolved, **stop**. Do not create the stories and plan
-  to link them afterwards. A batch of orphans is harder to find than a refusal.
+- Confirm `parent` appears in create-metadata for the Story issue type. If it
+  does not, **stop** and list the fields that do appear. Do not fall back to
+  `Epic Link`, and do not create the stories planning to link them afterwards: a
+  batch of orphans is harder to find than a refusal.
+- Search and read back with `parent = <EPIC-KEY>`. It works on both project
+  styles.
 - Verify by reading the issues back after creating them. The create response is
   not evidence that membership was set.
-
-Some tenants also reject `Epic Link` on the create call but accept it on an
-edit. If create fails on that field alone, creating and then patching is
-acceptable, provided the patch is verified by a read-back and the report says
-that is what happened.
 
 ## When a field cannot be resolved: stop
 

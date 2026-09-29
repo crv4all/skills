@@ -2,7 +2,7 @@
 
 "Stop and report, never improvise" covers a run that failed. It does not cover
 the more expensive case: the run succeeded, the issues exist, and the values in
-them are wrong. Twenty-nine stories with no epic link look exactly like
+them are wrong. Twenty-nine stories with no parent epic look exactly like
 twenty-nine stories with one, until someone opens the epic.
 
 This is the procedure for that. It is deliberately slower than the wrong instinct,
@@ -23,7 +23,7 @@ Every later step compares against that table, not against the plan.
 
 | Class | Examples | Fix |
 | --- | --- | --- |
-| Field value wrong or absent | Epic link, story points, team, labels | Patch in place |
+| Field value wrong or absent | Epic membership (`parent`), story points, team, labels | Patch in place |
 | Field set that should never have been set | A Priority chosen by a previous run, rendering as a broken icon | Clear it, with the same one-table approval |
 | Description text wrong | Unresolved placeholder, plan-local numbering, missing section, a `TBD` or a `Priority:` line | Patch in place |
 | Description padded | Carries the patterns the writing reference names | Patch in place, and rewrite rather than trim |

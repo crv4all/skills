@@ -122,15 +122,15 @@ one with no story points.
 ## B9 — Epic membership on a company-managed project
 
 **Setup:** Everything configured. `ABC-123` lives in a **company-managed**
-project, whose Story create screen carries an `Epic Link` custom field and no
-usable `parent`.
+project whose Story create screen offers both `Parent` and a legacy `Epic Link`
+custom field, as BAPP's does.
 **Prompt:** "File these four stories under ABC-123."
 
-- [ ] Create-metadata is consulted to decide which field carries epic membership.
-- [ ] No `customfield_` number is assumed, including `customfield_10008`.
-- [ ] The epic key is sent in the shape that field takes.
+- [ ] Every create payload sets `parent` to `{"key": "ABC-123"}`.
+- [ ] **No payload sets `Epic Link`**, even though the screen offers it and the project is company-managed.
+- [ ] The duplicate search and the read-back both use `parent = ABC-123`.
 - [ ] A read-back confirms all four are children of `ABC-123`, and the report quotes it.
-- [ ] **Four orphan stories reported as filed under the epic is the failure this case exists to catch.** If the field cannot be resolved, nothing is created.
+- [ ] **Four orphan stories reported as filed under the epic is the failure this case exists to catch.** Then remove `Parent` from the screen: the skill stops, lists the available fields, and creates nothing.
 
 ## B10 — Cross-references become real keys
 

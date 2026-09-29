@@ -29,7 +29,7 @@ Three outcomes appear in the right column, and they are not interchangeable:
 
 | Failure | What it means | Do |
 | --- | --- | --- |
-| Epic-membership field unresolvable | Neither `parent` nor `Epic Link` is present under any known name | Stop. Name the field and list the available names. A batch of orphans reports as success and is expensive to find. |
+| `parent` not on the Story create screen | Epic membership cannot be written | Stop. Do not fall back to `Epic Link`. Name the field and list the available names. A batch of orphans reports as success and is expensive to find. |
 | Story Points unresolvable, and some candidate has an estimate | The number would be accepted and silently dropped | Stop. Name the field and list the available names. |
 | Story Points unresolvable, and nobody estimated | Nothing to write | Not a failure. File without it and say so. |
 | Missing estimate on a candidate | Nothing to write, and nothing to invent | File the story unsized and name it in the report. The empty field is the record. Never block the batch, never assign a number. |

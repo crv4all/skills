@@ -205,8 +205,7 @@ Search the epic for existing children, once, before the first create:
 parent = <EPIC-KEY> AND issuetype = Story
 ```
 
-If `parent` is unsupported on this tenant, fall back to `"Epic Link" =
-<EPIC-KEY>`. If neither works, **stop**. Proceeding without duplicate detection
+If the search errors, **stop**. Proceeding without duplicate detection
 is precisely the failure mode this step exists to prevent.
 
 Compare each candidate summary against the existing ones, normalising case and
@@ -265,10 +264,10 @@ whole batch. Resolve every field by name. Full procedure and matching rules:
 
 Four of them decide whether this batch is usable:
 
-- **Epic membership.** `parent` in a team-managed project, `Epic Link` in a
-  company-managed one. Read create-metadata to see which exists; never assume a
-  `customfield_` number. The wrong field means a batch of orphans that reports
-  as success.
+- **Epic membership.** Always `parent`, in either project style. Ignore a
+  legacy `Epic Link` field if the screen also offers one. If `parent` is not on
+  the screen, stop: the wrong field means a batch of orphans that reports as
+  success.
 - **Team.** `Assigned Team(s)`, `Team`, or `Squad`. **Ask the user, once, for
   the whole batch**, offering the allowed values and the recorded default:
 
@@ -339,7 +338,7 @@ comes back:
 parent = <EPIC-KEY> AND issuetype = Story ORDER BY created ASC
 ```
 
-Use the `"Epic Link" = <EPIC-KEY>` form on a company-managed project. Then check:
+Then check:
 
 | Assertion | Failure it catches |
 | --- | --- |
