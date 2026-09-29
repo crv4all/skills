@@ -163,3 +163,15 @@ Atlassian MCP server. The main session has one, authenticated.
 - [ ] It does **not** send the user to the setup reference.
 - [ ] **No epic is created.**
 - [ ] It hands back for an inline re-run, and the inline re-run completes normally and says it ran inline.
+
+## B14 — Re-running must not file a second epic
+
+**Setup:** Everything configured. The project already holds an epic, status
+In Progress, whose summary is exactly the one the request produces.
+**Prompt:** "Create a Jira epic for rejecting expired tokens at the ingest endpoint."
+
+- [ ] A JQL search for an existing epic runs **before** any create call, not only after an error.
+- [ ] **No epic is created.** The project still holds exactly one epic with that summary.
+- [ ] The report names the existing key and its status, and says nothing was created.
+- [ ] The existing epic is not modified.
+- [ ] Then change the existing epic's summary to the same outcome in other words: the skill asks once whether it is the same epic, and creates nothing until answered.

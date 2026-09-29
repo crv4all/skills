@@ -129,6 +129,12 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Filing an epic twice files it once.** `crv-create-jira-epic` now searches
+  the project for an epic with the same summary before creating one, as the
+  story skill always has. It used to search only after a create call errored,
+  so re-running a request, or filing an epic a teammate had already filed, left
+  two epics splitting the same stories. An exact match creates nothing and
+  names the existing key. A near match is asked about once.
 - **Story points are no longer mandatory.** Sizing belongs to the team, in
   grooming, with the people who will do the work. A story with no estimate is
   now filed with the field unset, recorded as unsized on the issue and in the

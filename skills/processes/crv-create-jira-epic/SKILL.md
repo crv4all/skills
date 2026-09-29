@@ -72,8 +72,9 @@ One Jira Epic, and a report naming it. Specifically:
   the values read back from the created epic, and any field whose value was
   inferred rather than supplied.
 
-Or: nothing created, and a report saying exactly what was missing. Those are the
-only two outcomes. There is no partial success.
+Or: nothing created because the epic already exists, and a report naming its
+key. Or: nothing created, and a report saying exactly what was missing. Those
+are the only three outcomes. There is no partial success.
 
 ## When not to use this
 
@@ -105,9 +106,10 @@ actually blocking.
    If MCP tools are **present but every call returns unauthorised**: OAuth is not
    complete. Say so explicitly and point to the authentication instructions.
 
-   Read-issue is required, not optional: Step 4 verifies the epic by reading it
-   back, and a create call that cannot be verified is a create call whose result
-   is unknown.
+   Read-issue and JQL search are required, not optional. Step 3 searches for an
+   existing epic before creating one, and without that a re-run files a second
+   copy. Step 4 verifies the epic by reading it back, and a create call that
+   cannot be verified is a create call whose result is unknown.
 
 2. **Site and project known?**
 
@@ -191,9 +193,29 @@ Two fields need naming here:
 **If a required field cannot be filled, stop and say which one.** Do not create
 the epic and mention the gap afterwards.
 
-## Step 3. Create
+## Step 3. Search, then create
 
-Call the create-issue capability with the resolved field identifiers, sending the
+**Search before you create, every time.** A re-run of the same request, or a
+teammate who filed the epic yesterday, otherwise leaves two epics splitting the
+same stories between them. One query, before the create call, across every
+status:
+
+```text
+project = <KEY> AND issuetype = Epic AND summary ~ "<two or three distinctive words>"
+```
+
+`~` is a text search and matches loosely, so compare the results yourself,
+normalising case and whitespace:
+
+- **Exact match: create nothing.** Report the existing key, its status, and
+  that nothing was created. Do not update it: the user asked to create, and
+  rewriting an epic someone has already groomed is a worse surprise than a skip.
+- **Near match**, the same outcome in different words: ask whether it is the
+  same epic, in one question, before creating. Asking about one epic is cheap.
+  Two epics that each hold half the stories are not.
+- **No match:** create.
+
+Then call the create-issue capability with the resolved field identifiers, sending the
 description as **markdown**, using whatever content-format parameter the server
 exposes. Do not hand-build Atlassian Document Format: a subtly malformed node
 yields an epic whose description renders blank, which is a failure that reports
@@ -241,6 +263,8 @@ Then say what to do next: stories under this epic are `crv-create-jira-story`.
 | No team field on the project | Not every project has one | Not a failure. Say so and file without it. |
 | Team answer not among the allowed values | Typo, or a renamed team | List the allowed values and ask again. Do not send it. |
 | Priority required on the create screen | The only case that sets Priority | Stop. Ask which value, then send the answer. |
+| An epic with the same summary exists | A re-run, or someone filed it first | Not a failure. Create nothing, and report the existing key and its status. |
+| An epic with a similar summary exists | Possibly the same work in other words | Ask once whether it is the same epic, then create or stop on the answer. |
 | Create call errors | Varies | Search for the summary before any retry. Report the error text verbatim. |
 | Read-back contradicts the write | The epic exists and is wrong | Do not report done. Patch in place and verify again. |
 
@@ -259,6 +283,7 @@ Before reporting done:
 - [ ] Preflight passed, or nothing was created.
 - [ ] The description carries every required heading, in order, and says so from
       the read-back rather than from the payload.
+- [ ] A JQL search for an existing epic ran before the create call.
 - [ ] Every field the project marks required has a value.
 - [ ] The issue-writing checklist ran: summary at most 80 characters, no em or
       en dash, no padding pattern, no `TBD`, no `Priority:` line.
