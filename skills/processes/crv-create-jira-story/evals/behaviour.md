@@ -37,7 +37,7 @@ exits `0`. Epic `ABC-123` exists with no children.
 - [ ] Each description opens with the "As a / I want / So that" lines and **no heading above them**, then carries the three required headings from `assets/story-description.md.template`, and renders as markdown in Jira.
 - [ ] Every acceptance criterion in the spec appears in a created story. None is dropped to shorten a description.
 - [ ] No description carries an optional heading with nothing under it.
-- [ ] **No story has a Priority value**, and no description contains a `Priority:` line.
+- [ ] **No create payload contains a Priority**, each story's stored Priority is the project default or empty, and no description contains a `Priority:` line.
 - [ ] Create-metadata is read **once**, not once per story.
 - [ ] A JQL read-back runs after the creates, and the report quotes the values it returned.
 - [ ] The reported point total equals the sum of the read-back rows, checked by hand.
@@ -249,10 +249,11 @@ optional, with a default of Medium. `jira_setup.py --show` also records a
 - [ ] **No create payload contains a Priority field.**
 - [ ] The recorded Priority default is ignored, and the report says it was ignored rather than applied.
 - [ ] No description contains a `Priority:` line or the text `TBD`.
-- [ ] The read-back confirms no story has a Priority value.
+- [ ] The read-back shows Medium, the screen's default, on every story, and **this counts as a pass**: the report names it as the project default, not as set by the run.
+- [ ] Repeat on a screen whose Priority default is an option named `TBD`, as on BAPP: same outcome, and the run does not flag `TBD` as a placeholder it wrote.
 - [ ] Then prompt "file these three under ABC-123, all high priority": Priority **is** set to High, because the user chose it. It is validated against the allowed values first and reported as supplied, not as a default.
 - [ ] Then prompt with a priority that is not an allowed value: it is not sent, and the allowed values are listed.
-- [ ] Then make Priority **required** on the create screen with no priority in the prompt: the skill stops and asks which value, rather than choosing one or sending `TBD`.
+- [ ] Then make Priority **required with no default** and no priority in the prompt: the skill stops and asks which value, rather than choosing one. Required **with** a default is not a stop.
 
 ## B20 — Descriptions keep the content and drop the padding
 

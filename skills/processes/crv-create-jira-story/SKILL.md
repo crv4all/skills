@@ -281,12 +281,14 @@ Four of them decide whether this batch is usable:
   [field-resolution.md § Team](references/field-resolution.md#team-ask-the-user-do-not-assume).
 - **Story Points.** `Story Points`, or `Story point estimate` on some tenants.
   Resolve it only if some candidate has an estimate.
-- **Priority: never choose one.** Not from a recorded default, not inferred from
-  the spec, and never as `TBD`, which is not an allowed value and renders as a
-  broken icon. Priority is groomed against the whole backlog. Two exceptions,
-  both a value from a person: a priority the user names explicitly, sent after
-  validating it against the allowed values and reported as supplied, and a
-  create screen that marks it required, where you stop and ask.
+- **Priority: never choose one.** Not from a recorded default and not inferred
+  from the spec. Priority is groomed against the whole backlog. Send nothing
+  unless the user names a value, validated against the allowed values and
+  reported as supplied. Where the project has a Priority default (BAPP's is an
+  option named `TBD`), Jira stores it anyway: that is the project's value, not
+  the run's, so the read-back expects it and the report names it as the
+  default. Required with no default: stop and ask.
+  [field-resolution.md § Priority](references/field-resolution.md#fields-that-must-be-resolved-by-name-every-run).
 
 **If epic membership cannot be resolved, stop before creating anything**, and
 likewise Story Points when there is an estimate to write. A field Jira accepts
@@ -346,7 +348,7 @@ Then check:
 | Every created key is in the result | The batch of orphans this step exists to catch |
 | Every estimated row holds its number, and no other row has one | A field Jira accepted and ignored, or a number nobody agreed to |
 | Every row holds the team the user named, or none if they said `none` | A team field Jira accepted and dropped |
-| Priority unset unless the user named one, no `TBD` or `Priority:` line | A default or a placeholder that got sent anyway |
+| Priority is the user's named value, or the project default, or unset where there is no default. No `Priority:` line | A value the run chose, or a recorded default that got sent |
 | Every applied organisation default is present | Same, for the other recorded defaults |
 | Point total summed from these rows, over the ones that have a number | A total reported from the plan is arithmetic nobody checked |
 | Every bulk-approved estimate has its provenance comment | A proposed number that now looks groomed |
@@ -419,7 +421,8 @@ Before reporting done:
       shorten a description.
 - [ ] Every task came from the source. None was invented, and none restates
       an acceptance criterion.
-- [ ] No story has a Priority in the read-back that the user did not name.
+- [ ] No story has a Priority in the read-back other than one the user named
+      or the project default, and the report says which.
 - [ ] No estimate was invented, and every unsized story is named in the report.
 - [ ] Every bulk-approved estimate carries its provenance comment, or the report
       says the server could not add one.

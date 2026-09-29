@@ -131,6 +131,14 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **A project's own Priority default is not a failure.** The skills claimed
+  `TBD` was not an allowed value on any tenant and expected Priority unset after
+  every create. On BAPP, `TBD` is a real option and the project default, with
+  an icon hosted off-site that renders broken, so Jira stores it on every issue
+  created without a Priority, and the read-back would have failed every run.
+  The skills still never choose a Priority. They now read the default from
+  create-metadata, accept it in the read-back as the project's value, name it
+  in the report, and offer the user the chance to set a real one.
 - **Epic membership is always `parent`.** The skills told a company-managed
   project to use the legacy `Epic Link` field and treated `parent` there as a
   different relationship. That rule is out of date: Jira Cloud moved epic

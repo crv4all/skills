@@ -35,7 +35,8 @@ Three outcomes appear in the right column, and they are not interchangeable:
 | Missing estimate on a candidate | Nothing to write, and nothing to invent | File the story unsized and name it in the report. The empty field is the record. Never block the batch, never assign a number. |
 | No team field on the project | Not every project has one | Not a failure. Say so and file without it. Do not substitute a label. |
 | Team answer not among the allowed values | A typo, or a team that was renamed | List the allowed values and ask again. Do not send it: Jira accepts the payload and drops the value. |
-| Priority marked required on the create screen | One of only two cases where a Priority is sent, the other being one the user named | Stop and ask which value, then send the answer. Never choose one to get past the screen, and never send `TBD`. |
+| Priority marked required on the create screen, with no default | One of only two cases where a Priority is sent, the other being one the user named | Stop and ask which value, then send the answer. Never choose one to get past the screen. With a default, it is not a stop: Jira fills it. |
+| Read-back Priority is the project default, such as BAPP's `TBD` | Jira applied the project's default because nothing was sent | Not a failure. Report it as the project default, not as set by the run. |
 | A supplied option value is not among the allowed values | Same class of problem as the team answer | Stop and list the allowed values. |
 
 ## The batch itself

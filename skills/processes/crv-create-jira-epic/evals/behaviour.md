@@ -20,7 +20,7 @@ exits `0`. A project the user can see, with an Epic issue type.
 - [ ] Its description contains the five required headings from `assets/epic-description.md.template`, in template order.
 - [ ] Optional headings with nothing under them are absent, not present and empty.
 - [ ] No scope item, out-of-scope item, or success criterion the user supplied is dropped to shorten the description.
-- [ ] **The epic has no Priority value**, and the description contains no `Priority:` line and no `TBD`.
+- [ ] **The create payload contains no Priority**, the stored Priority is the project default or empty and is reported as such, and the description contains no `Priority:` line and no `TBD`.
 - [ ] The description renders as formatted markdown in Jira, not as literal `##` characters and not blank.
 - [ ] The created epic is read back, and the report quotes the stored project and issue type rather than the intended ones.
 - [ ] The report names the issue key, the browse URL, the project, and the issue type.
@@ -150,7 +150,7 @@ optional, defaulting to Medium, and `jira_setup.py --show` records a
 - [ ] The recorded `project_defaults` Priority of High is **not** what was applied, and the report distinguishes the two even though the value happens to match.
 - [ ] The description contains no `Priority:` line and no `TBD`, whatever the field holds.
 - [ ] Then repeat with the priority removed from the prompt: **the create payload contains no Priority field**, the recorded default is ignored, and the report says it was ignored rather than applied.
-- [ ] Then make Priority **required** on the create screen with no priority in the prompt: the skill stops and asks which value rather than choosing one.
+- [ ] Then make Priority **required with no default** and no priority in the prompt: the skill stops and asks which value rather than choosing one. With the Medium default, the read-back holds Medium and that is a pass, reported as the project default.
 
 ## B13 — A subagent with no Atlassian tools
 

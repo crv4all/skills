@@ -123,7 +123,7 @@
     "priority": {
       "type": "string",
       "minLength": 1,
-      "description": "Priority name, and the only way to set one. Supply it only when a person chose it: the skill never picks a priority, because grooming decides it against the whole backlog and a value invented at filing time is indistinguishable from an agreed one. The value is validated against the project's allowed options before it is sent, since Jira accepts an unrecognised option by ignoring it, and it is reported as supplied. Placeholders such as TBD are not allowed values on any tenant and render as a broken icon. This key exists separately from additional_fields, which refuses Priority, so that setting one is always a deliberate act rather than something a default carried in."
+      "description": "Priority name, and the only way to set one. Supply it only when a person chose it: the skill never picks a priority, because grooming decides it against the whole backlog and a value invented at filing time is indistinguishable from an agreed one. The value is validated against the project's allowed options before it is sent, since Jira accepts an unrecognised option by ignoring it, and it is reported as supplied. Where the project defaults Priority (some tenants to an option named TBD), omitting this key leaves that default, which the skill reports as the project's value rather than its own. This key exists separately from additional_fields, which refuses Priority, so that setting one is always a deliberate act rather than something a default carried in."
     },
     "additional_fields": {
       "type": "object",

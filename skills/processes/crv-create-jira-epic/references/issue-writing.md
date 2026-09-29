@@ -75,13 +75,15 @@ Three legitimate moves when a value is unknown:
 1. **Say the state in words.** "Not yet decided" and "None known" are real
    answers, and the templates use them by name. Say who decides, if anyone does.
 2. **Leave the field unset.** An empty Jira field is honest and searchable. A
-   field containing `TBD` is neither, and on an option or priority field it
-   renders as a broken icon because `TBD` is not one of the allowed values.
+   text field containing `TBD` is neither. An option field the project itself
+   defaults to a `TBD` option is a different case: that value is the
+   project's, and the field-resolution reference covers it.
 3. **Stop and ask**, when the value is one the issue cannot be filed without.
 
 **Never choose a Priority.** Priority is a scheduling decision the team makes
 in grooming against everything else in the backlog, so a value the run picked is
-either wrong or a guess that gets treated as agreed. Leave the field unset. A
+either wrong or a guess that gets treated as agreed. Send nothing, and let the
+project default stand where there is one. A
 priority the **user** names explicitly is a supplied value and does get sent,
 validated against the allowed values first; the field-resolution reference has
 the two exceptions. Either way, do not write a `Priority` line in the

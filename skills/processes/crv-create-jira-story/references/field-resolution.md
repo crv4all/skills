@@ -27,14 +27,24 @@ or not it has a recorded default. Reasons, in order:
   everything else in the backlog. A value chosen at filing time by something
   that has not seen the backlog is a guess, and once it is in Jira it is
   indistinguishable from an agreed one.
-- It is an option field, so an invented value is rejected or, on some screens,
-  stored as an unrecognised option and rendered as a broken icon.
-- A written-out placeholder is worse. `TBD` is not one of the allowed values, so
-  a `Priority` field or a `Priority: TBD` line in the description produces
-  exactly that broken icon and a value nobody can filter on.
+- It is an option field, so an invented value is rejected or silently ignored.
+- A `Priority: TBD` line in the description duplicates the real field, and the
+  two then disagree.
 
-An unset Priority is honest, searchable, and one bulk edit away from being set
-by the person entitled to set it.
+**Many projects fill Priority themselves.** When create-metadata reports
+`hasDefaultValue: true` for Priority, Jira stores its `defaultValue` on every
+issue created without one. On BAPP that default is an option literally named
+`TBD`, with an icon hosted off-site that renders broken. That value is the
+project's, not the run's: it is what an issue filed by hand gets too. So:
+
+- Read the default from create-metadata along with the allowed values.
+- Send nothing, and expect the default in the read-back. A stored value equal to
+  the default is a pass, reported as "the project default, not set by this run".
+- Name it in the checkpoint question, so the user can set a real one: "Priority:
+  the project default is TBD. Name one, or leave it." No answer leaves it.
+
+Without a default, an unset Priority is honest, searchable, and one bulk edit
+away from being set by the person entitled to set it.
 
 Two exceptions, and both turn on the value coming from a person rather than from
 the run:
@@ -43,9 +53,10 @@ the run:
   question. That is a supplied value, so send it. Validate it against the
   allowed values from create-metadata first, because Jira accepts an
   unrecognised option by ignoring it, and report it as supplied.
-- **The create screen marks Priority required.** Stop and ask which value, then
-  send the answer. Do not choose one to get past the screen, and never send
-  `TBD` to satisfy it.
+- **The create screen marks Priority required and has no default.** Stop and
+  ask which value, then send the answer. Do not choose one to get past the
+  screen. A required Priority with a default is not a stop: Jira fills it, as
+  above.
 
 What is forbidden is the run deciding. A priority inferred from the tone of a
 spec, copied from a sibling issue, taken from a recorded default, or written as

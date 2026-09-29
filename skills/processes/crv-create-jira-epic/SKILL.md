@@ -65,7 +65,8 @@ One Jira Epic, and a report naming it. Specifically:
   [assets/epic-description.md.template](assets/epic-description.md.template) in
   order and written to [references/issue-writing.md](references/issue-writing.md).
 - The team the user named, or none because they said so.
-- No Priority unless the user named one, and no placeholder value in the text.
+- No Priority the run chose: the user's named value, or the project's own
+  default, reported as such. No placeholder value in the text.
 - Every field the project marks required on the create screen, and every recorded
   organisation default, populated.
 - A report giving the issue key, its browse URL, the project and issue type used,
@@ -183,12 +184,14 @@ Two fields need naming here:
   the work, so this is the one field that cannot be derived. `none` is a valid
   answer and gets reported as the user's choice.
   [field-resolution.md § Team](references/field-resolution.md#team-ask-the-user-do-not-assume).
-- **Priority: never choose one.** Not from a recorded default, not inferred from
-  the spec, and never as `TBD`, which is not an allowed value and renders as a
-  broken icon. Priority is groomed against the whole backlog. Two exceptions,
-  both a value from a person: a priority the user names explicitly, sent after
-  validating it against the allowed values and reported as supplied, and a
-  create screen that marks it required, where you stop and ask.
+- **Priority: never choose one.** Not from a recorded default and not inferred
+  from the spec. Priority is groomed against the whole backlog. Send nothing
+  unless the user names a value, validated against the allowed values and
+  reported as supplied. Where the project has a Priority default (BAPP's is an
+  option named `TBD`), Jira stores it anyway: that is the project's value, not
+  the run's, so the read-back expects it and the report names it as the
+  default. Required with no default: stop and ask.
+  [field-resolution.md § Priority](references/field-resolution.md#fields-that-must-be-resolved-by-name-every-run).
 
 **If a required field cannot be filled, stop and say which one.** Do not create
 the epic and mention the gap afterwards.
@@ -240,7 +243,7 @@ values before reporting anything.
 | Every required heading is present in the stored description | A truncated or blank render |
 | The description has no `TBD` or `Priority:` line | Placeholders that survived |
 | The team field holds the user's answer, or nothing if they said `none` | A team field Jira accepted and dropped |
-| Priority is unset unless the user named one | A default or a guess that got sent anyway |
+| Priority is the user's named value, or the project default, or unset where there is no default | A recorded default or a guess that got sent |
 | Every applied default holds the value sent | A field identifier Jira ignored |
 
 Then report: the issue key, the browse URL built from the recorded site, the
@@ -262,7 +265,7 @@ Then say what to do next: stories under this epic are `crv-create-jira-story`.
 | Required field unresolvable | Screen expects something not supplied | Stop. Name the field and the available field names. |
 | No team field on the project | Not every project has one | Not a failure. Say so and file without it. |
 | Team answer not among the allowed values | Typo, or a renamed team | List the allowed values and ask again. Do not send it. |
-| Priority required on the create screen | The only case that sets Priority | Stop. Ask which value, then send the answer. |
+| Priority required on the create screen, with no default | The only case the run must ask about | Stop. Ask which value, then send the answer. |
 | An epic with the same summary exists | A re-run, or someone filed it first | Not a failure. Create nothing, and report the existing key and its status. |
 | An epic with a similar summary exists | Possibly the same work in other words | Ask once whether it is the same epic, then create or stop on the answer. |
 | Create call errors | Varies | Search for the summary before any retry. Report the error text verbatim. |
@@ -287,7 +290,8 @@ Before reporting done:
 - [ ] Every field the project marks required has a value.
 - [ ] The issue-writing checklist ran: summary at most 80 characters, no em or
       en dash, no padding pattern, no `TBD`, no `Priority:` line.
-- [ ] The epic has no Priority in the read-back that the user did not name.
+- [ ] The epic's Priority in the read-back is the user's named value or the
+      project default, and the report says which.
 - [ ] The team field holds what the user gave, or is unset because they said so,
       and the report says which.
 - [ ] The description states no count of child stories.
