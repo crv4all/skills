@@ -131,6 +131,11 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The epic skill checks it can fix what it files.** It told the agent to
+  patch an epic in place when the read-back contradicted the write, but never
+  required the edit capability, so on a server without it the only possible
+  outcome was a wrong epic reported as wrong. Edit is now a preflight
+  requirement, as it already was for stories.
 - **A failed batch finishes what it can.** After a create error the story skill
   said to stop, and the failure table said to finish pass two, so created
   stories kept their `[[dep:` placeholders and had no links. Pass two now runs

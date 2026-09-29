@@ -175,3 +175,14 @@ In Progress, whose summary is exactly the one the request produces.
 - [ ] The report names the existing key and its status, and says nothing was created.
 - [ ] The existing epic is not modified.
 - [ ] Then change the existing epic's summary to the same outcome in other words: the skill asks once whether it is the same epic, and creates nothing until answered.
+
+## B15 — A wrong read-back is patched, not refiled
+
+**Setup:** Everything configured. The create call succeeds, but the read-back
+shows the team field empty although the user answered Empower.
+**Prompt:** "Create a Jira epic for the ingest rewrite."
+
+- [ ] The run does not report done.
+- [ ] The epic is patched in place with the edit capability, and a second read-back shows Empower.
+- [ ] No second epic is created, and nothing is deleted.
+- [ ] Then run with a server that has no edit capability: preflight names it as missing before any content is gathered, and nothing is created.

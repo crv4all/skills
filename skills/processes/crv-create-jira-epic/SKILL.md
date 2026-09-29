@@ -12,8 +12,9 @@ description: >-
   on, or transitioning an issue that already exists.
 license: Apache-2.0
 compatibility: >-
-  Requires an Atlassian MCP server with create-issue, read-issue, JQL search, and
-  project create-metadata capabilities, authenticated by the harness. Requires
+  Requires an Atlassian MCP server with create-issue, read-issue, edit-issue,
+  JQL search, and project create-metadata capabilities, authenticated by the
+  harness. Requires
   Python 3.9+ for the bundled setup script. Stores no credentials.
 metadata:
   owner: cloudforce-team-data
@@ -95,8 +96,10 @@ differently and are fixed differently, so check them in order and report what is
 actually blocking.
 
 1. **Atlassian MCP server available?** Enumerate the available tools and match on
-   capability, not on name. Needed here: create an issue, read an issue, search by
-   JQL, read project create-metadata, list visible projects.
+   capability, not on name. Needed here: create, read and edit an issue, search
+   by JQL, read project create-metadata, list visible projects. Edit is for the
+   one case where the read-back contradicts the write, and the fix is a patch
+   in place: without it, a wrong epic can only be reported, not corrected.
 
    If MCP tools are **absent and the spawning session had them**: tool
    inheritance. Hand back for an inline re-run, not to setup.
