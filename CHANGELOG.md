@@ -131,6 +131,12 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Story points are never pushed.** They were already optional, but the
+  check-in asked about them on every batch, and the report listed each story
+  without points "so grooming has the list", which treated an empty field as a
+  gap. An empty estimate is the normal state before grooming. The skill now
+  sets points only when the person gives them, proposes numbers only when
+  asked to, and otherwise says nothing about sizing.
 - **Rules for the fields nobody mentioned.** Sprint, components and fix
   versions had no rule, so a request for "the current sprint" had nowhere to
   go. They are now asked only where the project has them and left unset

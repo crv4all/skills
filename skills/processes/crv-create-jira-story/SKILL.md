@@ -229,16 +229,12 @@ neither a real key nor a real team. A cycle is a decomposition error: the
 checkpoint shows its path and asks which arrow is backwards. Procedure:
 [references/dependency-links.md](references/dependency-links.md).
 
-**Estimates are optional and never invented.** Sizing belongs to the team, in
-grooming. An estimate the user supplied is used as given.
-
-- No estimate: **file the story with the field unset**, and name it in the
-  report. Never block the batch, never assign a number, and never write "filed
-  unsized" into the description: the empty field is the record, and a sentence
-  saying so is wrong the moment grooming sizes it.
-- The checkpoint may offer one table of proposed numbers for one approval. An
-  approved number gets a provenance comment in Step 7. Declined or unanswered:
-  file unsized.
+**Story points are never required, asked for, or invented.** Sizing belongs
+to the team, in grooming. An estimate the user supplied is used as given. With
+none, the field stays empty and nothing mentions it: not a question at the
+checkpoint, not a list in the report, not a line in the description. Only if
+the user asks for proposed estimates does the checkpoint show a table of them;
+an approved number then gets a provenance comment in Step 7.
 
 ## Step 5. Resolve fields
 
@@ -257,9 +253,9 @@ Four of them decide whether this batch is usable:
   will do the work, and a recorded default does not replace the question.
   [field-resolution.md § Team](references/field-resolution.md#team-ask-the-user-do-not-assume).
 - **Story Points.** `Story Points`, or `Story point estimate` on some tenants.
-  Resolve it whenever it exists: the checkpoint's estimate offer and the
-  read-back both need it. Its absence stops the run only when there is an
-  estimate to write.
+  Resolve it whenever it exists, since the read-back checks that no story got a
+  number nobody gave. Its absence stops the run only when there is an estimate
+  to write.
 - **Priority: never choose one.** Send nothing unless the user names a value.
   Read the project default, if any: Jira stores it anyway (on BAPP, an option
   named `TBD`), so the read-back expects it and the report names it as the
@@ -348,13 +344,12 @@ what was fixed.
 A table, one row per candidate: summary, outcome (`created` / `skipped` /
 `refused`), key, note. Then:
 
-- totals from the Step 8 read-back, counting unsized stories separately rather
-  than folding them in as zero
+- when any story has points, the total summed from the Step 8 read-back
 - the epic key and URL
 - the team applied and where it came from: the user's answer, the recorded
   default, or `none` at their request
-- every story filed unsized, so grooming has the list
-- every estimate proposed and bulk-approved rather than groomed
+- every estimate proposed and bulk-approved rather than groomed, if the user
+  asked for proposals
 - every task that looks like it needs its own owner or estimate, as a likely
   sub-task
 - every value inferred, defaulted, or fuzzy-matched rather than supplied,

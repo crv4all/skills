@@ -88,7 +88,7 @@ or `Story point estimate`.
 Then repeat with the same project and **no estimate in the prompt**:
 
 - [ ] The skill does **not** stop. Three stories are created with no estimate.
-- [ ] The report says the project has no story-point field.
+- [ ] The report does not raise the missing story-point field: nobody had a number to write.
 
 ## B6 — A candidate with no estimate is filed, not refused
 
@@ -100,7 +100,7 @@ one with no story points.
 - [ ] The unsized story has **no** value in the story-point field, confirmed by read-back. Not `0`, not null-as-zero.
 - [ ] **No estimate is invented**, including by copying a sibling's value or averaging.
 - [ ] Its description says nothing about being unsized. The empty field is the record.
-- [ ] The report names it as unsized so grooming has the list.
+- [ ] **Nobody is asked for its estimate**, and the report does not list it as unsized or missing anything.
 - [ ] The reported point total covers the two estimated stories and does not silently count the third as zero.
 
 ## B7 — Estimates off the Fibonacci ladder are accepted
@@ -186,16 +186,20 @@ a blocker.
 - [ ] The user is not asked for it, and does not have to patch it afterwards.
 - [ ] This applies to every recorded default **except the team field**, which is always asked: see B18.
 
-## B14 — Bulk estimation asks once, and records the provenance
+## B14 — Estimates are never pushed, and proposed only on request
 
 **Setup:** Everything configured. Twelve candidates, none with an estimate.
 **Prompt:** "File these twelve under ABC-123."
 
-- [ ] The skill does not ask twelve separate questions.
-- [ ] It proposes every estimate in one table and takes one approval.
+- [ ] **No estimate is offered, proposed, or asked about.** The checkpoint has no estimate question and no Estimate column.
+- [ ] All twelve are filed with the story-point field empty, and the report says nothing about sizing.
+
+Then prompt "File these twelve under ABC-123, and propose story points for them":
+
+- [ ] It proposes every estimate in one table at the checkpoint and takes one approval.
 - [ ] On approval, each created story carries a comment recording that its estimate was proposed and bulk-approved rather than groomed, and its description does not.
 - [ ] The report repeats which estimates were proposed rather than supplied.
-- [ ] Then decline the table: **all twelve are still created**, every one unsized, and the report lists them as unsized. Declining an estimate is not declining the batch.
+- [ ] Then decline the table: **all twelve are still created**, with no points. Declining an estimate is not declining the batch.
 - [ ] Then ignore the offer entirely: same outcome. The run does not stall waiting for an answer it does not need.
 
 ## B15 — Titles are held to the house rule
@@ -385,9 +389,9 @@ Team(s)`, a Sprint field, and a Priority default of TBD.
 **Prompt:** "File these under ABC-123."
 
 - [ ] **Exactly one hand-back happens before the first create call**, and nothing exists in Jira while it is open.
-- [ ] It carries the draft table, one row per candidate, with summary, opening, criteria, tasks, estimate, dependencies and outcome.
-- [ ] It asks team, Priority, sprint, estimates and the split in one message, each with its default stated.
-- [ ] Answer only the team: the batch is filed with that team, Priority at the project default, no sprint, unsized, and the long story as one story with all nine criteria. **No second round of questions.**
+- [ ] It carries the draft table, one row per candidate, with summary, opening, criteria, tasks, dependencies and outcome, and no Estimate column since nobody gave one.
+- [ ] It asks team, Priority, sprint and the split in one message, each with its default stated, and **asks nothing about estimates**.
+- [ ] Answer only the team: the batch is filed with that team, Priority at the project default, no sprint, no points, and the long story as one story with all nine criteria. **No second round of questions.**
 - [ ] The report names each question that took its default.
 - [ ] The duplicate search runs again on resuming, before the first create.
 - [ ] Reply "go" with nothing else: every question takes its default, and the team takes the recorded default, reported as a default.

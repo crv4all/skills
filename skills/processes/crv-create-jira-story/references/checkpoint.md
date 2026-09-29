@@ -20,16 +20,17 @@ one is a value the run may not choose.
 ## What the hand-back contains
 
 A draft table, one row per candidate, then the questions that apply, numbered,
-then one line saying how to answer:
+then one line saying how to answer. Add an Estimate column only when some
+candidate has points: a column of blanks reads as something missing.
 
 ```text
 Ready to file 3 stories under BAPP-56. Nothing has been created yet.
 
-| # | Summary | Opens with | Criteria | Tasks | Estimate | Depends on | Outcome |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Add freshness checks on refined breeding tables | User story | 4 | 3 | none | | new |
-| 2 | Alert the Breeding team on incomplete animal data | User story | 3 | | none | 1 | new |
-| 3 | Split TripleAQueryService into read and assemble steps | Goal | 5 | 2 | none | | new, resembles BAPP-61 |
+| # | Summary | Opens with | Criteria | Tasks | Depends on | Outcome |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | Add freshness checks on refined breeding tables | User story | 4 | 3 | | new |
+| 2 | Alert the Breeding team on incomplete animal data | User story | 3 | | 1 | new |
+| 3 | Split TripleAQueryService into read and assemble steps | Goal | 5 | 2 | | new, resembles BAPP-61 |
 
 1. Epic: BAPP-56, "Breeding-app technical optimizations", status Doing, which
    you mentioned earlier. File all three under it?
@@ -37,7 +38,6 @@ Ready to file 3 stories under BAPP-56. Nothing has been created yet.
    One or more, or none.
 3. Priority: the project default is TBD. Name one, or leave the default.
 4. Sprint: the backlog, unless you name one.
-5. Estimates: none given. Want proposed numbers in one table, or file unsized?
 
 Answer by number, edit any row, or reply "go" to take each question's default.
 ```
@@ -51,7 +51,7 @@ Ask only the questions that apply, and give each one's default in its wording:
 | Priority | The field is on the screen and the user named none | The project default, or unset where there is none |
 | Sprint | The project has a Sprint field | Unset, so the stories land in the backlog |
 | Components, Fix versions | The field has allowed values in create-metadata | Unset |
-| Estimates | Some candidate is unsized and Story Points resolved | Filed unsized |
+| Proposed estimates | **Only when the user asked for them.** Never offered unprompted: story points are never required | Filed without points |
 | Split | A candidate has more than about seven acceptance criteria | Filed as one story, every criterion kept |
 | Cycle | The dependency graph has a cycle | Stories filed; the links in the cycle are not created |
 | Missing section | A candidate has no user story or goal, no criteria, or no test plan | "Not yet decided" in that section, and the report names it |

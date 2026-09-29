@@ -197,12 +197,13 @@ Do not restrict the value to a Fibonacci sequence. Teams use their own scales,
 and a story-point total rolled up from several smaller items lands on no ladder
 at all. Reject only what is genuinely invalid: zero, negatives, and non-integers.
 
-**An estimate is optional and never invented.** Sizing is the team's job and it
-happens in grooming, with the people who will do the work. Three rules follow:
+**An estimate is never required, never asked for, and never invented.** Sizing
+is the team's job and it happens in grooming, with the people who will do the
+work. Three rules follow:
 
-- No estimate supplied, and none agreed: omit the field and file the story. Say
-  so in the report. Do not also say it in the description: the empty field is
-  the record, and a sentence saying so goes stale the moment grooming sizes it.
+- No estimate supplied: omit the field and file the story, and say nothing
+  about it. Not a question, not a list in the report, not a line in the
+  description. An empty field is the normal state before grooming, not a gap.
 - Never write a number the user did not agree to. Once a number is in Jira an
   invented estimate is indistinguishable from a groomed one, and it gets summed
   into a sprint commitment.
