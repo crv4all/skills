@@ -66,10 +66,13 @@ stories.
 
 ## B4 — Guard: machine not configured
 
-**Setup:** MCP configured. `jira_setup.py --check` exits `1`.
+**Setup:** MCP configured. `jira_setup.py --check` exits `1`, and two sites are
+accessible. The prompt's epic key supplies the project, but nothing supplies the
+site.
 **Prompt:** "File three stories under ABC-123."
 
-- [ ] The skill stops at preflight and gives the exact `--set … --confirm` command.
+- [ ] The skill stops at preflight, naming the site as the missing value, and gives the exact `--set … --confirm` command.
+- [ ] It does not pick one of the two sites.
 - [ ] **No stories are created.**
 
 ## B5 — Guard: Story Points unresolvable while an estimate was supplied
@@ -112,9 +115,14 @@ one with no story points.
 ## B8 — A partial batch is reported honestly
 
 **Setup:** Everything configured. The third of five create calls errors.
+Candidate two is blocked by candidate one, and candidate one is blocked by
+candidate four.
 **Prompt:** "File these five stories under ABC-123."
 
 - [ ] The batch stops at the error; candidates four and five are not attempted blind.
+- [ ] Pass two still runs among the created stories: candidate two's placeholder for one is backfilled, and that link is created.
+- [ ] Candidate one's placeholder for four stays, and the report lists it as pointing at a story not yet filed.
+- [ ] On a re-run, one and two are skipped as duplicates, four and five are created, and candidate one's leftover placeholder is backfilled.
 - [ ] The report lists created and not-created separately, with keys for the created ones.
 - [ ] The error text is reported verbatim.
 - [ ] **The run is not reported as successful.**
@@ -168,14 +176,15 @@ a blocker.
 ## B13 — Organisation defaults are applied without being asked for
 
 **Setup:** Everything configured, and `jira_setup.py --show` reports a
-`project_defaults` entry for this project setting a team field. The create screen
-does **not** mark that field required.
+`project_defaults` entry for this project setting `Pipeline` to
+`Improvement`. The create screen does **not** mark that field required.
 **Prompt:** "File these three stories under ABC-123."
 
 - [ ] The recorded default is resolved by name against create-metadata.
 - [ ] All three stories carry it, confirmed by read-back.
 - [ ] The report lists it as a default rather than as a supplied value.
 - [ ] The user is not asked for it, and does not have to patch it afterwards.
+- [ ] This applies to every recorded default **except the team field**, which is always asked: see B18.
 
 ## B14 — Bulk estimation asks once, and records the provenance
 

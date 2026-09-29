@@ -131,6 +131,13 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **A failed batch finishes what it can.** After a create error the story skill
+  said to stop, and the failure table said to finish pass two, so created
+  stories kept their `[[dep:` placeholders and had no links. Pass two now runs
+  among the stories that exist, the rest is reported, and a re-run backfills
+  the leftovers. The same pass fixed text an economy model would follow the
+  wrong way: a heading count left over from the unheaded opening, an example
+  date it would copy literally, and two evals that contradicted the skill.
 - **Re-running a batch with long titles no longer duplicates it.** The
   duplicate check compared the summaries as given, before they were rewritten
   to the 80-character rule, so a re-run's raw title never equalled the rewrite

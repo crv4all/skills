@@ -15,8 +15,8 @@ license: Apache-2.0
 compatibility: >-
   Requires an Atlassian MCP server with create-issue, read-issue, edit-issue,
   JQL search, issue-link, and project create-metadata capabilities, plus
-  add-comment when estimates are bulk-approved, authenticated by the harness. Requires Python 3.9+ for the bundled setup script. Stores no
-  credentials.
+  add-comment when estimates are bulk-approved, authenticated by the harness.
+  Requires Python 3.9+ for the bundled setup script. Stores no credentials.
 metadata:
   owner: cloudforce-team-data
   layer: processes
@@ -157,13 +157,15 @@ Structured input may be supplied against
 [assets/story_input.schema.json](assets/story_input.schema.json), with
 [assets/story_input.example.json](assets/story_input.example.json) as a worked
 one, and rendered field by field as
-[references/structured-input.md](references/structured-input.md) says. Otherwise build candidates conversationally; the rules below apply either
-way, since the schema cannot check a conversation. They also apply to a
+[references/structured-input.md](references/structured-input.md) says.
+Otherwise build candidates conversationally; the rules below apply either way,
+since the schema cannot check a conversation. They also apply to a
 supplied `description_markdown`, which replaces rendering, not checking.
 
 Render [assets/story-description.md.template](assets/story-description.md.template)
-for each. Four headings are required and the rest are optional: drop an optional
-heading rather than filling it, and link the epic rather than restating it. A
+for each. Four sections are required: an unheaded opening, then the Acceptance
+criteria, Test plan and Dependencies headings. The rest are optional: drop an
+optional heading rather than filling it, and link the epic rather than restating it. A
 copy of the epic in eight descriptions is eight copies to go stale. The
 description **opens with the user story, with no heading**: Jira already labels
 the field, and "As a / I want / So that" names itself. When no real person is in
@@ -184,14 +186,13 @@ is a plan nobody agreed to. Delete a task that restates a criterion. A step big
 enough to need its own owner or estimate stays in the list but is named in the
 report as a likely sub-task, because this skill does not create sub-tasks.
 
-Rewrite every summary to those rules **here**, before Step 3 compares it against
-Jira. Titles and prose follow [references/issue-writing.md](references/issue-writing.md),
+Rewrite every summary to the title rules **here**, before Step 3 compares it
+against Jira. Titles and prose follow [references/issue-writing.md](references/issue-writing.md),
 which names the patterns that make text read as generated and gives the rewrite
 for each. The four rules broken most often: a summary over 80 characters, an em
 dash anywhere, a description padded with those patterns, and a `TBD` where the
 honest answer is "Not yet decided" or an unset field. All four are checked in
-Step 4,
-before anything is created, because fixing them afterwards is one edit call per
+Step 4, before anything is created, because fixing them afterwards is one edit call per
 issue and an edit history that suggests the batch was filed carelessly.
 
 Cross-references between candidates use the `[[dep:<n>]]` placeholder, never a
@@ -316,9 +317,17 @@ hand-built ADF. Keep a map of plan-local number to returned key as you go.
 Placeholders stay in the text during this pass, because a key cannot be cited
 before it is allocated.
 
-If a create call errors, stop the batch, report which stories were created and
-which were not, and do not retry blind. An ambiguous timeout may already have
-created the issue.
+If a create call errors, stop creating, and do not retry blind: an ambiguous
+timeout may already have created the issue. Then still run pass two, **among
+the stories that were created**: backfill the placeholders that point at
+created keys, and create the links between them. A placeholder that points at a
+candidate never created stays, and the report lists it with the created and
+not-created stories. That run is unfinished, and says so.
+
+On a re-run after such a batch, the created stories are skipped as duplicates.
+A skipped story that still carries a `[[dep:` placeholder is the one exception
+to leaving existing stories alone: backfill it, because that is this skill
+finishing its own pass two, not rewriting someone's groomed story.
 
 ## Step 7. Backfill references and create the links, pass two
 
@@ -330,9 +339,10 @@ created the issue.
 3. Direction is easy to get backwards. For a `Blocks` link the **inward issue
    is the blocker**. Create the first link, read one of the two issues back,
    confirm the rendered relationship says what you meant, then create the rest.
-4. For every bulk-approved estimate, add one comment to that story: "3 points
-   proposed during filing and approved as part of a batch on 2026-09-29, not
-   groomed with the team." A comment is dated history, so it stays true after
+4. For every bulk-approved estimate, add one comment to that story: "<n>
+   points proposed during filing and approved as part of a batch on <today,
+   YYYY-MM-DD>, not groomed with the team." Fill in today's date, never a date
+   copied from an example. A comment is dated history, so it stays true after
    the story is re-sized, where a line in the description would not. If the
    server has no comment capability, say so and carry the provenance in the
    report only.
@@ -452,7 +462,8 @@ Before reporting done:
       verified once against a read-back.
 - [ ] Descriptions were sent as markdown, not ADF.
 - [ ] Every candidate appears in the report as created, skipped, or refused.
-- [ ] No pre-existing story was modified.
+- [ ] No pre-existing story was modified, except to backfill a `[[dep:`
+      placeholder an earlier run of this skill left behind.
 
 Fix and re-check anything that fails. Never report completion with a known
 failure, and never report a check as passed that you did not run. A checklist

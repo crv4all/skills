@@ -45,6 +45,6 @@ Three outcomes appear in the right column, and they are not interchangeable:
 | --- | --- | --- |
 | A summary is over its cap, or the text carries banned punctuation, a padding pattern, or a placeholder | The text is not ready to file | Rewrite before the first create call. One edit per issue afterwards costs 30 calls and an edit history that reads as careless. |
 | Dependency cycle, or a reference to a candidate not in the batch | A decomposition error, not a link error | Report the whole path and ask which arrow is backwards. The stories may be created; the links may not. |
-| Create errors mid-batch | Varies, and an ambiguous timeout may already have created the issue | Stop the batch. Report created and not-created separately. Do not retry blind. |
+| Create errors mid-batch | Varies, and an ambiguous timeout may already have created the issue | Stop creating. Do not retry blind. Run pass two among the created stories only, and report created, not-created, and every placeholder left pointing at a story that does not exist. |
 | A leftover `[[dep:` in a created description | Pass two did not finish | Report it as an unfinished run, not as a note. Then finish pass two. |
 | Read-back contradicts the writes | The batch is wrong and is about to be reported as right | Do not report done. Go to the remediation procedure, which SKILL.md links. |
