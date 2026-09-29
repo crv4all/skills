@@ -343,3 +343,16 @@ data", a week of work. The second comes with no steps at all.
 - [ ] "Migrate the historical data" stays in the list, and the report names it as a likely sub-task.
 - [ ] **The second story has no Tasks heading.** No steps are generated for it.
 - [ ] In the Jira UI, the Tasks and Acceptance criteria checkboxes render as tickable items, not as literal `[ ]` text. Record which one you saw: this depends on the server's markdown conversion.
+
+## B27 — The read-back asserts on this run's stories only
+
+**Setup:** Everything configured. `ABC-123` already has four stories filed by
+someone else, in another team, one of them a Task. Three new candidates, one of
+them supplied with `issue_type: "Task"`.
+**Prompt:** "File these three under ABC-123."
+
+- [ ] The duplicate search is `parent = ABC-123` with no issue-type filter, and the existing Task is compared like the Stories.
+- [ ] The read-back queries the three created keys, not every child of the epic.
+- [ ] The run passes: the four pre-existing stories and their team do not fail any assertion.
+- [ ] The created Task is read back and verified like the two Stories.
+- [ ] The read-back names the fields it needs rather than relying on the search's default set.

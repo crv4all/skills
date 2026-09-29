@@ -199,10 +199,13 @@ placeholders get resolved: [references/dependency-links.md](references/dependenc
 
 ## Step 3. Search for duplicates before creating anything
 
-Search the epic for existing children, once, before the first create:
+Search the epic for existing children of **every** issue type, once, before the
+first create. A Task with the same summary is as much a duplicate as a Story,
+and a candidate filed with a non-Story `issue_type` is invisible to a query that
+filters on Story:
 
 ```text
-parent = <EPIC-KEY> AND issuetype = Story
+parent = <EPIC-KEY>
 ```
 
 If the search errors, **stop**. Proceeding without duplicate detection
@@ -333,19 +336,26 @@ Link types and what not to link:
 
 ## Step 8. Read the batch back and verify it
 
-The create responses are not evidence. Run one JQL query and assert against what
-comes back:
+The create responses are not evidence. Read back **exactly the keys this run
+created**, not the whole epic: the epic may already hold stories other people
+filed or this run skipped, and asserting on those fails a correct run.
 
 ```text
-parent = <EPIC-KEY> AND issuetype = Story ORDER BY created ASC
+key in (<every key this run created>) ORDER BY created ASC
 ```
+
+A search returns a short default set of fields, so name the ones you assert on:
+summary, issuetype, parent, priority, description, issuelinks, and the resolved
+team and story-point fields. Page through the results when the batch is bigger
+than one page. Comments are not in search results: read each story that got a
+provenance comment on its own, asking for the comment field.
 
 Then check:
 
 | Assertion | Failure it catches |
 | --- | --- |
-| Row count equals the number created | A create that reported success and stored nothing |
-| Every created key is in the result | The batch of orphans this step exists to catch |
+| Every created key comes back | A create that reported success and stored nothing |
+| Every row's `parent` is `<EPIC-KEY>` | The batch of orphans this step exists to catch |
 | Every estimated row holds its number, and no other row has one | A field Jira accepted and ignored, or a number nobody agreed to |
 | Every row holds the team the user named, or none if they said `none` | A team field Jira accepted and dropped |
 | Priority is the user's named value, or the project default, or unset where there is no default. No `Priority:` line | A value the run chose, or a recorded default that got sent |

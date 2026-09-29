@@ -131,6 +131,14 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The story read-back checks what the run created, and nothing else.** It
+  queried every child of the epic and asserted that the row count equalled the
+  number created, so any epic that already had stories failed a correct run,
+  and the team check judged stories other people had filed. Both it and the
+  duplicate search also filtered on `issuetype = Story`, which made a candidate
+  filed as a Task invisible to each. The duplicate search now covers every
+  child type, and the read-back is `key in (<created keys>)` with the fields it
+  needs named explicitly.
 - **A project's own Priority default is not a failure.** The skills claimed
   `TBD` was not an allowed value on any tenant and expected Priority unset after
   every create. On BAPP, `TBD` is a real option and the project default, with
