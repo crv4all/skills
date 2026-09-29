@@ -74,6 +74,11 @@
       "description": "One sentence saying what is true afterwards and why it matters, rendered as the unheaded opening line of the description in place of the user story. For work with no real person in the sentence, such as a refactor or a migration, where \"As a developer, I want\" would be filler. Supply this or user_story, not both."
     },
     "context": { "type": "string" },
+    "tasks": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Implementation steps the implementer ticks off, rendered as a checklist under the Tasks heading. Steps, not outcomes: an outcome belongs in acceptance_criteria. Only steps a person or the spec gave, never generated ones. Omit the key when there are none, and the heading is dropped."
+    },
     "acceptance_criteria": {
       "type": "array",
       "items": { "type": "string", "minLength": 1 }

@@ -59,6 +59,14 @@ behaviour, the file or service involved, the decision already taken. Link the
 epic rather than restating it. Drop this heading when the epic and the
 acceptance criteria already say everything.>
 
+## Tasks (optional)
+
+- [ ] <A step the implementer ticks off on the way to the acceptance criteria.
+  Only steps the person or the spec gave: an invented task list is a plan
+  nobody agreed to. A step that restates an acceptance criterion is deleted,
+  since the criterion already tracks it. A step that needs its own owner or
+  estimate is a sub-task, not a line here.>
+
 ## Out of scope (optional)
 
 <What this story deliberately does not do, when a reader would assume it does.>

@@ -137,6 +137,14 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   which is the kind of filler the writing reference bans. A story may now open
   with a goal: one sentence on what is true afterwards and why. The input
   schema takes `goal` or `user_story`, never both.
+- **Stories can carry a Tasks checklist.** Acceptance criteria say what is true
+  when a story is done, and teams also want the steps to get there in the
+  story itself. Tasks is an optional `- [ ]` section filled only from steps the
+  person or the spec gave, since a generated task list is a plan nobody agreed
+  to. A task that restates a criterion is dropped, and one big enough for its
+  own owner is flagged in the report as a likely sub-task. It is called Tasks
+  rather than TODO because TODO is a banned placeholder, and the pre-create
+  check would fail every story that used it.
 - **A story opens with its user story, not a heading.** Jira already labels the
   field Description, so a `## User story` heading as the first line repeated
   the frame the "As a / I want / So that" lines already carry, and looked

@@ -225,6 +225,16 @@ def test_every_schema_field_has_a_rendering_rule() -> None:
     assert set(schema["properties"]) == named
 
 
+def test_tasks_are_a_list_of_steps(validator: Draft202012Validator) -> None:
+    validator.validate(minimal(tasks=["Add a freshness check", "Route failures to the channel"]))
+
+
+@pytest.mark.parametrize("tasks", [[""], "Add a freshness check", [{"title": "x"}]])
+def test_malformed_tasks_are_invalid(validator: Draft202012Validator, tasks: Any) -> None:
+    with pytest.raises(ValidationError):
+        validator.validate(minimal(tasks=tasks))
+
+
 def test_dependencies_can_be_machine_readable(validator: Draft202012Validator) -> None:
     """Native issue links need edges, not prose.
 

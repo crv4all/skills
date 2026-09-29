@@ -328,3 +328,17 @@ against the schema, one of them `assets/story_input.example.json`.
 - [ ] `blocked_by: [1]` appears under Dependencies and as a native `Blocks` link.
 - [ ] No label, estimate, priority, project key or plan-local `id` appears in either description.
 - [ ] A candidate supplied with no `test_plan` is asked about, not filed with an invented one.
+
+## B26 — Tasks come from the source, and only from it
+
+**Setup:** Everything configured. `ABC-123` empty. Two candidates. The first
+comes with four implementation steps in the spec, one of which restates an
+acceptance criterion word for word and one of which is "migrate the historical
+data", a week of work. The second comes with no steps at all.
+**Prompt:** "File these under ABC-123."
+
+- [ ] The first story has a `Tasks` section with the steps as a `- [ ]` checklist, in the order given.
+- [ ] The step that restates an acceptance criterion is not in the Tasks section.
+- [ ] "Migrate the historical data" stays in the list, and the report names it as a likely sub-task.
+- [ ] **The second story has no Tasks heading.** No steps are generated for it.
+- [ ] In the Jira UI, the Tasks and Acceptance criteria checkboxes render as tickable items, not as literal `[ ]` text. Record which one you saw: this depends on the server's markdown conversion.

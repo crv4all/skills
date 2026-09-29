@@ -176,6 +176,14 @@ examples, and nothing else. More than about seven acceptance criteria usually
 means two stories: say so and offer the split, but if the user wants one story,
 file one and drop no criterion to shorten it.
 
+**Tasks only when the source has steps.** Acceptance criteria say what is true
+when the story is done. Tasks say how to get there, as a `- [ ]` checklist the
+implementer ticks off. Take them from what the person or the spec actually
+listed, and drop the heading when they listed none: a task list the run made up
+is a plan nobody agreed to. Delete a task that restates a criterion. A step big
+enough to need its own owner or estimate stays in the list but is named in the
+report as a likely sub-task, because this skill does not create sub-tasks.
+
 Titles and prose follow [references/issue-writing.md](references/issue-writing.md),
 which names the patterns that make text read as generated and gives the rewrite
 for each. The four rules broken most often: a summary over 80 characters, an em
@@ -362,6 +370,8 @@ A table, one row per candidate: summary, outcome (`created` / `skipped` /
   default, or `none` at their request
 - every story filed unsized, so grooming has the list
 - every estimate proposed and bulk-approved rather than groomed
+- every task that looks like it needs its own owner or estimate, as a likely
+  sub-task
 - every value inferred, defaulted, or fuzzy-matched rather than supplied
 - every link created, with its direction
 - anything still outstanding
@@ -408,6 +418,8 @@ Before reporting done:
       the three required headings, no `TBD`, no `Priority:` line.
 - [ ] No acceptance criterion or constraint from the source was dropped to
       shorten a description.
+- [ ] Every task came from the source. None was invented, and none restates
+      an acceptance criterion.
 - [ ] No story has a Priority in the read-back that the user did not name.
 - [ ] No estimate was invented, and every unsized story is named in the report.
 - [ ] Every bulk-approved estimate carries its provenance comment, or the report

@@ -17,6 +17,7 @@ Render in template order. Every schema property is in exactly one row below.
 | `dependencies` | `## Dependencies` | One bullet each, `[[dep:<n>]]` kept verbatim for pass two. |
 | `blocked_by`, `blocks` | `## Dependencies`, and native links | Any edge no `dependencies` item already names gets a bullet, `Blocked by <ref>` or `Blocks <ref>`. Every edge also becomes a native link in pass two. |
 | `context` | `## Context` | The text as a paragraph. |
+| `tasks` | `## Tasks` | One `- [ ]` item each, in the order given. |
 | `out_of_scope` | `## Out of scope` | One bullet each. |
 | `notes` | `## Technical notes` | One bullet each. Code and payloads keep their fences. |
 | `description_markdown` | The whole description | Replaces rendering, not checking. Every row above is ignored when it is present. |
