@@ -6,6 +6,13 @@ Four required headings, in this order: User story, Acceptance criteria, Test
 plan, Dependencies. Keep all four and fill them, using "None" where that is the
 honest answer.
 
+The first heading may be Goal instead of User story, when no real person is in
+the sentence: a refactor, a migration, a platform change. Write one sentence
+saying what is true afterwards and why it matters. "As a developer, I want
+OrderService split" is filler shaped like a user story. "OrderService is split
+into pricing and persistence, so a pricing change deploys without a database
+migration" is a goal.
+
 Every other heading is optional. Drop an optional heading entirely when it has
 no content. An empty optional heading is noise, and a story carrying eight
 headings for two facts is why the last batch was unreadable.

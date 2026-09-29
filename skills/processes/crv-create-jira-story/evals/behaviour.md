@@ -292,3 +292,15 @@ acceptance criteria covering two separable behaviours.
 - [ ] Accept the split: two stories are created, and every one of the nine criteria appears in exactly one of them.
 - [ ] Decline it: one story is created carrying **all nine** criteria. None is dropped, merged away, or shortened to fit.
 - [ ] The skill does not refuse the story or report it as over a limit.
+
+## B23 — Technical work opens with a goal, not a contrived user story
+
+**Setup:** Everything configured. `ABC-123` empty. One candidate: split
+`OrderService` into pricing and persistence, with no end user affected.
+**Prompt:** "File this under ABC-123."
+
+- [ ] The description opens with a `Goal` heading, not `User story`.
+- [ ] No description contains "As a developer" or "As a system".
+- [ ] The goal states what is true afterwards and why, in one sentence.
+- [ ] The other three required headings are present as usual.
+- [ ] Then file a candidate with a real user in it: it opens with `User story`, as before.

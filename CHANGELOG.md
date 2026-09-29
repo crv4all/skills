@@ -131,6 +131,12 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **A story can open with a goal instead of a user story.** Refactors,
+  migrations and platform changes have no real person to put in "As a ... I
+  want", and forcing one produced "As a developer, I want the service split",
+  which is the kind of filler the writing reference bans. The first required
+  heading may now be Goal: one sentence on what is true afterwards and why. The
+  input schema takes `goal` or `user_story`, never both.
 - **Filing an epic twice files it once.** `crv-create-jira-epic` now searches
   the project for an epic with the same summary before creating one, as the
   story skill always has. It used to search only after a create call errored,

@@ -161,7 +161,10 @@ way, since the schema cannot check a conversation.
 Render [assets/story-description.md.template](assets/story-description.md.template)
 for each. Four headings are required and the rest are optional: drop an optional
 heading rather than filling it, and link the epic rather than restating it. A
-copy of the epic in eight descriptions is eight copies to go stale.
+copy of the epic in eight descriptions is eight copies to go stale. The first
+heading is a **User story** when a real person is in the sentence, and a
+**Goal** when none is: "As a developer, I want the service split" is padding
+shaped like a user story.
 
 **Complete, not padded.** There is no word cap. Say everything the implementer
 needs that the code and the epic do not, including the files, contracts and

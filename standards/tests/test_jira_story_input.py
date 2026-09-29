@@ -186,6 +186,26 @@ def test_unknown_estimate_provenance_is_invalid(validator: Draft202012Validator)
         validator.validate(minimal(estimate_source="guessed"))
 
 
+def test_a_goal_can_replace_the_user_story(validator: Draft202012Validator) -> None:
+    """Technical work has no real person to put in "As a ... I want".
+
+    Forcing one produces "As a developer, I want the service split", which is the
+    filler the writing reference bans, so a goal is a first-class alternative.
+    """
+    validator.validate(minimal(goal="OrderService is split so pricing deploys alone"))
+
+
+def test_a_story_cannot_carry_both_a_goal_and_a_user_story(
+    validator: Draft202012Validator,
+) -> None:
+    story = minimal(
+        goal="OrderService is split so pricing deploys alone",
+        user_story={"role": "operator", "capability": "a split service", "benefit": "less risk"},
+    )
+    with pytest.raises(ValidationError):
+        validator.validate(story)
+
+
 def test_dependencies_can_be_machine_readable(validator: Draft202012Validator) -> None:
     """Native issue links need edges, not prose.
 
