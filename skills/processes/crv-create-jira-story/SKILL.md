@@ -2,8 +2,8 @@
 name: crv-create-jira-story
 description: >-
   Files Jira Stories under a parent Epic through the Atlassian MCP, searching
-  for duplicates by JQL before creating anything, writing short descriptions
-  that do not read as generated text, asking who the work is assigned to,
+  for duplicates by JQL before creating anything, writing descriptions that
+  carry what the implementer needs and do not read as generated text, asking who the work is assigned to,
   resolving the epic-membership and Story Points fields from the target project
   at run time, creating the native dependency links, and reading every created
   story back to prove what was stored. Use when someone wants to create, file,
@@ -38,11 +38,11 @@ The quiet way is worse. Twenty-nine stories are created, every call returns
 success, and none of them is attached to the epic. Nothing in the transcript says
 so. So **read every write back and report what was stored, never what was sent.**
 
-The third way is the one the team notices first. Every story is three times as
-long as it needs to be, padded with the shapes that mark generated text, and
-carries a Priority nobody chose and an estimate nobody agreed to. It reads as
-though no person owned the ticket, because none did. So **write short, cut the
-padding, and invent no values.**
+The third way is the one the team notices first. Every story is padded with the
+shapes that mark generated text, and carries a Priority nobody chose and an
+estimate nobody agreed to. It reads as though no person owned the ticket,
+because none did. So **cut the padding, not the content, and invent no
+values.**
 
 ## Execution
 
@@ -75,10 +75,10 @@ mechanism. Wording and reasoning:
 
 One or more Jira Stories under a named parent Epic, and a report. Specifically:
 
-- Each Story has a markdown description under 200 words, carrying the four
-  required sections of
-  [assets/story-description.md.template](assets/story-description.md.template)
-  and written to [references/issue-writing.md](references/issue-writing.md).
+- Each Story has a markdown description carrying the four required sections of
+  [assets/story-description.md.template](assets/story-description.md.template),
+  complete enough to pick up without the conversation, and written to
+  [references/issue-writing.md](references/issue-writing.md).
 - Each Story is a child of the named epic, verified by reading it back.
 - Each Story carries the team the user named, or none because they said so.
 - No Story has a Priority the run chose, and no description a placeholder value.
@@ -162,15 +162,18 @@ for each. Four headings are required and the rest are optional: drop an optional
 heading rather than filling it, and link the epic rather than restating it. A
 copy of the epic in eight descriptions is eight copies to go stale.
 
-**Small is the requirement, not the aspiration.** 200 words per description,
-3 sentences of context, 5 acceptance criteria. A story nobody reads to the end
-gets picked up wrong.
+**Complete, not padded.** There is no word cap. Say everything the implementer
+needs that the code and the epic do not, including the files, contracts and
+examples, and nothing else. More than about seven acceptance criteria usually
+means two stories: say so and offer the split, but if the user wants one story,
+file one and drop no criterion to shorten it.
 
 Titles and prose follow [references/issue-writing.md](references/issue-writing.md),
 which names the patterns that make text read as generated and gives the rewrite
 for each. The four rules broken most often: a summary over 80 characters, an em
-dash anywhere, a description padded past the cap, and a `TBD` where the honest
-answer is "Not yet decided" or an unset field. All four are checked in Step 4,
+dash anywhere, a description padded with those patterns, and a `TBD` where the
+honest answer is "Not yet decided" or an unset field. All four are checked in
+Step 4,
 before anything is created, because fixing them afterwards is one edit call per
 issue and an edit history that suggests the batch was filed carelessly.
 
@@ -205,8 +208,8 @@ Per candidate:
 
 - Run the text checklist in
   [issue-writing.md § Checking a batch before it is filed](references/issue-writing.md#checking-a-batch-before-it-is-filed).
-  It covers the summary caps, the banned punctuation, the size caps, and the
-  placeholder and Priority rules. Any hit is a rewrite before the create call,
+  It covers the summary cap, the banned punctuation, the padding patterns, and
+  the placeholder and Priority rules. Any hit is a rewrite before the create call,
   not a note in the report.
 - Story points, **if supplied**, is an integer of at least 1. Reject `0`,
   negatives, and non-integers, but not values off a Fibonacci ladder. A
@@ -382,9 +385,11 @@ Before reporting done:
 
 - [ ] Preflight passed, or nothing was created.
 - [ ] A JQL search ran against the epic before the first create.
-- [ ] The issue-writing checklist ran on every candidate: summary caps, no em
-      or en dash, description under 200 words, four required headings, no
-      `TBD`, no `Priority:` line.
+- [ ] The issue-writing checklist ran on every candidate: summary cap, no em
+      or en dash, no padding pattern, four required headings, no `TBD`, no
+      `Priority:` line.
+- [ ] No acceptance criterion or constraint from the source was dropped to
+      shorten a description.
 - [ ] No story has a Priority in the read-back that the user did not name.
 - [ ] No estimate was invented, and every unsized story is named in the report.
 - [ ] The team field holds what the user gave, or is unset because they said so,

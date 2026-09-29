@@ -3,7 +3,7 @@ name: crv-create-jira-epic
 description: >-
   Files a Jira Epic through the Atlassian MCP, resolving the required fields of
   the target project at run time instead of assuming custom-field IDs from any
-  particular tenant, rendering a short description as markdown from a section
+  particular tenant, rendering the description as markdown from a section
   template, asking which team the work belongs to, and reading the created epic
   back to prove what was stored. Use when someone wants to create, file, or
   raise an epic in Jira, including "create a Jira epic", "open an epic for this
@@ -27,8 +27,7 @@ metadata:
 
 Filing an epic is easy to do and easy to do wrong. Three failures matter:
 creating it in a tenant the skill guessed at, creating it missing a field the
-project requires, and creating it long, padded, and carrying values nobody
-chose. The first two look like success in the transcript and become someone
+project requires, and creating it padded and carrying values nobody chose. The first two look like success in the transcript and become someone
 else's problem later. The third tells the team nobody owned the ticket.
 
 ## Execution
@@ -61,8 +60,8 @@ mechanism. Wording and reasoning:
 
 One Jira Epic, and a report naming it. Specifically:
 
-- An Epic in the target project, with a markdown description under 400 words,
-  carrying the five required sections of
+- An Epic in the target project, with a markdown description carrying the five
+  required sections of
   [assets/epic-description.md.template](assets/epic-description.md.template) in
   order and written to [references/issue-writing.md](references/issue-writing.md).
 - The team the user named, or none because they said so.
@@ -143,9 +142,9 @@ decided" in words. Never delete a required heading to hide that it was
 unanswered, and never write `TBD` in it: the first destroys the signal that the
 question was asked, the second reads as an oversight nobody comes back to.
 
-**400 words for the whole description.** An epic is read to decide whether work
-belongs in it, and that decision needs the outcome and the boundary, not a
-narrative.
+**No word cap, and no padding.** An epic is read to decide whether work belongs
+in it. Give that decision the outcome and the boundary in full, and leave out
+the narrative around them.
 
 The summary is a noun phrase naming the outcome, at most 80 characters and 12
 words. Prose and title rules, the patterns that mark generated text, and the
@@ -217,7 +216,7 @@ values before reporting anything.
 | The key exists and is of the Epic issue type | A create that landed as the wrong type |
 | It is in the intended project | A default project nobody stated |
 | Every required heading is present in the stored description | A truncated or blank render |
-| The description is under 400 words and has no `TBD` or `Priority:` line | Padding and placeholders that survived |
+| The description has no `TBD` or `Priority:` line | Placeholders that survived |
 | The team field holds the user's answer, or nothing if they said `none` | A team field Jira accepted and dropped |
 | Priority is unset unless the user named one | A default or a guess that got sent anyway |
 | Every applied default holds the value sent | A field identifier Jira ignored |
@@ -262,7 +261,7 @@ Before reporting done:
       the read-back rather than from the payload.
 - [ ] Every field the project marks required has a value.
 - [ ] The issue-writing checklist ran: summary at most 80 characters, no em or
-      en dash, description under 400 words, no `TBD`, no `Priority:` line.
+      en dash, no padding pattern, no `TBD`, no `Priority:` line.
 - [ ] The epic has no Priority in the read-back that the user did not name.
 - [ ] The team field holds what the user gave, or is unset because they said so,
       and the report says which.

@@ -10,10 +10,10 @@ Every other heading is optional. Drop an optional heading entirely when it has
 no content. An empty optional heading is noise, and a story carrying eight
 headings for two facts is why the last batch was unreadable.
 
-Hard caps, checked before the create call: 200 words for the whole description,
-3 sentences in Context, 5 acceptance criteria of one line each. Cut rather than
-compress. The prose rules, the banned punctuation and the placeholder rules are
-in the issue-writing reference.
+There is no word cap. Say everything the implementer needs that the code and
+the epic do not already say, and cut the padding rather than the content. The
+prose rules, the banned punctuation and the placeholder rules are in the
+issue-writing reference.
 -->
 
 ## User story
@@ -24,7 +24,8 @@ So that <benefit>
 
 ## Acceptance criteria
 
-- [ ] <A condition checkable by someone who did not write the code>
+- [ ] <A condition checkable by someone who did not write the code. A
+  Given/When/Then over several lines is fine when the condition needs it.>
 - [ ] <Another>
 
 ## Test plan
@@ -44,10 +45,10 @@ team uses.>
 
 ## Context (optional)
 
-<At most 3 sentences, and only what the implementer cannot get from the code or
-from the epic: the current behaviour, the file or service involved, the decision
-already taken. Link the epic rather than restating it. Drop this heading when
-the epic and the acceptance criteria already say everything.>
+<What the implementer cannot get from the code or from the epic: the current
+behaviour, the file or service involved, the decision already taken. Link the
+epic rather than restating it. Drop this heading when the epic and the
+acceptance criteria already say everything.>
 
 ## Out of scope (optional)
 
@@ -61,6 +62,10 @@ than groomed, or when the story was filed with no estimate. State which:
 the team", or "Filed without an estimate, to be sized in grooming." An estimate
 whose provenance is unrecorded is indistinguishable from an agreed one.>
 
-## Notes (optional)
+## Technical notes (optional)
 
-<Implementation hints, links, prior art. Links, not copied content.>
+<The detail the implementer would otherwise go looking for: the files, tables,
+endpoints and contracts involved, a sample payload or query, prior art, and
+anything already ruled out with the reason. Copy in what is short and belongs to
+this story. Link what lives and changes elsewhere, because a copy of it goes
+stale where it sits.>

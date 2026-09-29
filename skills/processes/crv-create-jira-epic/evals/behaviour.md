@@ -19,7 +19,7 @@ exits `0`. A project the user can see, with an Epic issue type.
 - [ ] Exactly one epic is created.
 - [ ] Its description contains the five required headings from `assets/epic-description.md.template`, in template order.
 - [ ] Optional headings with nothing under them are absent, not present and empty.
-- [ ] The description is under 400 words, counted.
+- [ ] No scope item, out-of-scope item, or success criterion the user supplied is dropped to shorten the description.
 - [ ] **The epic has no Priority value**, and the description contains no `Priority:` line and no `TBD`.
 - [ ] The description renders as formatted markdown in Jira, not as literal `##` characters and not blank.
 - [ ] The created epic is read back, and the report quotes the stored project and issue type rather than the intended ones.

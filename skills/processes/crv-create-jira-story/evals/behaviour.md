@@ -17,8 +17,11 @@ company-managed project. Every one of them is a failure that happened, reported
 itself as success, and cost rework. They are the cases most worth running.
 
 B18 to B21 come from the same run's second review, where the issues were correct
-and unusable: three times longer than anyone would read, padded with the shapes
-that mark generated text, and carrying a Priority nobody chose.
+and unusable: padded with the shapes that mark generated text, and carrying a
+Priority nobody chose. That review first produced a word cap. B20 and B22 now
+assert the opposite of a cap, because the cap cut real content along with the
+padding: what is cut is the padding, and no content from the source is dropped
+to make a story shorter.
 
 ## B1 — The main path
 
@@ -32,7 +35,7 @@ exits `0`. Epic `ABC-123` exists with no children.
 - [ ] Three stories are created, each a child of `ABC-123`.
 - [ ] Each carries a story-point value of `3` as a number, not a string.
 - [ ] Each description contains the four required headings from `assets/story-description.md.template` and renders as markdown in Jira.
-- [ ] Each description is under 200 words, counted.
+- [ ] Every acceptance criterion in the spec appears in a created story. None is dropped to shorten a description.
 - [ ] No description carries an optional heading with nothing under it.
 - [ ] **No story has a Priority value**, and no description contains a `Priority:` line.
 - [ ] Create-metadata is read **once**, not once per story.
@@ -251,14 +254,16 @@ optional, with a default of Medium. `jira_setup.py --show` also records a
 - [ ] Then prompt with a priority that is not an allowed value: it is not sent, and the allowed values are listed.
 - [ ] Then make Priority **required** on the create screen with no priority in the prompt: the skill stops and asks which value, rather than choosing one or sending `TBD`.
 
-## B20 — Descriptions are short and do not read as generated
+## B20 — Descriptions keep the content and drop the padding
 
 **Setup:** Everything configured. A long, discursive spec of roughly 2,000 words
-for three stories.
+for three stories, mixing motivation and history with concrete constraints: two
+endpoint names, a sample payload, and a rate limit.
 **Prompt:** "Break this into three stories under ABC-123 and file them."
 
-- [ ] Every created description is under 200 words, counted rather than judged.
-- [ ] No Context section runs past three sentences, and a story whose epic covers the context has no Context section at all.
+- [ ] Every concrete constraint in the spec, including both endpoint names, the sample payload and the rate limit, appears in the story it belongs to.
+- [ ] No description is shortened by dropping a constraint or an acceptance criterion. The skill applies no word count.
+- [ ] Motivation and history the epic already carries are linked, not copied, and a story whose epic covers the context has no Context section at all.
 - [ ] No description contains an em dash, an en dash, an arrow, or an emoji.
 - [ ] No description opens by announcing what follows, and none closes with a sentence that summarises the paragraph above it.
 - [ ] No bullet begins with a bold mini-heading and a colon.
@@ -276,3 +281,14 @@ Atlassian MCP server. The main session has one, authenticated.
 - [ ] It does **not** send the user to the setup reference or to `claude mcp`.
 - [ ] **No stories are created.**
 - [ ] It hands back for an inline re-run, and the inline re-run completes normally and says it ran inline.
+
+## B22 — Many acceptance criteria prompt a split, not a cut
+
+**Setup:** Everything configured. `ABC-123` empty. One candidate with nine
+acceptance criteria covering two separable behaviours.
+**Prompt:** "File this story under ABC-123."
+
+- [ ] Before creating, the skill says the criteria look like two stories and offers the split.
+- [ ] Accept the split: two stories are created, and every one of the nine criteria appears in exactly one of them.
+- [ ] Decline it: one story is created carrying **all nine** criteria. None is dropped, merged away, or shortened to fit.
+- [ ] The skill does not refuse the story or report it as over a limit.

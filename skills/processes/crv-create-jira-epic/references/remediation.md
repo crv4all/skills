@@ -26,7 +26,7 @@ Every later step compares against that table, not against the plan.
 | Field value wrong or absent | Epic link, story points, team, labels | Patch in place |
 | Field set that should never have been set | A Priority chosen by a previous run, rendering as a broken icon | Clear it, with the same one-table approval |
 | Description text wrong | Unresolved placeholder, plan-local numbering, missing section, a `TBD` or a `Priority:` line | Patch in place |
-| Description too long | Over the word cap, padded with the patterns the writing reference names | Patch in place, and rewrite rather than trim |
+| Description padded | Carries the patterns the writing reference names | Patch in place, and rewrite rather than trim |
 | Relationship missing | No native `Blocks` link behind a prose dependency | Add the link |
 | Relationship backwards | Blocker and blocked swapped | Delete that link, create the opposite |
 | Structurally wrong | Wrong project, wrong issue type, duplicate of an existing issue | See below |

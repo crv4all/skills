@@ -13,14 +13,20 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **Issues are written to be read, not to be impressive.** A shared
-  `issue-writing.md` now caps a story description at 200 words and an epic at
-  400, caps Context at three sentences and acceptance criteria at five, and
-  catalogues the patterns that make text read as generated with the rewrite for
-  each: padding, false shape, the overused vocabulary, and the formatting tells.
-  The templates dropped from eight required sections to four for a story and
-  five for an epic, and an optional heading is now dropped rather than filled.
-  Written after a batch whose stories were each three times longer than anyone
-  would read, which is how a team learns to skim acceptance criteria. The
+  `issue-writing.md` caps the summary at 80 characters and catalogues the
+  patterns that make text read as generated, with the rewrite for each:
+  padding, false shape, the overused vocabulary, and the formatting tells. The
+  templates dropped from eight required sections to four for a story and five
+  for an epic, and an optional heading is now dropped rather than filled.
+  Written after a batch whose stories were padded to three times the length
+  anyone would read, which is how a team learns to skim acceptance criteria.
+  Descriptions carry **no word cap**. An earlier draft capped a story at 200
+  words and an epic at 400, and even the skill's own example story used 172 of
+  its 200. The cap measured length when the failure was padding, so it cut the
+  files, contracts and edge cases an implementer needs along with the filler.
+  A story now keeps all of its content, gains an optional Technical notes
+  section for exactly that detail, and more than about seven acceptance criteria
+  prompts an offer to split rather than a cut. The
   pattern catalogue is adapted from
   [`blader/humanizer`](https://github.com/blader/humanizer) (MIT) and recorded
   in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
