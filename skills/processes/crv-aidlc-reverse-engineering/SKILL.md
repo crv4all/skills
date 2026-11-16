@@ -62,12 +62,13 @@ Each row is one run; stop after it. Find the step from `aidlc_state.py next --pa
 ### Check freshness and scan
 
 1. `aidlc_state.py status --paddock <p> --format text`, then `inputs --paddock <p> --stage reverse-engineering`. A greenfield target ends here.
-2. `aidlc_state.py codekb-status --paddock <p>`. Per target it returns `missing`, `fresh` or `stale`, with the changed files and `rescan: focused|full`.
+2. `aidlc_state.py workspace --paddock <p> --fetch`. If any target checkout is `stale` (behind origin, or not on its default branch), list each with branch and `behind`, and stop unless the approver says to scan as is. A `fetch_error` is reported, not ignored. The commit you read is the one `_meta.json` records.
+3. `aidlc_state.py codekb-status --paddock <p>`. Per target it returns `missing`, `fresh` or `stale`, with the changed files and `rescan: focused|full`.
    - `fresh`: reuse. Confirm in one line, do nothing else for that repository.
    - `stale` with `rescan: focused`: use the Focused rescan row.
    - `missing`, or `rescan: full`: the full pipeline below.
-3. `python3 scripts/scan_repo.py --repo <path> --out <scratch>/<repo>-scan.json`, where `<scratch>` is any scratch folder outside the planning repo. Read the JSON, not the repository.
-4. If the scan shows something only a person can settle, write the question file in the core-rules format and stop.
+4. `python3 scripts/scan_repo.py --repo <path> --out <scratch>/<repo>-scan.json`, where `<scratch>` is any scratch folder outside the planning repo. Read the JSON, not the repository.
+5. If the scan shows something only a person can settle, write the question file in the core-rules format and stop.
 
 ### Workers
 

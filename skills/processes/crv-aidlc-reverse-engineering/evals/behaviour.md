@@ -79,3 +79,13 @@ B4 and B6 guard them.
 **Prompt:** "Scan the repo."
 
 - [ ] No file in the target repository changes (`git status` is clean afterwards) and no project code, test or build is executed.
+
+## B9 — A stale checkout stops the scan
+
+**Setup:** A brownfield target whose checkout is on a feature branch and two commits behind `origin/main`.
+**Prompt:** "Scan the target."
+
+- [ ] `aidlc_state.py workspace --paddock <p> --fetch` runs before `codekb-status` or `scan_repo.py`.
+- [ ] The agent lists the target with its branch and `behind` count and stops; no scan runs.
+- [ ] Told to scan as is, it scans, and `_meta.json` records the commit that was read.
+- [ ] A `fetch_error` is reported to the user, not treated as fresh.

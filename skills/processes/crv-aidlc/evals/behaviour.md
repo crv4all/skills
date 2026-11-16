@@ -61,3 +61,13 @@ characteristic failure here is a stage marked approved that nobody approved.
 
 - [ ] `inputs` exits 3 and the agent names the missing file and the stage that produces it.
 - [ ] The stage is not started on guessed content.
+
+## B7 — One workspace for every folder
+
+**Setup:** A planning repository, an ADR registry and two target repositories, one of them behind its origin.
+**Prompt:** "Open a paddock for the export work on both repos."
+
+- [ ] The agent gives the `workspace.file` path and the `claude_command` from `open`.
+- [ ] The checkout behind its origin is named as `stale` before any stage reads code.
+- [ ] The agent says that `*.code-workspace` belongs in the planning repo's `.gitignore`.
+- [ ] A third repository added later goes through `target --add`, not by editing `state.json`.

@@ -45,10 +45,11 @@ A paddock `paddocks/<date>-<slug>/` in the planning repo, a `state.json` that is
 4. Raw documents the user hands in go to `inputs/`, untouched. When there are any, run `index_inputs.py --paddock <p>`, then give the outline to economy-tier workers, one section each, to write `knowledge/_digest.md`: at most 5 lines per section, each with source path and line range.
 5. For each brownfield target, `open` reports the shared code knowledge (`codekb/<repo>/` at the planning repo root) as missing, fresh or stale. Re-run it any time with `aidlc_state.py codekb-status --paddock <p>`; a stale store comes with the changed files and `rescan: focused|full` for the reverse-engineering stage.
 6. If the ADR registry applies, run `build_adr_index.py --registry <path> --out <planning repo>/architecture-index.json`.
+7. Give the user the `workspace.file` from `open` (a multi-root workspace for the editor) and its `claude_command` for the terminal, and report any checkout marked `stale` before a stage reads code. The file holds machine-specific paths: `*.code-workspace` belongs in the planning repo's `.gitignore`. Change targets later with `target --add name=path | --remove name`; other folders with `workspace --extra name=path`.
 
 ## Resume
 
-Run `aidlc_state.py status --paddock <p> --format text`, then `aidlc_state.py next --paddock <p>`. Say in at most 5 lines where the paddock stands and what the next step is. Read nothing else from the paddock. If `parked` has a note, show it first.
+Run `aidlc_state.py status --paddock <p> --format text`, then `aidlc_state.py next --paddock <p>`. Say in at most 5 lines where the paddock stands and what the next step is. Read nothing else from the paddock. If `parked` has a note, show it first. Before a stage that reads code, run `workspace --paddock <p>` and name any `stale` checkout.
 
 ## Route to the stage
 

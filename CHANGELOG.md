@@ -76,6 +76,17 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   its document's header to accepted before approval. The `hla` and `tdd`
   entries of the stage list are final; the rest stay provisional.
 
+- **Every folder of a paddock opens at once, and an old checkout is caught
+  before it is read.** A paddock spans the planning repo, the ADR registry and
+  several target repositories, which people opened by hand, and a checkout
+  behind its origin was scanned without anyone noticing. `aidlc_state.py
+  workspace` writes a multi-root workspace file and a terminal command that adds
+  the same folders, and reports per checkout its branch, how far it is behind or
+  ahead of the default branch, and local edits; `--fetch` refreshes origin first
+  and records a failed fetch instead of stopping. Reverse engineering now stops
+  on a stale checkout unless the approver says to scan as is. Targets added
+  after `open` go through `target --add`, which classifies them as `open` does.
+
 - **Issues are written to be read, not to be impressive.** A shared
   `issue-writing.md` caps the summary at 80 characters and catalogues the
   patterns that make text read as generated, with the rewrite for each:

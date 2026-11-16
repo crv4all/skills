@@ -18,6 +18,7 @@ import datetime as dt
 import importlib.util
 import json
 import logging
+import os
 import re
 import subprocess
 import sys
@@ -42,12 +43,15 @@ EPILOG = """commands:
   units       load units and bolts       --paddock P --set file.json
   decision-id reserve decision ids       --paddock P [--count n]
   codekb-status is the code knowledge fresh --paddock P
+  workspace   workspace file, checkouts  --paddock P [--extra name=path]... [--fetch] [--out F]
+  target      add or drop a target       --paddock P --add name=path | --remove NAME
   park/unpark hand-over note             --paddock P --note N
   close       close the paddock          --paddock P --status complete|superseded|archived
 
 examples:
   python3 aidlc_state.py open --root . --slug billing --title "Billing" --intent "Move billing"
   python3 aidlc_state.py next --paddock paddocks/2026-01-05-billing
+  python3 aidlc_state.py workspace --paddock paddocks/2026-01-05-billing --fetch
   python3 aidlc_state.py gate --paddock paddocks/2026-01-05-billing --stage requirements-analysis \\
       --approve --by "A. Approver"
 
@@ -55,7 +59,7 @@ exit codes:
   0  ok
   1  findings: a gate or close was refused, or the paddock already exists
   2  usage error
-  3  missing input: no paddock, no state.json, or a stage input is absent
+  3  missing input: no paddock, no state.json, a stage input, a folder or a named target is absent
   4  malformed input: state.json, stages.json or a units file cannot be parsed
   5  internal error
 """
@@ -84,6 +88,15 @@ SOURCE_SUFFIXES = {
 }  # fmt: skip
 SCAFFOLD_NAMES = {"__init__.py", "setup.py", "conftest.py"}
 DIGEST_MAX_LINES = 10
+DATE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}-")
+WORKSPACE_SUFFIX = ".code-workspace"
+FETCH_TIMEOUT = 20
+# A fetch must never wait for a passphrase or a password: nobody is at the keyboard.
+FETCH_ENV = {
+    "GIT_SSH_COMMAND": "ssh -o BatchMode=yes -o ConnectTimeout=15",
+    "GIT_TERMINAL_PROMPT": "0",
+}
+ORIGIN_REFS = "refs/remotes/origin/"
 ACTIONS = {
     "todo": "ask",
     "asked": "analyse",
@@ -383,6 +396,30 @@ def classify(path: Path) -> tuple[str, str]:
     return "greenfield", f"no {origin} source files beyond scaffolding"
 
 
+def parse_pair(spec: str, flag: str, allow_empty: bool = False) -> tuple[str, str]:
+    """Split ``name=path``; an empty path is allowed only where it means "remove"."""
+    name, sep, raw = spec.partition("=")
+    if not sep or not name.strip() or (not raw and not allow_empty):
+        die(EXIT_USAGE, f"{flag} '{spec}' must look like name=path.")
+    return name.strip(), raw
+
+
+def existing_dir(raw: str, what: str) -> Path:
+    path = Path(raw).expanduser().resolve()
+    if not path.is_dir():
+        die(EXIT_INPUT, f"{path}: {what} is not a directory.")
+    return path
+
+
+def make_target(spec: str, flag: str) -> tuple[dict[str, Any], str]:
+    """A classified target record from ``name=path``, and the rule that matched."""
+    name, raw = parse_pair(spec, flag)
+    path = existing_dir(raw, f"target for '{name}'")
+    kind, rule = classify(path)
+    record = {"repo": name, "path": str(path), "kind": kind, "codekb_commit": None}
+    return record, f"{name}: {kind} ({rule})"
+
+
 def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[str, Any]:
     if not SLUG.match(args.slug):
         die(EXIT_USAGE, "--slug must be lower-case letters, digits and hyphens.")
@@ -400,17 +437,9 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
     targets: list[dict[str, Any]] = []
     rules: list[str] = []
     for spec in args.target or []:
-        name, sep, raw = spec.partition("=")
-        if not sep or not name or not raw:
-            die(EXIT_USAGE, f"--target '{spec}' must look like name=path.")
-        target_path = Path(raw).expanduser().resolve()
-        if not target_path.is_dir():
-            die(EXIT_INPUT, f"{target_path}: target for '{name}' is not a directory.")
-        kind, rule = classify(target_path)
-        targets.append(
-            {"repo": name, "path": str(target_path), "kind": kind, "codekb_commit": None}
-        )
-        rules.append(f"{name}: {kind} ({rule})")
+        record, rule = make_target(spec, "--target")
+        targets.append(record)
+        rules.append(rule)
 
     architecture: Optional[dict[str, Any]] = None
     if args.architecture_ref:
@@ -490,6 +519,236 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
         "targets": targets,
         "architecture_ref": architecture,
         "codekb": codekb_status(root.resolve(), targets),
+        "workspace": write_workspace(paddock, state, None, fetch=False),
+        "next": nxt,
+    }
+
+
+# --- workspace and checkouts -------------------------------------------------
+
+
+def extras(state: dict[str, Any]) -> list[dict[str, str]]:
+    return list((state.get("workspace") or {}).get("extra") or [])
+
+
+def workspace_folders(paddock: Path, state: dict[str, Any]) -> list[dict[str, str]]:
+    """Every folder a person works in for this paddock, in a fixed order."""
+    root = planning_root(paddock)
+    folders = [
+        {"name": f"paddock: {DATE_PREFIX.sub('', state['id'])}", "path": str(paddock.resolve())},
+        {"name": "planning repo", "path": str(root)},
+    ]
+    ref = state.get("architecture_ref") or {}
+    if ref.get("path"):
+        folders.append({"name": "adr registry", "path": str(ref["path"])})
+    for target in state["targets"]:
+        folders.append({"name": f"target: {target['repo']}", "path": str(target["path"])})
+    for extra in extras(state):
+        folders.append({"name": extra["name"], "path": extra["path"]})
+    return folders
+
+
+def quote_arg(text: str) -> str:
+    """Double-quote for a POSIX shell: escape the four characters that stay special."""
+    return '"' + re.sub(r'(["\\$`])', r"\\\1", text) + '"'
+
+
+def claude_command(folders: list[dict[str, str]], root: Path) -> str:
+    dirs = [item["path"] for item in folders if item["path"] != str(root)]
+    return " ".join(["claude", *(f"--add-dir {quote_arg(path)}" for path in dirs)])
+
+
+def git_fetch(path: Path) -> Optional[str]:
+    """Fetch origin without any prompt; return the error as text, or ``None``."""
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(path), "fetch", "--quiet", "origin"],
+            capture_output=True,
+            text=True,
+            timeout=FETCH_TIMEOUT,
+            check=False,
+            stdin=subprocess.DEVNULL,
+            env={**os.environ, **FETCH_ENV},
+        )
+    except subprocess.TimeoutExpired:
+        return f"git fetch timed out after {FETCH_TIMEOUT} s"
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"git fetch could not run: {exc}"
+    if done.returncode == 0:
+        return None
+    lines = [line.strip() for line in done.stderr.splitlines() if line.strip()]
+    return (lines[-1] if lines else f"git fetch exited {done.returncode}")[:300]
+
+
+def default_branch(path: Path) -> Optional[str]:
+    ref = (git(path, "symbolic-ref", "--quiet", ORIGIN_REFS + "HEAD") or "").strip()
+    if ref.startswith(ORIGIN_REFS):
+        return ref[len(ORIGIN_REFS) :]
+    for name in ("main", "master"):
+        if git(path, "rev-parse", "--verify", "--quiet", ORIGIN_REFS + name) is not None:
+            return name
+    return None
+
+
+def inspect_checkout(name: str, role: str, raw: str, fetch: bool) -> dict[str, Any]:
+    """How far a checkout is from its origin's default branch, from local refs only.
+
+    Nothing here changes the working tree, the index or a branch: ``status`` runs
+    without optional locks, and ``--fetch`` only updates remote-tracking refs.
+    """
+    path = Path(raw)
+    row: dict[str, Any] = {
+        "name": name,
+        "role": role,
+        "path": raw,
+        "exists": path.is_dir(),
+        "is_git": False,
+        "fetched": False,
+        "stale": False,
+    }
+    if not row["exists"]:
+        return {**row, "note": "the folder does not exist"}
+    if (git(path, "rev-parse", "--is-inside-work-tree") or "").strip() != "true":
+        return {**row, "note": "not a git repository"}
+    row["is_git"] = True
+    if fetch:
+        error = git_fetch(path)
+        row["fetched"] = error is None
+        if error:
+            row["fetch_error"] = error
+    branch = (git(path, "symbolic-ref", "--quiet", "--short", "HEAD") or "").strip() or None
+    base = default_branch(path)
+    behind: Optional[int] = None
+    ahead: Optional[int] = None
+    if base:
+        spread = f"{ORIGIN_REFS}{base}...HEAD"
+        counts = (git(path, "rev-list", "--left-right", "--count", spread) or "").split()
+        if len(counts) == 2:
+            behind, ahead = int(counts[0]), int(counts[1])
+    porcelain = git(path, "--no-optional-locks", "status", "--porcelain")
+    head_line = (git(path, "log", "-1", "--format=%h%x09%cI", "HEAD") or "").strip()
+    short, _, date = head_line.partition("\t")
+    row.update(
+        {
+            "branch": branch,
+            "default_branch": base,
+            "behind": behind,
+            "ahead": ahead,
+            "dirty": None if porcelain is None else len(porcelain.splitlines()),
+            "head": {"commit": short, "date": date} if short else None,
+            "stale": base is not None and ((behind or 0) > 0 or branch != base),
+        }
+    )
+    if base is None:
+        row["note"] = "no origin default branch found; freshness unknown"
+    return row
+
+
+def write_workspace(
+    paddock: Path, state: dict[str, Any], out: Optional[Path], fetch: bool
+) -> dict[str, Any]:
+    """Write the multi-root workspace file and report each checkout; targets stay untouched."""
+    folders = workspace_folders(paddock, state)
+    file = out if out is not None else paddock / f"{state['id']}{WORKSPACE_SUFFIX}"
+    if not file.parent.is_dir():
+        die(EXIT_INPUT, f"{file.parent}: folder for --out does not exist.")
+    file.write_text(json.dumps({"folders": folders}, indent=2) + "\n", encoding="utf-8")
+    checkouts = [inspect_checkout(t["repo"], "target", t["path"], fetch) for t in state["targets"]]
+    for extra in extras(state):
+        row = inspect_checkout(extra["name"], "extra", extra["path"], fetch)
+        if row["is_git"]:
+            checkouts.append(row)
+    return {
+        "file": str(file.resolve()),
+        "folders": folders,
+        "claude_command": claude_command(folders, planning_root(paddock)),
+        "checkouts": checkouts,
+        "stale": [row["name"] for row in checkouts if row["stale"]],
+    }
+
+
+def cmd_workspace(paddock: Path, state: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
+    if args.extra:
+        require_open(state)
+        current = extras(state)
+        changes: list[str] = []
+        for spec in args.extra:
+            name, raw = parse_pair(spec, "--extra", allow_empty=True)
+            names = [item["name"] for item in current]
+            if not raw:
+                if name not in names:
+                    known = ", ".join(names) or "none"
+                    die(EXIT_INPUT, f"no extra folder named '{name}' (extras: {known}).")
+                current = [item for item in current if item["name"] != name]
+                changes.append(f"removed {name}")
+                continue
+            entry = {"name": name, "path": str(existing_dir(raw, f"extra folder '{name}'"))}
+            if name in names:
+                current[names.index(name)] = entry
+            else:
+                current.append(entry)
+            changes.append(f"{name}={entry['path']}")
+        state.setdefault("workspace", {})["extra"] = current
+        write_state(paddock, state)
+        log_event(paddock, "workspace", "", "", "; ".join(changes))
+    out = Path(args.out).expanduser() if args.out else None
+    return {"ok": True, **write_workspace(paddock, state, out, fetch=args.fetch)}
+
+
+def sync_reverse_engineering(
+    state: dict[str, Any], catalog: list[dict[str, Any]], before: bool, after: bool
+) -> str:
+    """Re-apply open's brownfield rule, unless a person decided or the stage has started."""
+    stage = stage_def(catalog, "reverse-engineering")
+    record = state["stages"].get(stage["id"])
+    if record is None:
+        return "no record"
+    old = initial_decision(stage, state["scope"], before)
+    new = initial_decision(stage, state["scope"], after)
+    if old == new:
+        return f"unchanged ({record['decision']})"
+    if record["step"] != "todo" or (record["decision"], record["reason"]) != old:
+        return f"left as {record['decision']}: decided by hand or already started"
+    record["decision"], record["reason"] = new
+    return f"now {new[0]}"
+
+
+def cmd_target(
+    paddock: Path, state: dict[str, Any], catalog: list[dict[str, Any]], args: argparse.Namespace
+) -> dict[str, Any]:
+    targets = list(state["targets"])
+    before = any(t["kind"] == "brownfield" for t in targets)
+    if args.add:
+        record, rule = make_target(args.add, "--add")
+        old = next((t for t in targets if t["repo"] == record["repo"]), None)
+        if old is not None:
+            if old["path"] == record["path"]:
+                record["codekb_commit"] = old.get("codekb_commit")
+            targets = [record if t["repo"] == record["repo"] else t for t in targets]
+        else:
+            targets.append(record)
+        note = f"add {rule}"
+    else:
+        names = [t["repo"] for t in targets]
+        if args.remove not in names:
+            known = ", ".join(names) or "none"
+            die(EXIT_INPUT, f"no target named '{args.remove}' (targets: {known}).")
+        targets = [t for t in targets if t["repo"] != args.remove]
+        note = f"remove {args.remove}"
+    state["targets"] = targets
+    after = any(t["kind"] == "brownfield" for t in targets)
+    verdict = sync_reverse_engineering(state, catalog, before, after)
+    nxt = commit(paddock, state, catalog)
+    log_event(
+        paddock, "target", "workspace-detection", "", f"{note}; reverse-engineering {verdict}"
+    )
+    return {
+        "ok": True,
+        "targets": targets,
+        "change": note,
+        "reverse_engineering": verdict,
+        "codekb": codekb_status(planning_root(paddock), targets),
+        "workspace": write_workspace(paddock, state, None, fetch=False),
         "next": nxt,
     }
 
@@ -1257,6 +1516,25 @@ def build_parser() -> argparse.ArgumentParser:
 
     add("codekb-status", "Is each target's shared code knowledge fresh, stale or missing.")
 
+    sp = add("workspace", "Write the multi-root workspace file and report each checkout.")
+    sp.add_argument(
+        "--extra",
+        action="append",
+        metavar="name=path",
+        help="Extra folder, kept in state.json; repeatable. name= with no path removes it.",
+    )
+    sp.add_argument(
+        "--fetch",
+        action="store_true",
+        help=f"git fetch origin per repository first ({FETCH_TIMEOUT} s each, no prompts).",
+    )
+    sp.add_argument("--out", help="Workspace file (default: <paddock>/<id>.code-workspace).")
+
+    sp = add("target", "Add or remove a target repository; it is classified as at open.")
+    group = sp.add_mutually_exclusive_group(required=True)
+    group.add_argument("--add", metavar="name=path", help="Add or replace a target.")
+    group.add_argument("--remove", metavar="NAME", help="Remove a target by name.")
+
     sp = add("park", "Leave a hand-over note.")
     sp.add_argument("--note", required=True)
     add("unpark", "Clear the hand-over note.")
@@ -1287,8 +1565,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         return {"ok": True, **compute_next(state, catalog)}
     if cmd == "inputs":
         return cmd_inputs(paddock, state, catalog, args.stage, args.unit)
+    if cmd == "workspace":
+        return cmd_workspace(paddock, state, args)
 
     require_open(state)
+    if cmd == "target":
+        return cmd_target(paddock, state, catalog, args)
     if cmd in {"decide", "step", "gate"}:
         stage = stage_def(catalog, args.stage)
         if cmd == "gate":
