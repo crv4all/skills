@@ -87,6 +87,15 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   on a stale checkout unless the approver says to scan as is. Targets added
   after `open` go through `target --add`, which classifies them as `open` does.
 
+- **A programme can be designed once and delivered in phases.** A paddock opened
+  with `--parent` is a child of a frame paddock: its HLA stage reads the
+  parent's decision record and HLA digest first, opens round A with what the
+  parent already settled, and never asks it again. A child decision that
+  departs from a parent decision is flagged like a departure from an accepted
+  ADR. `status` and `inputs` say when the parent's HLA is not yet accepted, and
+  `validate_doc.py` checks every `parent:D<n>` citation against the parent's
+  record, so a cited parent decision cannot quietly not exist.
+
 - **Issues are written to be read, not to be impressive.** A shared
   `issue-writing.md` caps the summary at 80 characters and catalogues the
   patterns that make text read as generated, with the rewrite for each:

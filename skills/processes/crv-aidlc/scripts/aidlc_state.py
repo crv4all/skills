@@ -33,7 +33,7 @@ EXIT_MALFORMED = 4
 EXIT_INTERNAL = 5
 
 EPILOG = """commands:
-  open        create a paddock           --root R --slug S --title T --intent I
+  open        create a paddock           --root R --slug S --title T --intent I [--parent P]
   status      show progress              --paddock P [--format text]
   next        the next stage and step    --paddock P
   inputs      files a stage reads        --paddock P --stage S [--unit U]
@@ -79,6 +79,7 @@ DEFAULT_DEPTH = {"classic": "standard", "express": "standard", "bugfix": "minima
 DEFAULT_UNIT_SCOPES = {"express", "bugfix"}
 UNIT_KINDS = ["service", "spec", "ui", "packaging", "library"]
 ROOT_PREFIX = "root:"
+PARENT_PREFIX = "parent:"
 FOCUSED_RESCAN_MAX = 0.30
 CHANGED_FILES_CAP = 50
 PHASES = ["discovery", "inception", "construction"]
@@ -420,6 +421,19 @@ def make_target(spec: str, flag: str) -> tuple[dict[str, Any], str]:
     return record, f"{name}: {kind} ({rule})"
 
 
+def resolve_parent(root: Path, spec: str) -> dict[str, str]:
+    """``{"id", "path"}`` of an existing paddock under ``root``; ``path`` is relative to it."""
+    given = Path(spec).expanduser()
+    candidates = [given] if given.is_absolute() else [given, root / "paddocks" / spec]
+    found = next((c.resolve() for c in candidates if state_path(c).is_file()), None)
+    if found is None:
+        die(EXIT_INPUT, f"--parent '{spec}': no paddock with a state.json at {candidates[-1]}.")
+    if found.parent.name != "paddocks" or found.parent.parent != root.resolve():
+        die(EXIT_USAGE, f"--parent '{spec}': {found} is not a paddock under {root.resolve()}.")
+    parent_state = load_state(found)
+    return {"id": str(parent_state["id"]), "path": found.relative_to(root.resolve()).as_posix()}
+
+
 def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[str, Any]:
     if not SLUG.match(args.slug):
         die(EXIT_USAGE, "--slug must be lower-case letters, digits and hyphens.")
@@ -433,6 +447,7 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
     paddock = root / "paddocks" / paddock_id
     if paddock.exists():
         raise Fail(EXIT_FINDINGS, f"{paddock}: paddock already exists. Resume it with `status`.")
+    parent = resolve_parent(root, args.parent) if args.parent else None
 
     targets: list[dict[str, Any]] = []
     rules: list[str] = []
@@ -496,6 +511,8 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
         "next_action": "",
         "parked": None,
     }
+    if parent is not None:
+        state["parent"] = parent
 
     folders = [
         "inputs",
@@ -510,6 +527,8 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
     (paddock / "log.md").touch()
     nxt = commit(paddock, state, catalog)
     log_event(paddock, "open", "", "", f"scope={args.scope} depth={state['depth']}")
+    if parent is not None:
+        log_event(paddock, "parent", "", "", f"{parent['id']} at {parent['path']}")
     for rule in rules:
         log_event(paddock, "classify", "workspace-detection", "", rule)
     return {
@@ -518,6 +537,7 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
         "id": paddock_id,
         "targets": targets,
         "architecture_ref": architecture,
+        "parent": parent,
         "codekb": codekb_status(root.resolve(), targets),
         "workspace": write_workspace(paddock, state, None, fetch=False),
         "next": nxt,
@@ -538,6 +558,10 @@ def workspace_folders(paddock: Path, state: dict[str, Any]) -> list[dict[str, st
         {"name": f"paddock: {DATE_PREFIX.sub('', state['id'])}", "path": str(paddock.resolve())},
         {"name": "planning repo", "path": str(root)},
     ]
+    parent = state.get("parent")
+    if parent:
+        name = f"parent: {DATE_PREFIX.sub('', parent['id'])}"
+        folders.append({"name": name, "path": str(root / parent["path"])})
     ref = state.get("architecture_ref") or {}
     if ref.get("path"):
         folders.append({"name": "adr registry", "path": str(ref["path"])})
@@ -771,7 +795,9 @@ def phase_progress(state: dict[str, Any], catalog: list[dict[str, Any]]) -> dict
     return progress
 
 
-def cmd_status(state: dict[str, Any], catalog: list[dict[str, Any]], fmt: str) -> dict[str, Any]:
+def cmd_status(
+    paddock: Path, state: dict[str, Any], catalog: list[dict[str, Any]], fmt: str
+) -> dict[str, Any]:
     nxt = compute_next(state, catalog)
     progress = phase_progress(state, catalog)
     facts = {
@@ -790,6 +816,10 @@ def cmd_status(state: dict[str, Any], catalog: list[dict[str, Any]], fmt: str) -
         "next_action": state["next_action"],
         "parked": state["parked"],
     }
+    parent = state.get("parent")
+    if parent:
+        facts["parent"] = parent
+        facts["parent_hla_status"] = parent_hla_status(paddock, state)
     if fmt == "json":
         return facts
     lines = [
@@ -797,6 +827,8 @@ def cmd_status(state: dict[str, Any], catalog: list[dict[str, Any]], fmt: str) -
         f"Status: {state['status']} | Scope: {state['scope']} | Depth: {state['depth']}",
         f"Intent: {state['intent'][:160]}",
     ]
+    if parent:
+        lines.append(f"Parent: {parent['id']} (HLA {facts['parent_hla_status']})")
     for phase in PHASES:
         entry = progress[phase]
         note = f", {entry['skipped']} skipped" if entry["skipped"] else ""
@@ -819,10 +851,29 @@ def planning_root(paddock: Path) -> Path:
     return paddock.resolve().parent.parent
 
 
-def locate(paddock: Path, rel: str) -> Path:
-    """Resolve a stages.json path: ``root:`` paths hang off the planning root."""
+def parent_dir(paddock: Path, state: dict[str, Any]) -> Optional[Path]:
+    parent = state.get("parent")
+    return planning_root(paddock) / parent["path"] if parent else None
+
+
+def parent_hla_status(paddock: Path, state: dict[str, Any]) -> str:
+    """The ``status:`` of the parent's ``hla.md`` header, or ``missing`` without a file."""
+    folder = parent_dir(paddock, state)
+    hla = folder / "architecture" / "hla.md" if folder else None
+    if hla is None or not hla.is_file():
+        return "missing"
+    header = header_fields(hla.read_text(encoding="utf-8", errors="replace"))
+    return (header or {}).get("status") or "unknown"
+
+
+def locate(paddock: Path, rel: str, state: Optional[dict[str, Any]] = None) -> Path:
+    """Resolve a stages.json path: ``root:`` hangs off the planning root, ``parent:``
+    off the parent paddock; anything else off this paddock."""
     if rel.startswith(ROOT_PREFIX):
         return planning_root(paddock) / rel[len(ROOT_PREFIX) :]
+    folder = parent_dir(paddock, state) if state else None
+    if rel.startswith(PARENT_PREFIX) and folder is not None:
+        return folder / rel[len(PARENT_PREFIX) :]
     return paddock / rel
 
 
@@ -844,14 +895,17 @@ def unit_ids(state: dict[str, Any], stage: dict[str, Any], unit: Optional[str]) 
 
 
 def expand_pairs(
-    template: str, repos: list[str], units: list[str]
+    template: str, repos: list[str], units: list[str], targets: Optional[list[str]] = None
 ) -> list[tuple[str, Optional[str]]]:
-    """Expand ``<repo>`` over brownfield targets and ``<unit>`` over ``units``."""
+    """Expand ``<repo>`` over brownfield targets, ``<target>`` over every target and
+    ``<unit>`` over ``units``."""
     pairs: list[tuple[str, Optional[str]]] = [(template, None)]
     if "<unit>" in template:
         pairs = [(template.replace("<unit>", u), u) for u in units]
     if "<repo>" in template:
         pairs = [(rel.replace("<repo>", repo), u) for rel, u in pairs for repo in repos]
+    if "<target>" in template:
+        pairs = [(rel.replace("<target>", t), u) for rel, u in pairs for t in targets or []]
     return pairs
 
 
@@ -876,33 +930,49 @@ def cmd_inputs(
     stage = stage_def(catalog, stage_id)
     get_record(state, stage, unit)
     repos = brownfield_repos(state)
+    targets = [t["repo"] for t in state["targets"]]
     units = unit_ids(state, stage, unit)
+    folder = parent_dir(paddock, state)
+    parent_state: Optional[dict[str, Any]] = None
+    if folder is not None and state_path(folder).is_file():
+        parent_state = load_state(folder)
     rows: list[dict[str, Any]] = []
     missing: list[dict[str, Any]] = []
     for entry in stage["inputs"]:
-        producer = producer_of(catalog, entry["path"])
+        template = entry["path"]
+        from_parent = template.startswith(PARENT_PREFIX)
+        if from_parent and folder is None:
+            continue  # parent inputs exist only for a child paddock
+        own = template[len(PARENT_PREFIX) :] if from_parent else template
+        producer = producer_of(catalog, own)
         optional = bool(entry.get("optional"))
-        for rel, row_unit in expand_pairs(entry["path"], repos, units):
+        for rel, row_unit in expand_pairs(template, repos, units, targets):
             skipped = False
-            if producer is not None:
+            source = parent_state if from_parent else state
+            if producer is not None and source is not None:
                 producer_unit = row_unit if producer["per_unit"] else None
-                rec = slot_record(state, producer, producer_unit)
+                rec = slot_record(source, producer, producer_unit)
                 skipped = bool(rec and rec["decision"] == "skip")
-            file = locate(paddock, rel)
+            file = locate(paddock, rel, state)
             exists = file.is_file()
+            if entry.get("if_exists") and not exists:
+                continue
+            produced_by = producer["id"] if producer else None
+            if from_parent and produced_by:
+                produced_by = PARENT_PREFIX + produced_by
             row = {
                 "path": rel,
                 "file": str(file.resolve()),
                 "mode": entry["mode"],
                 "exists": exists,
-                "produced_by": producer["id"] if producer else None,
+                "produced_by": produced_by,
                 "skipped": skipped and not exists,
                 "optional": optional,
             }
             rows.append(row)
             if not exists and not skipped and not optional:
                 missing.append({"path": rel, "produced_by": row["produced_by"]})
-    payload = {
+    payload: dict[str, Any] = {
         "ok": not missing,
         "stage": stage_id,
         "unit": unit,
@@ -910,6 +980,13 @@ def cmd_inputs(
         "inputs": rows,
         "missing": missing,
     }
+    if folder is not None:
+        status = parent_hla_status(paddock, state)
+        payload.update({"parent": state["parent"], "parent_hla_status": status, "warnings": []})
+        if status != "accepted":
+            message = f"the parent's hla.md is {status}, not accepted; its decisions may change"
+            payload["warnings"].append({"code": "parent-hla-not-accepted", "message": message})
+            LOG.warning("%s", message)
     if missing:
         names = ", ".join(f"{m['path']} (stage {m['produced_by'] or 'unknown'})" for m in missing)
         raise Fail(
@@ -1473,6 +1550,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--owner", help="Paddock owner (optional).")
     sp.add_argument("--approver", help="Default approver (optional).")
     sp.add_argument("--date", help="Override the date part of the id, YYYY-MM-DD.")
+    sp.add_argument(
+        "--parent", help="Parent paddock id or path under the same root; its HLA frames this one."
+    )
 
     sp = add("status", "Show progress.")
     sp.add_argument("--format", choices=["json", "text"], default="json")
@@ -1560,7 +1640,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "targets": codekb_status(planning_root(paddock), state["targets"]),
         }
     if cmd == "status":
-        return cmd_status(state, catalog, args.format)
+        return cmd_status(paddock, state, catalog, args.format)
     if cmd == "next":
         return {"ok": True, **compute_next(state, catalog)}
     if cmd == "inputs":

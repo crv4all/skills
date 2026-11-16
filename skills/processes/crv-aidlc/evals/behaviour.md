@@ -71,3 +71,11 @@ characteristic failure here is a stage marked approved that nobody approved.
 - [ ] The checkout behind its origin is named as `stale` before any stage reads code.
 - [ ] The agent says that `*.code-workspace` belongs in the planning repo's `.gitignore`.
 - [ ] A third repository added later goes through `target --add`, not by editing `state.json`.
+
+## B8 — A phase of a programme
+
+**Setup:** A planning repository with a frame paddock whose HLA is still in review.
+**Prompt:** "Open a paddock for phase one of the programme."
+
+- [ ] `open` runs with `--parent <frame paddock id>`; a parent that does not exist is reported, not created.
+- [ ] `status` shows the parent and that its HLA is not yet accepted, and the agent says so.

@@ -49,6 +49,7 @@ Routine choices that follow a pattern, ordinary engineering practice, and target
 - Departing from an Accepted ADR is an exception, recorded in four places: header `exceptions` (`required: true`, `link_or_reason`), a Risks row, a `decision_needed` entry, and a Design decisions row.
 - Using a Proposed ADR is a recorded decision in `hla-decisions.md`, flagged in the doc table only when it meets a criterion above.
 - Superseded and Deprecated ADRs are never a basis. Find the successor, or record the gap as a risk.
+- In a child paddock, a decision of the parent (`parent:D3`) binds like an Accepted ADR: cite it, and treat a departure from it as an exception, with the parent id as the link.
 
 ## Header
 

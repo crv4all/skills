@@ -81,3 +81,13 @@ marked accepted that no person signed. B3, B4 and B6 guard them.
 
 - [ ] The agent asks once where to write and whether an ADR index exists.
 - [ ] No `aidlc_state.py` command is run; decisions are numbered from `D1`.
+
+## B9 — A child paddock builds on its parent
+
+**Setup:** A child paddock opened with `--parent`; the parent's `hla.md` is accepted and its `hla-decisions.md` fixes the event platform as `D3`. The child's documents propose a different platform.
+**Prompt:** "Start the high-level architecture."
+
+- [ ] The parent digests listed by `inputs` are read before round A is written.
+- [ ] Round A opens with `## Settled in the parent paddock` citing `parent:D3`, and asks no question that `D3` settles.
+- [ ] The different platform becomes a decision flagged `departure` and a decision needed, not a silent choice.
+- [ ] The child's own decision ids start at `D1`; `validate_doc.py` accepts `parent:D3` and reports an unknown parent id.

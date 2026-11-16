@@ -66,6 +66,12 @@
           "path": "root:codekb/<repo>/_meta.json",
           "mode": "full",
           "optional": true
+        },
+        {
+          "path": "parent:knowledge/repos/<target>.md",
+          "mode": "full",
+          "optional": true,
+          "if_exists": true
         }
       ],
       "questions": "docs/inception/reverse-engineering/reverse-engineering-questions.md",
@@ -123,6 +129,19 @@
         {
           "path": "root:architecture-index.json",
           "mode": "full",
+          "optional": true
+        },
+        {
+          "path": "parent:architecture/hla-decisions.md",
+          "mode": "digest"
+        },
+        {
+          "path": "parent:architecture/hla.md",
+          "mode": "digest"
+        },
+        {
+          "path": "parent:knowledge/_digest.md",
+          "mode": "digest",
           "optional": true
         }
       ],

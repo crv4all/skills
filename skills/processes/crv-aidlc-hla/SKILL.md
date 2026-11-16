@@ -62,6 +62,7 @@ Each row is one run; stop after it. Find the step from `aidlc_state.py next --pa
 2. Read `knowledge/_digest.md`. Use `knowledge/_outline.json` to open a raw section by line range only when a layer needs it. Read only the `## Digest` of each `codekb/<repo>/overview.md` (shared store at the planning repo root; `inputs` resolves it).
 3. Shortlist ADRs without reading the whole index: `grep -E '"(id|title|status)"' <architecture-index.json>`, then read the decision line of the candidates only. Accepted binds, Proposed is directional, Superseded and Deprecated are not used.
 4. Open the round A file with `## Context`, at most 15 lines: business driver, current state, constraints, stakeholders, solution type, applicable ADRs, documents that could not be read. Then `## ADR shortlist`: `| Layer | ADR | Status | What it settles |`.
+5. Child paddock (`status` shows a parent): read the `parent:` digests that `inputs` lists before anything else, and say so if `parent_hla_status` is not `accepted`. Round A then opens with `## Settled in the parent paddock`: only the parent decision ids that constrain this paddock, cited as `parent:D3`. Nothing settled there is asked again. This paddock's own ids still start at `D1`.
 
 ### Round files
 
@@ -74,7 +75,7 @@ Before stopping, run `lint_questions.py --file <file> --allow-open` and fix ever
 1. `lint_questions.py --file <file>`. Open answers: list them and stop.
 2. Analyse per the core rules. Follow-ups go to `hla-clarifications.md`, numbered on from the last question there, each heading naming the original (`## Q4 Retention period (B-Q2)`). Stop until they are answered.
 3. Reserve ids with `aidlc_state.py decision-id --paddock <p> --count <n>` and add the rows. Source is an answer id, an ADR id or a document path. Flag is `-`, `departure`, `proposed-adr`, `novel`, `cross-team` or `contested`. Following an Accepted ADR is cited, not decided: no row. Keep the record's Digest current.
-4. An answer that departs from an Accepted ADR gets the `departure` flag; generation turns it into a header exception, a risk and a decision needed.
+4. An answer that departs from an Accepted ADR or a parent decision gets the `departure` flag; generation turns it into a header exception, a risk and a decision needed.
 5. Write the next round file. After round C, `aidlc_state.py step --paddock <p> --stage hla --to analysed`.
 
 ### Generate
