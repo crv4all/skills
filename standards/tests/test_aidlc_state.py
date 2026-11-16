@@ -1,0 +1,642 @@
+"""``aidlc_state.py`` opens, advances, gates and closes a paddock.
+
+Progress is only trustworthy if the script refuses what should be refused, so
+most of these tests assert a refusal and that nothing changed.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SKILL = REPO_ROOT / "skills" / "processes" / "crv-aidlc"
+SCRIPT = SKILL / "scripts" / "aidlc_state.py"
+
+QUESTIONS = """## Q1 Scope
+Context line.
+
+A) One
+B) Two
+X) Other (describe)
+
+Recommended: A - simplest.
+
+[Answer]: A
+"""
+
+
+class Paddock:
+    def __init__(self, root: Path, path: Path) -> None:
+        self.root = root
+        self.path = path
+
+    def run(self, command: str, *args: str) -> tuple[int, dict[str, Any], str]:
+        done = subprocess.run(
+            [sys.executable, str(SCRIPT), command, "--paddock", str(self.path), *args],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        return (
+            done.returncode,
+            (json.loads(done.stdout) if done.stdout.strip().startswith("{") else {}),
+            done.stdout,
+        )
+
+    @property
+    def state(self) -> dict[str, Any]:
+        return json.loads((self.path / "state.json").read_text(encoding="utf-8"))
+
+    def write(self, rel: str, text: str) -> None:
+        target = self.path / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+
+    def log_lines(self) -> list[str]:
+        return (self.path / "log.md").read_text(encoding="utf-8").splitlines()
+
+
+def open_paddock(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), "open", "--root", str(root), "--slug", "demo", "--title", "Demo",
+         "--intent", "Try it", "--date", "2026-01-05", *args],
+        capture_output=True, text=True, timeout=60,
+    )  # fmt: skip
+
+
+@pytest.fixture
+def paddock(tmp_path: Path) -> Paddock:
+    done = open_paddock(tmp_path)
+    assert done.returncode == 0, done.stderr
+    return Paddock(tmp_path, Path(json.loads(done.stdout)["paddock"]))
+
+
+def digest(lines: int = 2) -> str:
+    return (
+        "# Title\n\n## Digest\n"
+        + "".join(f"- point {i}\n" for i in range(lines))
+        + "\n## Body\ntext\n"
+    )
+
+
+def reach_produced(p: Paddock, stage: str = "requirements-analysis") -> None:
+    """Take the early stages out of the way so ``stage`` is the one in play."""
+    for name in ("workspace-detection",):
+        assert p.run("gate", "--stage", name, "--approve", "--by", "Boss")[0] == 0
+    for name in ("document-knowledge", "reverse-engineering", "hla", "tdd"):
+        p.run("decide", "--stage", name, "--decision", "skip", "--reason", "test")
+    assert p.run("step", "--stage", stage, "--to", "produced")[0] == 0
+
+
+def ra_files(p: Paddock, questions: str = QUESTIONS, doc: str = "") -> None:
+    base = "docs/inception/requirements-analysis/"
+    p.write(base + "requirements.md", doc or digest())
+    p.write(base + "traceability.json", "{}")
+    p.write(base + "requirements-analysis-questions.md", questions)
+
+
+# --- open --------------------------------------------------------------------
+
+
+def test_open_creates_the_paddock(paddock: Paddock) -> None:
+    state = paddock.state
+    assert state["id"] == "2026-01-05-demo" and state["status"] == "open"
+    assert state["scope"] == "classic" and state["depth"] == "standard"
+    for folder in (
+        "inputs",
+        "knowledge/extracted",
+        "architecture",
+        "docs/inception",
+        "docs/construction",
+    ):
+        assert (paddock.path / folder).is_dir()
+    assert state["stages"]["requirements-analysis"]["decision"] == "execute"
+    assert state["stages"]["workspace-detection"]["step"] == "produced"
+    assert "open" in paddock.log_lines()[0]
+
+
+def test_open_refuses_an_existing_paddock(tmp_path: Path, paddock: Paddock) -> None:
+    before = paddock.state
+    done = open_paddock(tmp_path)
+    assert done.returncode == 1
+    assert paddock.state == before
+
+
+def test_open_rejects_a_bad_slug(tmp_path: Path) -> None:
+    done = subprocess.run(
+        [sys.executable, str(SCRIPT), "open", "--root", str(tmp_path), "--slug", "Bad Slug",
+         "--title", "t", "--intent", "i"], capture_output=True, text=True, timeout=60,
+    )  # fmt: skip
+    assert done.returncode == 2
+
+
+def test_open_classifies_targets_and_records_the_rule(tmp_path: Path) -> None:
+    green = tmp_path / "green"
+    green.mkdir()
+    (green / "README.md").write_text("hi", encoding="utf-8")
+    brown = tmp_path / "brown"
+    brown.mkdir()
+    (brown / "app.py").write_text("x = 1\n", encoding="utf-8")
+    done = open_paddock(tmp_path, "--target", f"g={green}", "--target", f"b={brown}")
+    assert done.returncode == 0, done.stderr
+    p = Paddock(tmp_path, Path(json.loads(done.stdout)["paddock"]))
+    kinds = {t["repo"]: t["kind"] for t in p.state["targets"]}
+    assert kinds == {"g": "greenfield", "b": "brownfield"}
+    assert p.state["stages"]["reverse-engineering"]["decision"] == "execute"
+    assert any("| classify |" in line and "b: brownfield (1 " in line for line in p.log_lines())
+
+
+def test_open_without_brownfield_skips_reverse_engineering(paddock: Paddock) -> None:
+    record = paddock.state["stages"]["reverse-engineering"]
+    assert record["decision"] == "skip" and record["reason"]
+
+
+def test_open_missing_target_exits_3(tmp_path: Path) -> None:
+    assert open_paddock(tmp_path, "--target", f"x={tmp_path / 'nope'}").returncode == 3
+
+
+def test_open_records_the_architecture_commit(tmp_path: Path) -> None:
+    registry = tmp_path / "reg"
+    registry.mkdir()
+    env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e.com", "GIT_COMMITTER_NAME": "t",
+           "GIT_COMMITTER_EMAIL": "t@e.com", "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin", "HOME": str(tmp_path)}  # fmt: skip
+    (registry / "a.md").write_text("a", encoding="utf-8")
+    for cmd in (["init", "-q"], ["add", "."], ["commit", "-q", "-m", "x"]):
+        subprocess.run(["git", "-C", str(registry), *cmd], check=True, env=env, capture_output=True)
+    done = open_paddock(tmp_path, "--architecture-ref", str(registry))
+    commit = json.loads(done.stdout)["architecture_ref"]["commit"]
+    assert re.fullmatch(r"[0-9a-f]{40}", commit)
+
+
+def test_bugfix_scope_gets_a_default_unit(tmp_path: Path) -> None:
+    done = open_paddock(tmp_path, "--scope", "bugfix")
+    p = Paddock(tmp_path, Path(json.loads(done.stdout)["paddock"]))
+    assert [u["id"] for u in p.state["units"]] == ["u1"]
+    assert p.state["stages"]["hla"]["decision"] == "skip"
+    assert p.state["units"][0]["stages"]["code-generation"]["decision"] == "execute"
+
+
+# --- status and next ---------------------------------------------------------
+
+
+def test_status_text_is_short(paddock: Paddock) -> None:
+    code, _, out = paddock.run("status", "--format", "text")
+    assert code == 0 and len(out.splitlines()) <= 20
+    assert "Demo" in out and "Next:" in out
+
+
+def test_status_json_carries_the_same_facts(paddock: Paddock) -> None:
+    code, data, _ = paddock.run("status")
+    assert code == 0
+    assert data["title"] == "Demo" and set(data["phases"]) == {
+        "discovery",
+        "inception",
+        "construction",
+    }
+
+
+def test_status_shows_the_parked_note_and_stays_short(paddock: Paddock) -> None:
+    paddock.run("park", "--note", "waiting for access\n" * 50)
+    _, _, out = paddock.run("status", "--format", "text")
+    assert "Parked: waiting for access" in out and len(out.splitlines()) <= 20
+
+
+def test_next_starts_at_workspace_detection_then_follows_the_order(paddock: Paddock) -> None:
+    _, data, _ = paddock.run("next")
+    assert (data["stage"], data["action"]) == ("workspace-detection", "gate")
+    paddock.run("gate", "--stage", "workspace-detection", "--approve", "--by", "Boss")
+    _, data, _ = paddock.run("next")
+    assert data["stage"] == "document-knowledge" and data["action"] == "produce"
+    assert paddock.state["current"]["stage"] == "document-knowledge"
+    assert "document-knowledge" in paddock.state["next_action"]
+
+
+def test_next_after_changes_requested_says_revise(paddock: Paddock) -> None:
+    reach_produced(paddock)
+    paddock.run("gate", "--stage", "requirements-analysis", "--request-changes", "--note", "again")
+    _, data, _ = paddock.run("next")
+    assert data["stage"] == "requirements-analysis" and data["action"] == "revise"
+
+
+def test_next_after_skips_reports_skill(paddock: Paddock) -> None:
+    for name in ("workspace-detection",):
+        paddock.run("gate", "--stage", name, "--approve", "--by", "B")
+    for name in ("document-knowledge", "hla", "tdd"):
+        paddock.run("decide", "--stage", name, "--decision", "skip", "--reason", "n/a")
+    _, data, _ = paddock.run("next")
+    assert (data["stage"], data["skill"], data["reference"]) == (
+        "requirements-analysis",
+        "crv-aidlc-inception",
+        "references/requirements-analysis.md",
+    )
+    assert data["action"] == "ask"
+
+
+# --- inputs ------------------------------------------------------------------
+
+
+def test_inputs_with_a_missing_input_exits_3_and_names_the_producer(paddock: Paddock) -> None:
+    code, data, _ = paddock.run("inputs", "--stage", "user-stories")
+    assert code == 3
+    assert data["missing"] == [
+        {
+            "path": "docs/inception/requirements-analysis/requirements.md",
+            "produced_by": "requirements-analysis",
+        }
+    ]
+
+
+def test_inputs_lists_existing_files_with_modes(paddock: Paddock) -> None:
+    ra_files(paddock)
+    code, data, _ = paddock.run("inputs", "--stage", "user-stories")
+    assert code == 0 and data["inputs"][0]["exists"] and data["inputs"][0]["mode"] == "full"
+
+
+def test_inputs_treats_a_skipped_producer_as_satisfied(paddock: Paddock) -> None:
+    ra_files(paddock)
+    paddock.run("decide", "--stage", "hla", "--decision", "skip", "--reason", "n/a")
+    paddock.run("decide", "--stage", "tdd", "--decision", "skip", "--reason", "n/a")
+    paddock.run("decide", "--stage", "document-knowledge", "--decision", "skip", "--reason", "n/a")
+    code, data, _ = paddock.run("inputs", "--stage", "requirements-analysis")
+    assert code == 0 and all(row["skipped"] for row in data["inputs"])
+
+
+def test_inputs_unknown_stage_exits_2(paddock: Paddock) -> None:
+    assert paddock.run("inputs", "--stage", "nonsense")[0] == 2
+
+
+def test_inputs_per_unit_stage_needs_a_unit(paddock: Paddock) -> None:
+    assert paddock.run("inputs", "--stage", "functional-design")[0] == 2
+
+
+# --- decide and step ---------------------------------------------------------
+
+
+def test_decide_skip_needs_a_reason(paddock: Paddock) -> None:
+    assert paddock.run("decide", "--stage", "hla", "--decision", "skip", "--reason", "  ")[0] == 2
+    assert (
+        paddock.run(
+            "decide", "--stage", "hla", "--decision", "skip", "--reason", "covered elsewhere"
+        )[0]
+        == 0
+    )
+    assert paddock.state["stages"]["hla"] == {
+        "decision": "skip",
+        "reason": "covered elsewhere",
+        "step": "todo",
+        "approved_at": None,
+        "approved_by": None,
+    }
+
+
+def test_step_only_moves_forward(paddock: Paddock) -> None:
+    stage = ("--stage", "requirements-analysis")
+    assert paddock.run("step", *stage, "--to", "asked")[0] == 0
+    assert paddock.run("step", *stage, "--to", "asked")[0] == 1
+    assert paddock.run("step", *stage, "--to", "analysed")[0] == 0
+    assert paddock.run("step", *stage, "--to", "asked")[0] == 1
+    assert paddock.state["stages"]["requirements-analysis"]["step"] == "analysed"
+
+
+def test_step_refused_for_a_skipped_stage(paddock: Paddock) -> None:
+    assert paddock.run("step", "--stage", "reverse-engineering", "--to", "asked")[0] == 1
+
+
+# --- gate --------------------------------------------------------------------
+
+
+def test_gate_refuses_when_not_produced(paddock: Paddock) -> None:
+    ra_files(paddock)
+    code, data, _ = paddock.run(
+        "gate", "--stage", "requirements-analysis", "--approve", "--by", "B"
+    )
+    assert code == 1 and "wrong-step" in [f["code"] for f in data["findings"]]
+
+
+def test_gate_refuses_a_missing_artifact(paddock: Paddock) -> None:
+    reach_produced(paddock)
+    base = "docs/inception/requirements-analysis/"
+    paddock.write(base + "requirements-analysis-questions.md", QUESTIONS)
+    paddock.write(base + "traceability.json", "{}")
+    code, data, _ = paddock.run(
+        "gate", "--stage", "requirements-analysis", "--approve", "--by", "B"
+    )
+    assert code == 1 and [f["code"] for f in data["findings"]] == ["artifact-missing"]
+    assert data["findings"][0]["path"] == base + "requirements.md"
+    assert paddock.state["stages"]["requirements-analysis"]["step"] == "produced"
+
+
+def test_gate_refuses_a_missing_digest(paddock: Paddock) -> None:
+    reach_produced(paddock)
+    ra_files(paddock, doc="# Title\nNo digest here.\n")
+    code, data, _ = paddock.run(
+        "gate", "--stage", "requirements-analysis", "--approve", "--by", "B"
+    )
+    assert code == 1 and [f["code"] for f in data["findings"]] == ["digest-missing"]
+
+
+def test_gate_refuses_a_digest_over_ten_lines(paddock: Paddock) -> None:
+    reach_produced(paddock)
+    ra_files(paddock, doc=digest(11))
+    code, data, _ = paddock.run(
+        "gate", "--stage", "requirements-analysis", "--approve", "--by", "B"
+    )
+    assert code == 1 and [f["code"] for f in data["findings"]] == ["digest-too-long"]
+
+
+def test_gate_accepts_a_digest_of_exactly_ten_lines(paddock: Paddock) -> None:
+    reach_produced(paddock)
+    ra_files(paddock, doc=digest(10))
+    assert paddock.run("gate", "--stage", "requirements-analysis", "--approve", "--by", "B")[0] == 0
+
+
+def test_gate_refuses_an_unanswered_question(paddock: Paddock) -> None:
+    reach_produced(paddock)
+    ra_files(paddock, questions=QUESTIONS.replace("[Answer]: A", "[Answer]:"))
+    code, data, _ = paddock.run(
+        "gate", "--stage", "requirements-analysis", "--approve", "--by", "B"
+    )
+    assert code == 1 and [f["code"] for f in data["findings"]] == ["questions-empty-answer"]
+
+
+def test_gate_approve_marks_approved_and_advances(paddock: Paddock) -> None:
+    reach_produced(paddock)
+    ra_files(paddock)
+    code, data, _ = paddock.run(
+        "gate", "--stage", "requirements-analysis", "--approve", "--by", "Ada"
+    )
+    assert code == 0, data
+    record = paddock.state["stages"]["requirements-analysis"]
+    assert record["step"] == "approved" and record["approved_by"] == "Ada"
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", record["approved_at"])
+    assert paddock.state["current"]["stage"] == "user-stories"
+    assert "fresh session" in data["suggestion"]
+    assert "gate-approve" in paddock.log_lines()[-1]
+
+
+def test_gate_needs_by_with_approve_and_note_with_request_changes(paddock: Paddock) -> None:
+    assert paddock.run("gate", "--stage", "hla", "--approve")[0] == 2
+    assert paddock.run("gate", "--stage", "hla", "--request-changes")[0] == 2
+
+
+def test_request_changes_sets_the_step_and_logs_the_note(paddock: Paddock) -> None:
+    reach_produced(paddock)
+    ra_files(paddock)
+    code, _, _ = paddock.run(
+        "gate", "--stage", "requirements-analysis", "--request-changes", "--note", "add NFRs"
+    )
+    assert code == 0
+    assert paddock.state["stages"]["requirements-analysis"]["step"] == "changes-requested"
+    assert paddock.log_lines()[-1].endswith("| add NFRs")
+    assert paddock.run("step", "--stage", "requirements-analysis", "--to", "produced")[0] == 0
+
+
+def test_gate_refuses_a_missing_repo_artifact_per_target(tmp_path: Path) -> None:
+    repo = tmp_path / "svc"
+    repo.mkdir()
+    (repo / "main.py").write_text("x = 1\n", encoding="utf-8")
+    p = Paddock(
+        tmp_path,
+        Path(json.loads(open_paddock(tmp_path, "--target", f"svc={repo}").stdout)["paddock"]),
+    )
+    p.run("gate", "--stage", "workspace-detection", "--approve", "--by", "B")
+    p.run("decide", "--stage", "document-knowledge", "--decision", "skip", "--reason", "none")
+    p.run("step", "--stage", "reverse-engineering", "--to", "produced")
+    code, data, _ = p.run("gate", "--stage", "reverse-engineering", "--approve", "--by", "B")
+    assert code == 1 and data["findings"][0]["path"] == "root:codekb/svc/overview.md"
+
+
+# --- several question files, scoped clarifications, sign-off -----------------
+
+SIGNED = """# HLA
+
+```yaml
+status: accepted  # set by the reviewer
+signed_off_by: "Rae Viewer"
+signed_off_on: "2026-11-20"
+```
+
+## Digest
+- point
+"""
+
+
+def hla_produced(p: Paddock, header: str = SIGNED) -> None:
+    """Bring the HLA stage to `produced` with every file it gates on present."""
+    assert p.run("gate", "--stage", "workspace-detection", "--approve", "--by", "B")[0] == 0
+    p.run("decide", "--stage", "document-knowledge", "--decision", "skip", "--reason", "none")
+    for round_id in "abc":
+        p.write(f"architecture/hla-questions-{round_id}.md", QUESTIONS)
+    p.write("architecture/hla.md", header)
+    p.write("architecture/hla-decisions.md", digest())
+    assert p.run("step", "--stage", "hla", "--to", "produced")[0] == 0
+
+
+def test_gate_needs_every_question_file_of_the_stage(paddock: Paddock) -> None:
+    hla_produced(paddock)
+    (paddock.path / "architecture/hla-questions-b.md").unlink()
+    code, data, _ = paddock.run("gate", "--stage", "hla", "--approve", "--by", "Rae Viewer")
+    assert code == 1
+    assert [(f["code"], f["path"]) for f in data["findings"]] == [
+        ("questions-missing", "architecture/hla-questions-b.md")
+    ]
+
+
+def test_gate_lints_each_question_file(paddock: Paddock) -> None:
+    hla_produced(paddock)
+    paddock.write("architecture/hla-questions-c.md", QUESTIONS.replace("[Answer]: A", "[Answer]:"))
+    code, data, _ = paddock.run("gate", "--stage", "hla", "--approve", "--by", "Rae Viewer")
+    assert code == 1 and [f["path"] for f in data["findings"]] == [
+        "architecture/hla-questions-c.md"
+    ]
+
+
+def test_clarifications_are_scoped_to_their_stage(paddock: Paddock) -> None:
+    hla_produced(paddock)
+    open_question = QUESTIONS.replace("[Answer]: A", "[Answer]:")
+    paddock.write("architecture/tdd-clarifications.md", open_question)
+    assert paddock.run("gate", "--stage", "hla", "--approve", "--by", "Rae Viewer")[0] == 0
+
+
+def test_own_clarifications_are_linted(paddock: Paddock) -> None:
+    hla_produced(paddock)
+    paddock.write(
+        "architecture/hla-clarifications.md", QUESTIONS.replace("[Answer]: A", "[Answer]:")
+    )
+    code, data, _ = paddock.run("gate", "--stage", "hla", "--approve", "--by", "Rae Viewer")
+    assert code == 1 and data["findings"][0]["path"] == "architecture/hla-clarifications.md"
+
+
+def test_gate_refuses_an_unsigned_document(paddock: Paddock) -> None:
+    unsigned = SIGNED.replace("status: accepted", "status: in-review").replace('"Rae Viewer"', '""')
+    hla_produced(paddock, unsigned)
+    code, data, _ = paddock.run("gate", "--stage", "hla", "--approve", "--by", "Rae Viewer")
+    assert code == 1
+    assert [f["code"] for f in data["findings"]] == ["signoff-not-accepted", "signoff-unsigned"]
+    assert paddock.state["stages"]["hla"]["step"] == "produced"
+
+
+def test_gate_refuses_a_document_without_a_header(paddock: Paddock) -> None:
+    hla_produced(paddock, digest())
+    code, data, _ = paddock.run("gate", "--stage", "hla", "--approve", "--by", "Rae Viewer")
+    assert code == 1 and [f["code"] for f in data["findings"]] == ["signoff-no-header"]
+
+
+def test_gate_approves_a_signed_document(paddock: Paddock) -> None:
+    hla_produced(paddock)
+    code, data, _ = paddock.run("gate", "--stage", "hla", "--approve", "--by", "Rae Viewer")
+    assert code == 0, data
+    assert paddock.state["stages"]["hla"]["approved_by"] == "Rae Viewer"
+    assert paddock.state["current"]["stage"] == "tdd"
+
+
+def test_request_changes_does_not_need_a_signature(paddock: Paddock) -> None:
+    hla_produced(paddock, SIGNED.replace("status: accepted", "status: changes-requested"))
+    code, _, _ = paddock.run(
+        "gate", "--stage", "hla", "--request-changes", "--note", "rework cutover"
+    )
+    assert code == 0 and paddock.state["stages"]["hla"]["step"] == "changes-requested"
+
+
+def test_optional_input_never_counts_as_missing(paddock: Paddock) -> None:
+    paddock.run("decide", "--stage", "document-knowledge", "--decision", "skip", "--reason", "none")
+    code, data, _ = paddock.run("inputs", "--stage", "hla")
+    assert code == 0, data
+    index = [row for row in data["inputs"] if row["path"].endswith("architecture-index.json")]
+    assert index and index[0]["optional"] and not index[0]["exists"]
+
+
+def test_tdd_inputs_name_the_hla_as_producer(paddock: Paddock) -> None:
+    code, data, _ = paddock.run("inputs", "--stage", "tdd")
+    assert code == 3
+    assert {"path": "architecture/hla.md", "produced_by": "hla"} in data["missing"]
+
+
+# --- units, ids, park, close, log --------------------------------------------
+
+
+def test_units_load_and_drive_per_unit_stages(paddock: Paddock) -> None:
+    spec = paddock.root / "units.json"
+    spec.write_text(json.dumps({"units": [{"id": "u1", "name": "A"}, {"id": "u2", "name": "B"}],
+                                "bolts": [{"id": "b1", "units": ["u1", "u2"]}]}), encoding="utf-8")  # fmt: skip
+    assert paddock.run("units", "--set", str(spec))[0] == 0
+    state = paddock.state
+    assert [u["bolt"] for u in state["units"]] == ["b1", "b1"]
+    assert state["units"][0]["stages"]["functional-design"]["decision"] == "pending"
+    assert state["units"][0]["stages"]["code-generation"]["decision"] == "execute"
+    code, data, _ = paddock.run("inputs", "--stage", "functional-design", "--unit", "u1")
+    assert code == 3 and data["missing"][0]["produced_by"] == "units-generation"
+
+
+def test_units_rejects_a_bolt_with_an_unknown_unit(paddock: Paddock) -> None:
+    spec = paddock.root / "units.json"
+    spec.write_text(
+        json.dumps({"units": [{"id": "u1"}], "bolts": [{"id": "b1", "units": ["u9"]}]}),
+        encoding="utf-8",
+    )
+    assert paddock.run("units", "--set", str(spec))[0] == 4
+    assert paddock.state["units"] == []
+
+
+def test_decision_ids_continue_the_sequence(paddock: Paddock) -> None:
+    assert paddock.run("decision-id", "--count", "2")[1]["ids"] == ["D1", "D2"]
+    assert paddock.run("decision-id")[1]["ids"] == ["D3"]
+    assert paddock.state["decision_seq"] == 3
+
+
+def test_park_and_unpark(paddock: Paddock) -> None:
+    paddock.run("park", "--note", "waiting on access")
+    assert paddock.state["parked"]["note"] == "waiting on access"
+    paddock.run("unpark")
+    assert paddock.state["parked"] is None
+
+
+def test_close_complete_is_refused_while_executed_stages_are_unapproved(paddock: Paddock) -> None:
+    code, data, _ = paddock.run("close", "--status", "complete")
+    assert code == 1 and data["findings"]
+    assert paddock.state["status"] == "open"
+
+
+def test_close_archived_and_superseded_are_allowed_and_final(paddock: Paddock) -> None:
+    assert paddock.run("close", "--status", "superseded", "--successor", "2026-02-01-next")[0] == 0
+    assert (
+        paddock.state["status"] == "superseded" and paddock.state["successor"] == "2026-02-01-next"
+    )
+    assert paddock.run("park", "--note", "x")[0] == 1
+
+
+def test_close_complete_after_everything_is_approved(tmp_path: Path) -> None:
+    p = Paddock(
+        tmp_path, Path(json.loads(open_paddock(tmp_path, "--scope", "bugfix").stdout)["paddock"])
+    )
+    p.run("gate", "--stage", "workspace-detection", "--approve", "--by", "B")
+    ra = "docs/inception/requirements-analysis/"
+    p.write(ra + "requirements.md", digest())
+    p.write(ra + "traceability.json", "{}")
+    p.write(ra + "requirements-analysis-questions.md", QUESTIONS)
+    p.run("step", "--stage", "requirements-analysis", "--to", "produced")
+    assert p.run("gate", "--stage", "requirements-analysis", "--approve", "--by", "B")[0] == 0
+    cg = "docs/construction/u1/code-generation/"
+    for name in ("code-generation-plan.md", "unit-test-instructions.md", "code-summary.md"):
+        p.write(cg + name, digest())
+    p.write(cg + "source-manifest.json", "{}")
+    p.write(cg + "traceability.json", "{}")
+    p.run("step", "--stage", "code-generation", "--unit", "u1", "--to", "produced")
+    assert (
+        p.run("gate", "--stage", "code-generation", "--unit", "u1", "--approve", "--by", "B")[0]
+        == 0
+    )
+    for name in (
+        "build-instructions.md",
+        "build-and-test-summary.md",
+        "test-results.md",
+        "cross-unit-traceability.md",
+    ):
+        p.write("docs/construction/build-and-test/" + name, digest())
+    p.run("step", "--stage", "build-and-test", "--to", "produced")
+    assert p.run("gate", "--stage", "build-and-test", "--approve", "--by", "B")[0] == 0
+    code, data, _ = p.run("close", "--status", "complete")
+    assert code == 0, data
+    assert p.state["status"] == "complete"
+
+
+def test_every_write_appends_one_well_formed_log_line(paddock: Paddock) -> None:
+    before = len(paddock.log_lines())
+    paddock.run("decide", "--stage", "hla", "--decision", "skip", "--reason", "a | b\nc")
+    paddock.run("step", "--stage", "requirements-analysis", "--to", "asked")
+    lines = paddock.log_lines()
+    assert len(lines) == before + 2
+    pattern = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ \| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+$")
+    assert all(pattern.match(line) for line in lines), lines
+    assert lines[-2].split(" | ")[1:3] == ["decide", "hla"]
+
+
+def test_reads_do_not_write(paddock: Paddock) -> None:
+    before = (paddock.path / "state.json").read_bytes(), paddock.log_lines()
+    paddock.run("status")
+    paddock.run("next")
+    paddock.run("inputs", "--stage", "requirements-analysis")
+    assert ((paddock.path / "state.json").read_bytes(), paddock.log_lines()) == before
+
+
+def test_writes_update_the_timestamp_atomically(paddock: Paddock) -> None:
+    paddock.run("park", "--note", "n")
+    assert not list(paddock.path.glob(".state.json.tmp"))
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", paddock.state["updated"])
+
+
+def test_missing_and_malformed_state(tmp_path: Path) -> None:
+    done = subprocess.run([sys.executable, str(SCRIPT), "status", "--paddock", str(tmp_path / "none")],
+                          capture_output=True, text=True, timeout=60)  # fmt: skip
+    assert done.returncode == 3
+    (tmp_path / "state.json").write_text("{oops", encoding="utf-8")
+    done = subprocess.run([sys.executable, str(SCRIPT), "status", "--paddock", str(tmp_path)],
+                          capture_output=True, text=True, timeout=60)  # fmt: skip
+    assert done.returncode == 4

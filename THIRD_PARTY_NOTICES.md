@@ -2,9 +2,12 @@
 
 ## Current status
 
-One file is adapted, and it is recorded in the table below. Everything else
-here, every skill, script, schema, and document, was written for this
-repository.
+One source is adapted: the generated-text pattern catalogue in
+`issue-writing.md`, shipped as two byte-identical copies, one per Jira skill.
+The `crv-aidlc` skill family follows the AWS AI-DLC method without copying or
+adapting its text; it is listed below so the origin of the method is on record.
+Both are in the table. Everything else here, every skill, script, schema, and
+document, was written for this repository.
 
 ## Prior art that informed the design
 
@@ -37,6 +40,7 @@ Two steps, both required.
 | --- | --- | --- | --- | --- |
 | `skills/processes/crv-create-jira-epic/references/issue-writing.md` | [`blader/humanizer`](https://github.com/blader/humanizer) | MIT | Siqi Chen | The catalogue of patterns that mark generated text, under "Patterns that mark generated text": the pattern names, and the approach of naming them mechanically so they can be checked rather than felt. Every example was rewritten for Jira issues. The summary rules and cap, and the placeholder and Priority rules, are ours. |
 | `skills/processes/crv-create-jira-story/references/issue-writing.md` | [`blader/humanizer`](https://github.com/blader/humanizer) | MIT | Siqi Chen | A byte-identical copy of the file above. Both Jira skills ship their own copy so each installs standalone; `test_shared_jira_files.py` keeps them identical. |
+| `skills/processes/crv-aidlc*/` (the whole process skill family) | [`awslabs/aidlc-workflows`](https://github.com/awslabs/aidlc-workflows) v2.11.4 | MIT-0 | Amazon.com, Inc. or its affiliates | The method only: the stages, the four-step loop and the approval gates follow the AWS AI-DLC process. All text, scripts and file layouts were written from scratch; none was copied or adapted. Copyright holder checked against the upstream `LICENSE` at tag v2.11.4 on 2026-11-16. |
 
 Check the licence before adapting, not after. A permissive licence is not
 permission to omit attribution, and some licences that look permissive are not.

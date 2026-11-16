@@ -34,5 +34,11 @@ produces a named deliverable that can be checked against a contract.
 
 | Skill | Purpose |
 | --- | --- |
+| [`crv-aidlc`](crv-aidlc/SKILL.md) | Open, resume, route and close a paddock, with approval gates enforced by script |
+| [`crv-aidlc-hla`](crv-aidlc-hla/SKILL.md) | Write and sign off the high-level architecture of a paddock in three question rounds |
+| [`crv-aidlc-tdd`](crv-aidlc-tdd/SKILL.md) | Decide whether a technical design document is needed, then write it from the accepted HLA |
+| [`crv-aidlc-reverse-engineering`](crv-aidlc-reverse-engineering/SKILL.md) | Build or refresh the shared code knowledge of an existing repository before the architecture is written |
+| [`crv-aidlc-inception`](crv-aidlc-inception/SKILL.md) | Turn the accepted HLA into requirements, stories, a domain design, units, contracts and a Bolt plan |
+| [`crv-aidlc-construction`](crv-aidlc-construction/SKILL.md) | Build each Unit from an approved code plan, then run build and test |
 | [`crv-codebase-onboarding`](crv-codebase-onboarding/SKILL.md) | Produce durable, evidence-backed codebase context in `docs/codebase/` |
 | [`crv-create-skill`](crv-create-skill/SKILL.md) | Take a skill idea through boundary test, interview, scaffold, validation, and evals |

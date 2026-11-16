@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tdd-header.schema.json",
+  "title": "TDD header",
+  "description": "The fenced yaml block at the top of tdd.md. Uses only the JSON Schema subset validate_doc.py implements: type, required, properties, items, enum, pattern, minItems, and if/then on a const.",
+  "type": "object",
+  "required": [
+    "architecture_owner",
+    "document_version",
+    "date",
+    "status",
+    "reviewers",
+    "service_name",
+    "hla_link",
+    "trigger"
+  ],
+  "properties": {
+    "architecture_owner": {
+      "description": "The person accountable for the design and for answering review questions.",
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "document_version": {
+      "description": "Quoted, so 1.0 stays a string.",
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+(\\.\\d+)?$"
+    },
+    "date": {
+      "description": "Date of this version.",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "status": {
+      "description": "draft while written, in-review once handed to reviewers; only a person sets accepted, changes-requested or declined.",
+      "type": "string",
+      "enum": ["draft", "in-review", "accepted", "changes-requested", "declined"]
+    },
+    "reviewers": {
+      "description": "Names given by the owner. Never invented.",
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "pattern": "\\S"}
+    },
+    "signed_off_by": {
+      "description": "Filled by the person who records the review decision.",
+      "type": ["string", "null"]
+    },
+    "signed_off_on": {
+      "description": "Date the review decision was recorded.",
+      "type": ["string", "null"],
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "service_name": {
+      "description": "The service or component this TDD is for.",
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "part": {
+      "description": "Only when the TDD is split: the part this file covers.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "hla_link": {
+      "description": "Path to the accepted HLA, relative to this file.",
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "trigger": {
+      "description": "Why a TDD exists: the review asked for it, an HLA impact flag requires it, or a stated override.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "review-request",
+          "new-data-store",
+          "new-public-exposure",
+          "major-cutover",
+          "new-domain-messaging",
+          "override"
+        ]
+      }
+    },
+    "adr_links": {
+      "description": "ADR ids (or paths) this TDD relies on beyond the HLA's.",
+      "type": "array",
+      "items": {"type": "string", "pattern": "\\S"}
+    },
+    "review_conditions": {
+      "description": "The HLA review conditions this TDD answers, copied from the HLA header.",
+      "type": "array",
+      "items": {"type": "string", "pattern": "\\S"}
+    },
+    "exception_link": {
+      "description": "Where the approved exception is recorded, when the design departs from an accepted ADR.",
+      "type": "string",
+      "pattern": "\\S"
+    }
+  },
+  "if": {"properties": {"status": {"const": "accepted"}}},
+  "then": {
+    "required": ["signed_off_by", "signed_off_on"],
+    "properties": {
+      "signed_off_by": {"type": "string", "pattern": "\\S"},
+      "signed_off_on": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"}
+    }
+  }
+}

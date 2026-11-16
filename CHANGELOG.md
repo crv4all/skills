@@ -12,6 +12,70 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A staged delivery process starts with its entry skill.** `crv-aidlc` opens,
+  resumes and closes a "paddock" (the folder for one piece of work), says which
+  stage skill is next, and refuses to approve a stage whose artifact is missing,
+  has no digest, or whose questions are unanswered. Progress lives in one
+  `state.json` changed only by a script, and the checks that have one right
+  answer (question-file linting, document outlines, ADR indexing) are scripts
+  too, so resuming costs a few hundred tokens instead of rereading the folder.
+  The stage list is provisional until the stage contract is written; the other
+  five skills of the process follow.
+
+- **Architecture is designed in three rounds of written questions, not a long
+  chat.** `crv-aidlc-hla` keeps twelve design layers but asks them in three
+  question files, proposing a design per layer and asking only what the inputs
+  and accepted ADRs leave open, so every answer and decision stays on record and
+  each round can be its own session. Following an accepted ADR is cited rather
+  than decided again; departing from one surfaces as an exception, a risk and a
+  question for reviewers. The security-consultation flag has no default, and an
+  HLA counts as accepted only when a person signs its header: the gate refuses
+  otherwise.
+
+- **A technical design document is written only when it earns its cost.**
+  `crv-aidlc-tdd` first checks whether the HLA review asked for one or a
+  high-risk impact flag applies, and records a skip with the reason when
+  neither does. It refuses to start before the HLA is accepted, carries HLA
+  decisions forward instead of asking them again, and treats an answer that
+  contradicts the HLA as an HLA change.
+
+- **Code research happens once per repository, not once per piece of work.**
+  `crv-aidlc-reverse-engineering` keeps one code-knowledge store per target
+  repository and checks it against the repository's current commit, so a second
+  paddock on the same code reuses it and a stale store is rescanned only where
+  files changed. A script inventories the repository first, so the model spends
+  its tokens on understanding the code instead of discovering the layout.
+
+- **Requirements, stories and units stay traceable without anyone reading
+  them all.** `crv-aidlc-inception` gives every requirement, story, acceptance
+  criterion and unit a stable id, and `check_traceability.py` blocks the last
+  Inception gate while anything is unassigned or referenced but never declared.
+  Decisions the accepted HLA already made are cited, not asked again.
+
+- **Construction is deliberately thin.** `crv-aidlc-construction` loads about
+  2,500 tokens of rules per stage because the design effort belongs before it.
+  Code is written only from an approved checkbox plan, in every scope, and
+  Build and Test runs the commands and records each target as met, not met or
+  unverified.
+
+- **Smaller work takes a shorter path through the same process.** The
+  `express` and `bugfix` scopes skip stories, units and Bolt planning; `bugfix`
+  requires a regression test that fails before the fix and passes after.
+
+- **Design documents are checked by a script before anyone reads them.**
+  `validate_doc.py`, shipped with both design skills, catches what a skim
+  misses: a header field left empty or as a placeholder, a section missing or
+  out of order, a decision id reused, an ADR id that does not exist, a diagram
+  with no explanation, a TDD written against an HLA nobody accepted. The
+  templates themselves fail only on their placeholders, which a test keeps
+  true.
+
+- **A stage can now gate on several question files and a signed header.** The
+  HLA's three rounds share one stage, its clarification files no longer mix
+  with the TDD's in the same folder, and a stage can require that a person set
+  its document's header to accepted before approval. The `hla` and `tdd`
+  entries of the stage list are final; the rest stay provisional.
+
 - **Issues are written to be read, not to be impressive.** A shared
   `issue-writing.md` caps the summary at 80 characters and catalogues the
   patterns that make text read as generated, with the rewrite for each:
@@ -130,6 +194,12 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   malformed rather than absent.
 
 ### Changed
+
+- **A justified model tier no longer warns.** The validator asked for a
+  higher tier to be justified in the Execution section but warned whether or
+  not it was, so `--strict` failed every skill that genuinely needed one. It now
+  stays quiet when the section states ``**Model tier: `<tier>`.**`` with a
+  reason on the same line, and still warns when the reason is missing.
 
 - **Story points are never pushed.** They were already optional, but the
   check-in asked about them on every batch, and the report listed each story

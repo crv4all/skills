@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hla-header.schema.json",
+  "title": "HLA review header",
+  "description": "The fenced yaml block at the top of hla.md. Uses only the JSON Schema subset validate_doc.py implements: type, required, properties, items, enum, pattern, minItems, and if/then on a const.",
+  "type": "object",
+  "required": [
+    "architecture_owner",
+    "document_version",
+    "date",
+    "status",
+    "reviewers",
+    "system",
+    "domains",
+    "capabilities",
+    "review_level",
+    "impact_flags",
+    "data_classification",
+    "security_consultation_required",
+    "solution_type",
+    "decision_needed",
+    "exceptions",
+    "adr_registry_commit"
+  ],
+  "properties": {
+    "architecture_owner": {
+      "description": "The person accountable for the design and for answering review questions.",
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "document_version": {
+      "description": "Quoted, so 1.0 stays a string. Raise the minor number on each review round.",
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+(\\.\\d+)?$"
+    },
+    "date": {
+      "description": "Date of this version.",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "status": {
+      "description": "draft while written, in-review once handed to reviewers; only a person sets accepted, changes-requested or declined.",
+      "type": "string",
+      "enum": ["draft", "in-review", "accepted", "changes-requested", "declined"]
+    },
+    "reviewers": {
+      "description": "Names given by the owner. Never invented.",
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "pattern": "\\S"}
+    },
+    "signed_off_by": {
+      "description": "Filled by the person who records the review decision.",
+      "type": ["string", "null"]
+    },
+    "signed_off_on": {
+      "description": "Date the review decision was recorded.",
+      "type": ["string", "null"],
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "review_conditions": {
+      "description": "Conditions the reviewers attached to their decision, written by them; a TDD request goes here.",
+      "type": "array",
+      "items": {"type": "string", "pattern": "\\S"}
+    },
+    "system": {
+      "description": "The product or system this design concerns.",
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "domains": {
+      "description": "Business domains touched, in the organisation's own terms.",
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "pattern": "\\S"}
+    },
+    "capabilities": {
+      "description": "Business capabilities added or changed.",
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "pattern": "\\S"}
+    },
+    "target_production_date": {
+      "description": "Planned first production release, when known.",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "review_level": {
+      "description": "full: reviewers decide on the design. pattern-check: reviewers only confirm it follows a known pattern and accepted ADRs.",
+      "type": "string",
+      "enum": ["full", "pattern-check"]
+    },
+    "impact_flags": {
+      "description": "What makes this design worth reviewing. 'none' stands alone.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "new-data-store",
+          "new-public-exposure",
+          "new-domain-messaging",
+          "major-cutover",
+          "personal-data",
+          "cross-team-contract",
+          "new-technology",
+          "none"
+        ]
+      }
+    },
+    "data_classification": {
+      "description": "The highest classification of data the design stores or moves.",
+      "type": "string",
+      "enum": ["public", "internal", "confidential", "restricted"]
+    },
+    "security_consultation_required": {
+      "description": "No default. True whenever the design touches authentication, authorization, roles, groups or machine-to-machine access, even when an ADR is followed.",
+      "type": "boolean"
+    },
+    "solution_type": {
+      "description": "greenfield: nothing replaced. brownfield: existing systems extended. modernization: existing systems replaced or moved.",
+      "type": "string",
+      "enum": ["greenfield", "brownfield", "modernization"]
+    },
+    "decision_needed": {
+      "description": "Questions the reviewers must answer, each answerable with a choice. Write 'none' for a pattern check with nothing to decide.",
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "pattern": "\\S"}
+    },
+    "decision_deadline": {
+      "description": "Date by which the reviewers' decision is needed.",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "reference_pattern": {
+      "description": "The approved pattern or reference design followed, if any.",
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "exceptions": {
+      "description": "Departures from accepted ADRs or standards.",
+      "type": "object",
+      "required": ["required"],
+      "properties": {
+        "required": {"type": "boolean"},
+        "link_or_reason": {"type": ["string", "null"]}
+      },
+      "if": {"properties": {"required": {"const": true}}},
+      "then": {
+        "required": ["link_or_reason"],
+        "properties": {"link_or_reason": {"type": "string", "pattern": "\\S"}}
+      }
+    },
+    "repositories": {
+      "description": "Repositories the design changes or adds.",
+      "type": "array",
+      "items": {"type": "string", "pattern": "\\S"}
+    },
+    "adr_registry_commit": {
+      "description": "Commit of the ADR registry the citations were checked against, or 'none' when no registry applies.",
+      "type": "string",
+      "pattern": "^([0-9a-f]{7,40}|none)$"
+    }
+  },
+  "if": {"properties": {"status": {"const": "accepted"}}},
+  "then": {
+    "required": ["signed_off_by", "signed_off_on"],
+    "properties": {
+      "signed_off_by": {"type": "string", "pattern": "\\S"},
+      "signed_off_on": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"}
+    }
+  }
+}
