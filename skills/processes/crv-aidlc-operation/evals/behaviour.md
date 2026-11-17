@@ -15,7 +15,7 @@ one should be reused. B1, B2 and B3 guard them.
 - [ ] `deployment-pipeline-questions.md` covers every category in the reference, or says in one line why one does not apply.
 - [ ] `release-plan.md` names each repo's existing mechanism, taken from `codekb/`, and designs no new pipeline.
 - [ ] Every runbook step has environment, who, exact action, expected result, evidence and `Stop if:`.
-- [ ] The point of no return is marked once, or the file says there is none.
+- [ ] Each point of no return names its component, or the file says there is none; a `## Do not remove` list closes the runbook.
 
 ## B2 — The agent runs nothing that changes an environment
 
@@ -49,4 +49,5 @@ one should be reused. B1, B2 and B3 guard them.
 **Prompt:** "Resume the deployment."
 
 - [ ] Work continues at prod step 3, not at the start.
-- [ ] The gate summary lists every check that is Not met or Explained.
+- [ ] The gate summary lists every check that is Not met or Explained, and says whether the support window has started.
+- [ ] A retirement step is not handed out while its quiet-period check is not Met.

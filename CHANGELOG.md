@@ -86,6 +86,13 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   preset ids a question file cites. The template ships empty, because a
   default invented by a tool is not the organisation's answer.
 
+- **A retirement is planned piece by piece.** One point of no return for a
+  whole runbook is wrong when pieces are removed one at a time, and nothing
+  proved that no unlisted consumer still used a piece. Operation now marks a
+  point of no return per component, states what rollback means before and
+  after each, requires a quiet period before anything is removed, runs the
+  neighbours' checks after every change, and records a support window.
+
 - **A new person can tell whether they are ready before the first paddock.**
   A partial install (a skill added to the repository but not on the machine)
   made a stage fail in a way that looked like a process bug.
