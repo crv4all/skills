@@ -74,6 +74,14 @@ Action `decide`: ask the approver for EXECUTE or SKIP with a reason (`next` show
 3. A refusal (exit 1) lists findings: missing artifact, no or over-long `## Digest`, open questions, a design document (HLA, TDD) whose header a person has not signed as accepted, or, at the last Inception gate, ids that `check_traceability.py` reports as untraced. Fix each in the stage's own files, then gate again. Never work around a refusal and never mark a stage approved yourself.
 4. After an approval the output carries a suggestion. Pass it on in one line: a fresh session per stage is cheapest, but optional.
 
+## Jira
+
+- One Epic per paddock, one Story per unit of work. A user story (`US-n`) never becomes a Jira issue.
+- File them after the Delivery Planning gate, before the first unit's Construction, with `crv-create-jira-epic` and `crv-create-jira-story` (`crv-aidlc-inception/references/jira-handoff.md`). Those two skills do not edit or transition existing issues.
+- Record keys only through the script: `jira --epic KEY`, `jira --unit <u> --story KEY`, `jira --unit <u> --done [--pr URL]`, `jira --off --reason "<why>"`, `jira --on`.
+- `decide` and `step` on a unit's Construction stage are refused until the unit has a story, unless Jira is off.
+- When a unit's change is merged, its Story is moved to Done by a person, or by the session when it has Jira access. Then record `jira --unit <u> --done`. `close --status complete` is refused while a filed Story is not recorded as done.
+
 ## Close
 
 `aidlc_state.py close --paddock <p> --status complete|superseded|archived [--successor <id>]`. `complete` is refused while any executed stage is unapproved; report the list instead of forcing it. To pause, `park --note "<hand-over>"`; `unpark` clears it.

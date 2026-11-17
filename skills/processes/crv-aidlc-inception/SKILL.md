@@ -76,6 +76,7 @@ Each run ends with one line saying what comes next. Stop after it.
 4. **Gate.**
    - `python3 <crv-aidlc>/scripts/check_traceability.py --paddock <p>` before the gate of the last Inception stage that runs (usually `delivery-planning`). Fix every gap it reports in the artifacts; do not gate while it reports any.
    - End as the core rules say: summary of at most 8 lines, the paths, two choices. On the choice, `aidlc_state.py gate --paddock <p> --stage <id> --approve --by "<name>"` or `--request-changes --note "<what>"`. Never approve yourself.
+   - After the `delivery-planning` gate, and only then, read `references/jira-handoff.md` and file the epic and one story per unit.
    - After `units-generation` is approved, load the units: write them to a JSON file and run `aidlc_state.py units --paddock <p> --set <file.json>`. Do the same for the Bolts after `delivery-planning`.
 
 ## Cross-stage rules

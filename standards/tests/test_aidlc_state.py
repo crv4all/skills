@@ -576,6 +576,7 @@ def test_close_complete_after_everything_is_approved(tmp_path: Path) -> None:
         tmp_path, Path(json.loads(open_paddock(tmp_path, "--scope", "bugfix").stdout)["paddock"])
     )
     p.run("gate", "--stage", "workspace-detection", "--approve", "--by", "B")
+    assert p.run("jira", "--unit", "u1", "--story", "ABC-7")[0] == 0
     ra = "docs/inception/requirements-analysis/"
     p.write(ra + "requirements.md", digest())
     p.write(ra + "traceability.json", "{}")
@@ -601,6 +602,10 @@ def test_close_complete_after_everything_is_approved(tmp_path: Path) -> None:
         p.write("docs/construction/build-and-test/" + name, digest())
     p.run("step", "--stage", "build-and-test", "--to", "produced")
     assert p.run("gate", "--stage", "build-and-test", "--approve", "--by", "B")[0] == 0
+    code, data, _ = p.run("close", "--status", "complete")
+    assert code == 1 and data["findings"][0]["code"] == "story-not-done"
+    assert "u1" in data["findings"][0]["message"]
+    assert p.run("jira", "--unit", "u1", "--done", "--pr", "https://example.test/pr/1")[0] == 0
     code, data, _ = p.run("close", "--status", "complete")
     assert code == 0, data
     assert p.state["status"] == "complete"
@@ -702,3 +707,127 @@ def test_a_state_written_before_the_operation_stages_keeps_working(paddock: Padd
     assert code == 0 and paddock.state["stages"]["deployment-pipeline"]["decision"] == "skip"
     assert paddock.state["stages"]["deployment-execution"]["decision"] == "pending"
     assert paddock.run("close", "--status", "archived")[0] == 0
+
+
+# --- jira ----------------------------------------------------------------------
+
+
+@pytest.fixture
+def bugfix(tmp_path: Path) -> Paddock:
+    done = open_paddock(tmp_path, "--scope", "bugfix")
+    return Paddock(tmp_path, Path(json.loads(done.stdout)["paddock"]))
+
+
+def test_a_new_paddock_has_jira_unset(bugfix: Paddock) -> None:
+    assert bugfix.state["jira"] == {"mode": None, "reason": "", "epic": None}
+    assert bugfix.state["units"][0]["story"] is None
+    assert "Jira: not set" in bugfix.run("status", "--format", "text")[2]
+
+
+def test_jira_forms_record_and_log(bugfix: Paddock) -> None:
+    assert bugfix.run("jira", "--epic", "ABC-1")[0] == 0
+    assert bugfix.state["jira"]["epic"] == "ABC-1" and bugfix.state["jira"]["mode"] == "on"
+    assert bugfix.run("jira", "--unit", "u1", "--story", "ABC-2")[0] == 0
+    assert bugfix.state["units"][0]["story"] == "ABC-2"
+    assert (
+        "Jira: epic ABC-1, stories 1/1 filed, 0 done" in bugfix.run("status", "--format", "text")[2]
+    )
+    assert bugfix.run("jira", "--unit", "u1", "--done", "--pr", "https://x.test/1")[0] == 0
+    done = bugfix.state["units"][0]["story_done"]
+    assert done["pr"] == "https://x.test/1" and done["at"].endswith("Z")
+    assert "1 done" in bugfix.run("status", "--format", "text")[2]
+    assert sum(1 for line in bugfix.log_lines() if " | jira | " in line) == 3
+
+
+def test_jira_off_needs_a_reason_and_on_reverses_it(bugfix: Paddock) -> None:
+    assert bugfix.run("jira", "--off")[0] == 2
+    assert bugfix.run("jira", "--off", "--reason", "no Jira here")[0] == 0
+    assert "Jira: off (no Jira here)" in bugfix.run("status", "--format", "text")[2]
+    assert bugfix.run("jira", "--on")[0] == 0 and bugfix.state["jira"]["mode"] == "on"
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ("--epic", "abc-1"),
+        ("--epic", "ABC1"),
+        ("--unit", "u1", "--story", "nope"),
+        ("--unit", "zz", "--story", "ABC-1"),
+        ("--story", "ABC-1"),
+        ("--unit", "u1"),
+        ("--epic", "ABC-1", "--on"),
+    ],
+)
+def test_jira_rejects_bad_input(bugfix: Paddock, args: tuple[str, ...]) -> None:
+    before = bugfix.state
+    assert bugfix.run("jira", *args)[0] == 2
+    assert bugfix.state["jira"] == before["jira"]
+
+
+def test_done_needs_a_recorded_story(bugfix: Paddock) -> None:
+    code, data, _ = bugfix.run("jira", "--unit", "u1", "--done")
+    assert code == 1 and "--story" in data["error"]
+
+
+def test_construction_is_refused_without_a_story(bugfix: Paddock) -> None:
+    for command in ("decide", "step"):
+        extra = (
+            ("--decision", "execute", "--reason", "x")
+            if command == "decide"
+            else ("--to", "produced")
+        )
+        code, data, _ = bugfix.run(command, "--stage", "code-generation", "--unit", "u1", *extra)
+        assert code == 1 and data["findings"][0]["code"] == "jira-story-missing"
+        message = data["findings"][0]["message"]
+        assert "--unit u1 --story KEY" in message and "--off --reason" in message
+    nxt = bugfix.run("next")[1]
+    assert nxt["stage"] != "code-generation" or "jira" in nxt
+
+
+def test_construction_proceeds_after_a_story_or_with_jira_off(bugfix: Paddock) -> None:
+    args = ("step", "--stage", "code-generation", "--unit", "u1", "--to", "produced")
+    assert bugfix.run(*args)[0] == 1
+    assert bugfix.run("jira", "--unit", "u1", "--story", "ABC-2")[0] == 0
+    assert bugfix.run(*args)[0] == 0
+
+
+def test_construction_proceeds_with_jira_off(bugfix: Paddock) -> None:
+    bugfix.run("jira", "--off", "--reason", "no ticket system")
+    code = bugfix.run("step", "--stage", "code-generation", "--unit", "u1", "--to", "produced")[0]
+    assert code == 0
+
+
+def test_next_hints_at_the_missing_story(bugfix: Paddock) -> None:
+    bugfix.run("gate", "--stage", "workspace-detection", "--approve", "--by", "B")
+    ra = "docs/inception/requirements-analysis/"
+    bugfix.write(ra + "requirements.md", digest())
+    bugfix.write(ra + "traceability.json", "{}")
+    bugfix.write(ra + "requirements-analysis-questions.md", QUESTIONS)
+    bugfix.run("step", "--stage", "requirements-analysis", "--to", "produced")
+    bugfix.run("gate", "--stage", "requirements-analysis", "--approve", "--by", "B")
+    nxt = bugfix.run("next")[1]
+    assert nxt["stage"] == "code-generation" and "jira --unit u1 --story KEY" in nxt["jira"]
+
+
+def test_close_other_statuses_ignore_open_stories(bugfix: Paddock) -> None:
+    bugfix.run("jira", "--unit", "u1", "--story", "ABC-2")
+    assert bugfix.run("close", "--status", "archived")[0] == 0
+
+
+def test_a_state_without_jira_keys_keeps_working(bugfix: Paddock) -> None:
+    state = bugfix.state
+    del state["jira"]
+    for unit in state["units"]:
+        del unit["story"]
+        del unit["story_done"]
+    (bugfix.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
+    for command in (("status",), ("next",), ("codekb-status",)):
+        assert bugfix.run(*command)[0] == 0, command
+    assert "Jira: not set" in bugfix.run("status", "--format", "text")[2]
+    assert (
+        bugfix.run("step", "--stage", "code-generation", "--unit", "u1", "--to", "produced")[0] == 1
+    )
+    assert bugfix.run("jira", "--unit", "u1", "--story", "ABC-9")[0] == 0
+    assert (
+        bugfix.run("step", "--stage", "code-generation", "--unit", "u1", "--to", "produced")[0] == 0
+    )

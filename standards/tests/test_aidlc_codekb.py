@@ -313,6 +313,7 @@ def test_the_design_stages_are_decided_per_unit_with_the_unit_kind(tmp_path: Pat
     assert state["units"][0]["stages"]["functional-design"]["decision"] == "pending"
     # the decision is recorded per unit, with a reason
     p = str(paddock)
+    assert run("jira", "--paddock", p, "--off", "--reason", "test")[0] == 0
     assert run("decide", "--paddock", p, "--stage", "functional-design", "--unit", "u1", "--decision", "skip", "--reason", "ui only wraps an API")[0] == 0  # fmt: skip
     state = json.loads((paddock / "state.json").read_text(encoding="utf-8"))
     assert state["units"][0]["stages"]["functional-design"]["decision"] == "skip"

@@ -53,6 +53,10 @@ In `docs/inception/delivery-planning/`:
 - `external-dependency-map.md`: `| Dependency | Owner | Lead time | Blocks | Fallback |`.
 - `docs/verification/phase-check-inception.md`: the approved command and the traceability result, pass or fail.
 
+## After the gate
+
+After the gate, file the epic and the unit stories as the Jira handoff in `SKILL.md` says.
+
 ## Good
 
 Every unit is in exactly one Bolt, each Bolt ends in something a person can inspect, and the first Bolt answers the biggest worry. A blocker has an owner, a date and a fallback.

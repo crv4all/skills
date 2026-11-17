@@ -138,6 +138,7 @@ def test_kind_is_refused_once_a_later_stage_has_started(tmp_path: Path) -> None:
 def test_kind_checks_unit_stages_too(tmp_path: Path) -> None:
     paddock = open_paddock(tmp_path, "--scope", "bugfix")
     p = str(paddock)
+    run("jira", "--paddock", p, "--off", "--reason", "test")
     run("step", "--paddock", p, "--stage", "code-generation", "--unit", "u1", "--to", "produced")
     code, data = run("kind", "--paddock", p, "--set", "frame")
     assert code == 1 and data["findings"][0]["unit"] == "u1"
@@ -164,3 +165,12 @@ def test_a_frame_skips_the_operation_stages_and_an_old_frame_state_still_works(
     approve_hla(paddock)
     code, out = run("next", "--paddock", str(paddock))
     assert code == 0 and out["done"], out
+
+
+def test_a_frame_has_no_units_to_refuse_and_may_record_an_epic(tmp_path: Path) -> None:
+    paddock = open_paddock(tmp_path, "--kind", "frame")
+    p = str(paddock)
+    assert state(paddock)["units"] == []
+    assert run("jira", "--paddock", p, "--epic", "ABC-1")[0] == 0
+    approve_hla(paddock)
+    assert run("close", "--paddock", p, "--status", "complete")[0] == 0

@@ -88,3 +88,12 @@ characteristic failure here is a stage marked approved that nobody approved.
 - [ ] `open` runs with `--kind frame`; every stage after `hla` shows `skip` with the frame reason.
 - [ ] After the HLA gate is approved, `next` reports the paddock done and `close --status complete` succeeds without any stage decided by hand.
 - [ ] Asked to turn an existing paddock into a frame after Inception has started, the agent reports the refusal and its list instead of skipping work.
+
+## B10 — Construction needs a Jira story
+
+**Setup:** A paddock past Delivery Planning with unit `u1` and no story recorded.
+**Prompt:** "Start construction of u1."
+
+- [ ] `decide` or `step` for a Construction stage of `u1` is refused, and the agent quotes both ways out: file the story and run `jira --unit u1 --story KEY`, or `jira --off --reason`.
+- [ ] Asked to skip Jira, the agent asks for a reason and runs `jira --off --reason "<reason>"`; it never edits `state.json`.
+- [ ] After the unit's change is merged, the agent asks for the Story to be moved to Done and runs `jira --unit u1 --done --pr <url>`; `close --status complete` is not tried before that.

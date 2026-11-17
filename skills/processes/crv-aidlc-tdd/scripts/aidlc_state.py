@@ -47,6 +47,8 @@ EPILOG = """commands:
   workspace   workspace file, checkouts  --paddock P [--extra name=path]... [--fetch] [--out F]
   target      add or drop a target       --paddock P --add name=path | --remove NAME
   kind        frame or delivery paddock  --paddock P --set frame|delivery
+  jira        record Jira keys           --paddock P --epic K | --unit U --story K | --unit U --done
+                                         [--pr URL] | --off --reason R | --on
   park/unpark hand-over note             --paddock P --note N
   close       close the paddock          --paddock P --status complete|superseded|archived
 
@@ -75,6 +77,7 @@ DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 META_KEYS = ["repo", "path", "commit", "built", "artifacts"]
 NO_TRACEABILITY_SCOPES = {"bugfix", "express"}  # no stories or units to trace
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+JIRA_KEY = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 SCOPES = ["classic", "express", "bugfix"]
 KINDS = ["delivery", "frame"]
 FRAME_STOP = "hla"  # a frame paddock ends at this gate
@@ -194,6 +197,10 @@ def backfill_stages(state: dict[str, Any], catalog: list[dict[str, Any]]) -> Non
     record is saved with the next write. A closed paddock gets a skip, so it stays done.
     """
     stages = state.setdefault("stages", {})
+    state.setdefault("jira", {"mode": None, "reason": "", "epic": None})
+    for unit in state.get("units", []):
+        unit.setdefault("story", None)
+        unit.setdefault("story_done", None)
     brownfield = any(t.get("kind") == "brownfield" for t in state.get("targets", []))
     after = frame_after(catalog, paddock_kind(state))
     for item in catalog:
@@ -348,6 +355,16 @@ def is_done(record: Optional[dict[str, Any]]) -> bool:
     return record is not None and (record["decision"] == "skip" or record["step"] == "approved")
 
 
+def is_construction_unit_stage(stage: dict[str, Any]) -> bool:
+    return bool(stage["per_unit"] and stage["phase"] == "construction")
+
+
+def story_missing(state: dict[str, Any], unit: str) -> bool:
+    if state["jira"]["mode"] == "off":
+        return False
+    return not find_unit(state, unit).get("story")
+
+
 def compute_next(state: dict[str, Any], catalog: list[dict[str, Any]]) -> dict[str, Any]:
     for item, unit in slots(state, catalog):
         record = slot_record(state, item, unit)
@@ -377,7 +394,13 @@ def compute_next(state: dict[str, Any], catalog: list[dict[str, Any]]) -> dict[s
         action = ACTIONS[record["step"]]
         if action == "ask" and not item["questions"]:
             action = "produce"
-        return {**base, "action": action}
+        result = {**base, "action": action}
+        if unit and is_construction_unit_stage(item) and story_missing(state, unit):
+            result["jira"] = (
+                f"unit {unit} has no Jira story: file it, then `jira --unit {unit} --story KEY`, "
+                "or `jira --off --reason`."
+            )
+        return result
     return {"done": True, "stage": None, "unit": None, "action": "close"}
 
 
@@ -530,6 +553,8 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
                 "kind": None,
                 "bolt": "b1",
                 "stages": unit_stage_records(catalog, args.scope, kind=args.kind),
+                "story": None,
+                "story_done": None,
             }
         ]
         bolts = [{"id": "b1", "units": ["u1"], "status": "todo"}]
@@ -556,6 +581,7 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
         "current": {"stage": None, "unit": None},
         "next_action": "",
         "parked": None,
+        "jira": {"mode": None, "reason": "", "epic": None},
     }
     if parent is not None:
         state["parent"] = parent
@@ -844,6 +870,28 @@ def phase_progress(state: dict[str, Any], catalog: list[dict[str, Any]]) -> dict
     return progress
 
 
+def jira_facts(state: dict[str, Any]) -> dict[str, Any]:
+    units = state["units"]
+    return {
+        **state["jira"],
+        "stories_filed": sum(1 for u in units if u.get("story")),
+        "stories_done": sum(1 for u in units if u.get("story_done")),
+        "units": len(units),
+    }
+
+
+def jira_line(state: dict[str, Any]) -> str:
+    jira = jira_facts(state)
+    if jira["mode"] == "off":
+        return f"Jira: off ({str(jira['reason'])[:80]})"
+    if jira["mode"] is None and not jira["epic"]:
+        return "Jira: not set"
+    return (
+        f"Jira: epic {jira['epic'] or 'none'}, stories {jira['stories_filed']}/{jira['units']}"
+        f" filed, {jira['stories_done']} done"
+    )
+
+
 def cmd_status(
     paddock: Path, state: dict[str, Any], catalog: list[dict[str, Any]], fmt: str
 ) -> dict[str, Any]:
@@ -865,6 +913,7 @@ def cmd_status(
         "action": nxt["action"],
         "next_action": state["next_action"],
         "parked": state["parked"],
+        "jira": jira_facts(state),
     }
     parent = state.get("parent")
     if parent:
@@ -885,6 +934,7 @@ def cmd_status(
         note = f", {entry['skipped']} skipped" if entry["skipped"] else ""
         lines.append(f"{phase.capitalize()}: {entry['done']}/{entry['total']} done{note}")
     lines.append(f"Units: {len(state['units'])} | Bolts: {len(state['bolts'])}")
+    lines.append(jira_line(state))
     if nxt["done"]:
         lines.append("Current: none")
     else:
@@ -1506,6 +1556,8 @@ def cmd_units(
                 "stages": unit_stage_records(
                     catalog, state["scope"], previous.get("stages"), paddock_kind(state)
                 ),
+                "story": previous.get("story"),
+                "story_done": previous.get("story_done"),
             }
         )
     state["units"] = result
@@ -1578,6 +1630,83 @@ def cmd_kind(
     }
 
 
+def cmd_jira(
+    paddock: Path, state: dict[str, Any], catalog: list[dict[str, Any]], args: argparse.Namespace
+) -> dict[str, Any]:
+    jira = state["jira"]
+    forms = [
+        args.epic is not None,
+        args.story is not None,
+        args.done,
+        args.off,
+        args.on,
+    ]
+    unit_id = cast(str, args.unit)
+    if args.story is not None or args.done:
+        if args.unit is None:
+            die(EXIT_USAGE, "--story and --done need --unit.")
+    elif args.unit is not None:
+        die(EXIT_USAGE, "--unit goes with --story or --done.")
+    if args.story is not None and args.done:
+        die(EXIT_USAGE, "use --story or --done, not both.")
+    if sum(forms[:1]) + sum(forms[3:]) + (1 if forms[1] or forms[2] else 0) != 1:
+        die(EXIT_USAGE, "give exactly one of --epic, --unit with --story or --done, --off, --on.")
+    if args.pr and not args.done:
+        die(EXIT_USAGE, "--pr goes with --done.")
+    for key in (args.epic, args.story):
+        if key is not None and not JIRA_KEY.match(key):
+            die(EXIT_USAGE, f"'{key}' is not a Jira key (expected PROJ-123).")
+    if args.epic is not None:
+        jira["epic"], jira["mode"] = args.epic, "on"
+        note = f"epic {args.epic}"
+    elif args.story is not None:
+        find_unit(state, unit_id)["story"] = args.story
+        note = f"[{args.unit}] story {args.story}"
+    elif args.done:
+        unit = find_unit(state, unit_id)
+        if not unit.get("story"):
+            raise Fail(
+                EXIT_FINDINGS,
+                f"unit {args.unit} has no story; record it with `jira --unit {args.unit} "
+                "--story KEY` first.",
+            )
+        unit["story_done"] = {"at": now(), "pr": args.pr}
+        note = f"[{args.unit}] done {unit['story']}" + (f" pr {args.pr}" if args.pr else "")
+    elif args.off:
+        if not (args.reason or "").strip():
+            die(EXIT_USAGE, "--off needs --reason.")
+        jira["mode"], jira["reason"] = "off", args.reason.strip()
+        note = f"off: {jira['reason']}"
+    else:
+        jira["mode"], jira["reason"] = "on", ""
+        note = "on"
+    nxt = commit(paddock, state, catalog)
+    log_event(paddock, "jira", "", "", note)
+    return {"ok": True, "jira": jira_facts(state), "next": nxt}
+
+
+def require_story(state: dict[str, Any], stage: dict[str, Any], unit: Optional[str]) -> None:
+    """Refuse Construction for a unit with no Jira story, unless Jira is off."""
+    if unit is None or not is_construction_unit_stage(stage) or not story_missing(state, unit):
+        return
+    raise Fail(
+        EXIT_FINDINGS,
+        f"unit {unit} has no Jira story; Construction cannot start.",
+        findings=[
+            {
+                "code": "jira-story-missing",
+                "stage": stage["id"],
+                "unit": unit,
+                "message": (
+                    f"file the story with crv-create-jira-story and run `jira --paddock <p> "
+                    f"--unit {unit} --story KEY`, or run `jira --paddock <p> --off --reason "
+                    '"<why>"`.'
+                ),
+            }
+        ],
+    )
+
+
 def cmd_close(
     paddock: Path,
     state: dict[str, Any],
@@ -1612,6 +1741,18 @@ def cmd_close(
                         "message": f"step is {record['step']}",
                     }
                 )
+        open_stories = [
+            u["id"] for u in state["units"] if u.get("story") and not u.get("story_done")
+        ]
+        if open_stories:
+            findings.append(
+                {
+                    "code": "story-not-done",
+                    "message": "stories filed but not recorded as done for units: "
+                    + ", ".join(open_stories)
+                    + ". Run `jira --unit <u> --done [--pr URL]` after the Story is Done.",
+                }
+            )
         if findings:
             raise Fail(
                 EXIT_FINDINGS,
@@ -1738,6 +1879,16 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--note", required=True)
     add("unpark", "Clear the hand-over note.")
 
+    sp = add("jira", "Record Jira keys: one epic per paddock, one story per unit.")
+    sp.add_argument("--epic", help="The paddock's Epic key; turns Jira on.")
+    sp.add_argument("--unit", help="With --story or --done.")
+    sp.add_argument("--story", help="The unit's Story key.")
+    sp.add_argument("--done", action="store_true", help="The unit's Story is Done.")
+    sp.add_argument("--pr", help="With --done: the merged pull request URL.")
+    sp.add_argument("--off", action="store_true", help="Turn Jira off; needs --reason.")
+    sp.add_argument("--reason", help="Why Jira is off.")
+    sp.add_argument("--on", action="store_true", help="Turn Jira on.")
+
     sp = add("close", "Close the paddock.")
     sp.add_argument("--status", required=True, choices=["complete", "superseded", "archived"])
     sp.add_argument("--successor", help="Id of the paddock that replaces this one.")
@@ -1771,12 +1922,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     require_open(state)
     if cmd == "target":
         return cmd_target(paddock, state, catalog, args)
+    if cmd == "jira":
+        return cmd_jira(paddock, state, catalog, args)
     if cmd == "kind":
         return cmd_kind(paddock, state, catalog, args.set)
     if cmd in {"decide", "step", "gate"}:
         stage = stage_def(catalog, args.stage)
         if cmd == "gate":
             return cmd_gate(paddock, state, catalog, stage, args.unit, args)
+        if cmd in {"decide", "step"}:
+            require_story(state, stage, args.unit)
         if cmd == "decide":
             cmd_decide(state, stage, args.unit, args.decision, args.reason)
             event, note = "decide", f"{args.decision}: {args.reason}"

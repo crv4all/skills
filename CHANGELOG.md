@@ -68,6 +68,15 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   designing a pipeline. Paddocks opened before the two stages existed keep
   working and are asked to decide them.
 
+- **Units of work are tied to Jira tickets, and the tie is checked.** Nothing
+  in the process said what becomes a ticket, so work started on units nobody
+  had filed and finished work stayed open in Jira. One Epic per paddock and one
+  Story per unit are now recorded through the state script; Construction of a
+  unit is refused until its Story key is recorded (or Jira is turned off with a
+  reason), and a paddock cannot close as complete while a filed Story is not
+  recorded as done. User stories stay planning detail and are never filed.
+  Older paddocks work unchanged.
+
 - **Smaller work takes a shorter path through the same process.** The
   `express` and `bugfix` scopes skip stories, units and Bolt planning; `bugfix`
   requires a regression test that fails before the fix and passes after.
