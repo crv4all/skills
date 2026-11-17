@@ -91,3 +91,11 @@ marked accepted that no person signed. B3, B4 and B6 guard them.
 - [ ] Round A opens with `## Settled in the parent paddock` citing `parent:D3`, and asks no question that `D3` settles.
 - [ ] The different platform becomes a decision flagged `departure` and a decision needed, not a silent choice.
 - [ ] The child's own decision ids start at `D1`; `validate_doc.py` accepts `parent:D3` and reports an unknown parent id.
+
+## B10 — A frame paddock's HLA
+
+**Setup:** A paddock opened with `--kind frame`; rounds settled.
+**Prompt:** "Write the document."
+
+- [ ] Sections that would design components state the rules child paddocks must follow instead.
+- [ ] Proposed architecture holds the phase map and the contracts between phases.

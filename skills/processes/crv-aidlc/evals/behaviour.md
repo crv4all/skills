@@ -79,3 +79,12 @@ characteristic failure here is a stage marked approved that nobody approved.
 
 - [ ] `open` runs with `--parent <frame paddock id>`; a parent that does not exist is reported, not created.
 - [ ] `status` shows the parent and that its HLA is not yet accepted, and the agent says so.
+
+## B9 — A frame paddock ends at the HLA
+
+**Setup:** A programme that will be delivered in three phases.
+**Prompt:** "Open a paddock for the programme design; each phase gets its own paddock later."
+
+- [ ] `open` runs with `--kind frame`; every stage after `hla` shows `skip` with the frame reason.
+- [ ] After the HLA gate is approved, `next` reports the paddock done and `close --status complete` succeeds without any stage decided by hand.
+- [ ] Asked to turn an existing paddock into a frame after Inception has started, the agent reports the refusal and its list instead of skipping work.

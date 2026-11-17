@@ -34,6 +34,7 @@ EXIT_INTERNAL = 5
 
 EPILOG = """commands:
   open        create a paddock           --root R --slug S --title T --intent I [--parent P]
+                                         [--kind frame|delivery]
   status      show progress              --paddock P [--format text]
   next        the next stage and step    --paddock P
   inputs      files a stage reads        --paddock P --stage S [--unit U]
@@ -45,6 +46,7 @@ EPILOG = """commands:
   codekb-status is the code knowledge fresh --paddock P
   workspace   workspace file, checkouts  --paddock P [--extra name=path]... [--fetch] [--out F]
   target      add or drop a target       --paddock P --add name=path | --remove NAME
+  kind        frame or delivery paddock  --paddock P --set frame|delivery
   park/unpark hand-over note             --paddock P --note N
   close       close the paddock          --paddock P --status complete|superseded|archived
 
@@ -74,6 +76,9 @@ META_KEYS = ["repo", "path", "commit", "built", "artifacts"]
 NO_TRACEABILITY_SCOPES = {"bugfix", "express"}  # no stories or units to trace
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 SCOPES = ["classic", "express", "bugfix"]
+KINDS = ["delivery", "frame"]
+FRAME_STOP = "hla"  # a frame paddock ends at this gate
+FRAME_REASON = "frame paddock: designs no component"
 DEPTHS = ["minimal", "standard", "comprehensive"]
 DEFAULT_DEPTH = {"classic": "standard", "express": "standard", "bugfix": "minimal"}
 DEFAULT_UNIT_SCOPES = {"express", "bugfix"}
@@ -221,9 +226,25 @@ def new_record(decision: str, reason: str, step: str = "todo") -> dict[str, Any]
     }
 
 
-def initial_decision(stage: dict[str, Any], scope: str, brownfield: bool) -> tuple[str, str]:
+def paddock_kind(state: dict[str, Any]) -> str:
+    return str(state.get("kind") or "delivery")
+
+
+def frame_after(catalog: list[dict[str, Any]], kind: str) -> Optional[int]:
+    """The order after which a frame paddock skips every stage; ``None`` for delivery."""
+    if kind != "frame":
+        return None
+    return next(int(item["order"]) for item in catalog if item["id"] == FRAME_STOP)
+
+
+def initial_decision(
+    stage: dict[str, Any], scope: str, brownfield: bool, after: Optional[int] = None
+) -> tuple[str, str]:
+    """The decision ``open`` gives a stage; ``after`` is :func:`frame_after`."""
     if stage["id"] == "workspace-detection":
         return "execute", ""
+    if after is not None and stage["order"] > after:
+        return "skip", FRAME_REASON
     if scope not in stage["scopes"]:
         return "skip", f"outside the {scope} scope"
     if stage["id"] == "reverse-engineering" and not brownfield:
@@ -235,12 +256,16 @@ def initial_decision(stage: dict[str, Any], scope: str, brownfield: bool) -> tup
 
 
 def unit_stage_records(
-    catalog: list[dict[str, Any]], scope: str, existing: Optional[dict[str, Any]] = None
+    catalog: list[dict[str, Any]],
+    scope: str,
+    existing: Optional[dict[str, Any]] = None,
+    kind: str = "delivery",
 ) -> dict[str, Any]:
     records: dict[str, Any] = dict(existing or {})
+    after = frame_after(catalog, kind)
     for item in catalog:
         if item["per_unit"] and item["id"] not in records:
-            decision, reason = initial_decision(item, scope, True)
+            decision, reason = initial_decision(item, scope, True, after)
             records[item["id"]] = new_record(decision, reason)
     return records
 
@@ -282,8 +307,8 @@ def slots(state: dict[str, Any], catalog: list[dict[str, Any]]) -> list[Slot]:
             result.append((item, None))
         elif not expanded:
             expanded = True
-            if not state["units"]:
-                result.append((per_unit[0], None))
+            if not state["units"] and paddock_kind(state) != "frame":
+                result.append((per_unit[0], None))  # a frame paddock never loads units
             for unit in state["units"]:
                 for sub in per_unit:
                     result.append((sub, unit["id"]))
@@ -467,11 +492,12 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
             LOG.warning("%s: not a git checkout; the registry commit is recorded as null.", ref)
 
     brownfield = any(t["kind"] == "brownfield" for t in targets)
+    after = frame_after(catalog, args.kind)
     stages: dict[str, Any] = {}
     for item in catalog:
         if item["per_unit"]:
             continue
-        decision, reason = initial_decision(item, args.scope, brownfield)
+        decision, reason = initial_decision(item, args.scope, brownfield, after)
         step = "produced" if item["id"] == "workspace-detection" else "todo"
         stages[item["id"]] = new_record(decision, reason, step)
 
@@ -484,7 +510,7 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
                 "name": args.title,
                 "kind": None,
                 "bolt": "b1",
-                "stages": unit_stage_records(catalog, args.scope),
+                "stages": unit_stage_records(catalog, args.scope, kind=args.kind),
             }
         ]
         bolts = [{"id": "b1", "units": ["u1"], "status": "todo"}]
@@ -496,6 +522,7 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
         "intent": args.intent,
         "status": "open",
         "scope": args.scope,
+        "kind": args.kind,
         "depth": args.depth or DEFAULT_DEPTH[args.scope],
         "owner": args.owner or "",
         "approver": args.approver or "",
@@ -526,7 +553,9 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
         (paddock / folder / ".gitkeep").touch()
     (paddock / "log.md").touch()
     nxt = commit(paddock, state, catalog)
-    log_event(paddock, "open", "", "", f"scope={args.scope} depth={state['depth']}")
+    log_event(
+        paddock, "open", "", "", f"scope={args.scope} depth={state['depth']} kind={args.kind}"
+    )
     if parent is not None:
         log_event(paddock, "parent", "", "", f"{parent['id']} at {parent['path']}")
     for rule in rules:
@@ -807,6 +836,7 @@ def cmd_status(
         "status": state["status"],
         "scope": state["scope"],
         "depth": state["depth"],
+        "kind": paddock_kind(state),
         "phases": progress,
         "units": len(state["units"]),
         "bolts": len(state["bolts"]),
@@ -824,7 +854,8 @@ def cmd_status(
         return facts
     lines = [
         f"{state['title'] or state['id']} ({state['id']})",
-        f"Status: {state['status']} | Scope: {state['scope']} | Depth: {state['depth']}",
+        f"Status: {state['status']} | Scope: {state['scope']} | Depth: {state['depth']}"
+        f" | Kind: {paddock_kind(state)}",
         f"Intent: {state['intent'][:160]}",
     ]
     if parent:
@@ -1452,7 +1483,9 @@ def cmd_units(
                 "name": unit.get("name", ""),
                 "kind": unit.get("kind", previous.get("kind")),
                 "bolt": owner_of.get(unit["id"], unit.get("bolt")),
-                "stages": unit_stage_records(catalog, state["scope"], previous.get("stages")),
+                "stages": unit_stage_records(
+                    catalog, state["scope"], previous.get("stages"), paddock_kind(state)
+                ),
             }
         )
     state["units"] = result
@@ -1464,6 +1497,63 @@ def cmd_units(
         "units": [u["id"] for u in result],
         "bolts": [b["id"] for b in bolts],
         "missing_kind": [u["id"] for u in result if not u["kind"]],
+        "next": nxt,
+    }
+
+
+def cmd_kind(
+    paddock: Path, state: dict[str, Any], catalog: list[dict[str, Any]], kind: str
+) -> dict[str, Any]:
+    """Re-decide every stage after the HLA as ``open`` would for ``kind``.
+
+    Refused once any of those stages has left ``todo``: work already done there
+    would be skipped, or skipped work would silently come back.
+    """
+    stop = frame_after(catalog, "frame")
+    late = [item for item in catalog if stop is not None and item["order"] > stop]
+    records: list[tuple[dict[str, Any], Optional[str], dict[str, Any]]] = []
+    for item in late:
+        if item["per_unit"]:
+            for unit in state["units"]:
+                rec = unit.setdefault("stages", {}).get(item["id"])
+                records.append((item, unit["id"], rec or new_record("pending", "")))
+        elif item["id"] in state["stages"]:
+            records.append((item, None, state["stages"][item["id"]]))
+    started = [
+        {
+            "code": "stage-started",
+            "stage": item["id"],
+            "unit": unit,
+            "message": f"step is {rec['step']}",
+        }
+        for item, unit, rec in records
+        if rec["step"] != "todo"
+    ]
+    if started:
+        raise Fail(
+            EXIT_FINDINGS,
+            f"cannot make this a {kind} paddock: {len(started)} stage(s) after "
+            f"{FRAME_STOP} have started.",
+            findings=started,
+        )
+    previous = paddock_kind(state)
+    brownfield = any(t["kind"] == "brownfield" for t in state["targets"])
+    after = frame_after(catalog, kind)
+    for item, unit, _ in records:
+        decision, reason = initial_decision(item, state["scope"], brownfield, after)
+        record = new_record(decision, reason)
+        if unit is None:
+            state["stages"][item["id"]] = record
+        else:
+            find_unit(state, unit)["stages"][item["id"]] = record
+    state["kind"] = kind
+    nxt = commit(paddock, state, catalog)
+    log_event(paddock, "kind", "", "", f"{previous} -> {kind}")
+    return {
+        "ok": True,
+        "kind": kind,
+        "previous": previous,
+        "redecided": sorted({item["id"] for item, _, _ in records}),
         "next": nxt,
     }
 
@@ -1542,6 +1632,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--title", required=True)
     sp.add_argument("--intent", required=True, help="One sentence.")
     sp.add_argument("--scope", choices=SCOPES, default="classic")
+    sp.add_argument(
+        "--kind",
+        choices=KINDS,
+        default="delivery",
+        help="frame: programme-level design that ends at the HLA gate; phases are child paddocks.",
+    )
     sp.add_argument("--depth", choices=DEPTHS, help="Default: standard, or minimal for bugfix.")
     sp.add_argument(
         "--target", action="append", metavar="name=path", help="Target repository; repeatable."
@@ -1615,6 +1711,9 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--add", metavar="name=path", help="Add or replace a target.")
     group.add_argument("--remove", metavar="NAME", help="Remove a target by name.")
 
+    sp = add("kind", "Make the paddock a frame or a delivery paddock before later stages start.")
+    sp.add_argument("--set", required=True, choices=KINDS)
+
     sp = add("park", "Leave a hand-over note.")
     sp.add_argument("--note", required=True)
     add("unpark", "Clear the hand-over note.")
@@ -1651,6 +1750,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     require_open(state)
     if cmd == "target":
         return cmd_target(paddock, state, catalog, args)
+    if cmd == "kind":
+        return cmd_kind(paddock, state, catalog, args.set)
     if cmd in {"decide", "step", "gate"}:
         stage = stage_def(catalog, args.stage)
         if cmd == "gate":

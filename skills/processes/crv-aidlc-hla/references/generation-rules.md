@@ -27,6 +27,7 @@ Keep the template's headings, order and tables. Remove the guidance comments. Ea
 | all | Digest, Design decisions, Appendix, header |
 
 - **Digest** last: at most 10 lines, because later stages and the gate read only this.
+- In a frame paddock (`status` shows `kind: frame`), the sections that would design components hold the rules the child paddocks must follow, and the phase map with the contracts between phases goes under Proposed architecture.
 - A section marked Optional in the template may hold only `Not applicable: <reason>`. Required sections cannot. Modernization is required when `solution_type` is `modernization`.
 - Every fact carries its source: a decision id, an answer id (`A-Q3`, `CL-Q2`), an ADR id, or a document path with lines. Anything not checked is marked `unverified`.
 - In table cells with several items, put each on its own line with `<br/>`; never run them together with full stops.

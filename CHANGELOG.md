@@ -96,6 +96,13 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `validate_doc.py` checks every `parent:D<n>` citation against the parent's
   record, so a cited parent decision cannot quietly not exist.
 
+- **A frame paddock closes at its HLA.** A programme-level paddock designs no
+  component, yet closing it as complete was refused until someone decided the
+  TDD, Inception and Construction stages by hand. `open --kind frame` skips
+  every stage after the HLA with that reason, so the paddock is done once the
+  HLA gate is approved. `kind --set` converts an existing paddock, and is
+  refused once any of those later stages has started.
+
 - **Issues are written to be read, not to be impressive.** A shared
   `issue-writing.md` caps the summary at 80 characters and catalogues the
   patterns that make text read as generated, with the rewrite for each:
