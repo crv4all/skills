@@ -178,7 +178,7 @@ def test_a_file_that_is_not_text_exits_4(paddock: Path) -> None:
 
 # --- the gate ----------------------------------------------------------------
 
-QUESTIONS = "## Q1 Scope\nContext.\n\nA) One\nB) Two\nX) Other (describe)\n\nRecommended: A - simple.\n\n[Answer]: A\n"
+QUESTIONS = "## Q1 Scope\nContext.\n\nA) One\nB) Two\nX) Other (describe)\n\nRecommended: A - simple.\n\nAnswer: A\n"
 DIGESTED = "# T\n\n## Digest\n- point\n"
 
 

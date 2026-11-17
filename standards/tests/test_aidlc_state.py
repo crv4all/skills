@@ -28,7 +28,7 @@ X) Other (describe)
 
 Recommended: A - simplest.
 
-[Answer]: A
+Answer: A
 """
 
 
@@ -359,7 +359,7 @@ def test_gate_accepts_a_digest_of_exactly_ten_lines(paddock: Paddock) -> None:
 
 def test_gate_refuses_an_unanswered_question(paddock: Paddock) -> None:
     reach_produced(paddock)
-    ra_files(paddock, questions=QUESTIONS.replace("[Answer]: A", "[Answer]:"))
+    ra_files(paddock, questions=QUESTIONS.replace("Answer: A", "Answer:"))
     code, data, _ = paddock.run(
         "gate", "--stage", "requirements-analysis", "--approve", "--by", "B"
     )
@@ -451,7 +451,7 @@ def test_gate_needs_every_question_file_of_the_stage(paddock: Paddock) -> None:
 
 def test_gate_lints_each_question_file(paddock: Paddock) -> None:
     hla_produced(paddock)
-    paddock.write("architecture/hla-questions-c.md", QUESTIONS.replace("[Answer]: A", "[Answer]:"))
+    paddock.write("architecture/hla-questions-c.md", QUESTIONS.replace("Answer: A", "Answer:"))
     code, data, _ = paddock.run("gate", "--stage", "hla", "--approve", "--by", "Rae Viewer")
     assert code == 1 and [f["path"] for f in data["findings"]] == [
         "architecture/hla-questions-c.md"
@@ -460,16 +460,14 @@ def test_gate_lints_each_question_file(paddock: Paddock) -> None:
 
 def test_clarifications_are_scoped_to_their_stage(paddock: Paddock) -> None:
     hla_produced(paddock)
-    open_question = QUESTIONS.replace("[Answer]: A", "[Answer]:")
+    open_question = QUESTIONS.replace("Answer: A", "Answer:")
     paddock.write("architecture/tdd-clarifications.md", open_question)
     assert paddock.run("gate", "--stage", "hla", "--approve", "--by", "Rae Viewer")[0] == 0
 
 
 def test_own_clarifications_are_linted(paddock: Paddock) -> None:
     hla_produced(paddock)
-    paddock.write(
-        "architecture/hla-clarifications.md", QUESTIONS.replace("[Answer]: A", "[Answer]:")
-    )
+    paddock.write("architecture/hla-clarifications.md", QUESTIONS.replace("Answer: A", "Answer:"))
     code, data, _ = paddock.run("gate", "--stage", "hla", "--approve", "--by", "Rae Viewer")
     assert code == 1 and data["findings"][0]["path"] == "architecture/hla-clarifications.md"
 

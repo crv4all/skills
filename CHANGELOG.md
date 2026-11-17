@@ -103,6 +103,14 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   HLA gate is approved. `kind --set` converts an existing paddock, and is
   refused once any of those later stages has started.
 
+- **Answer lines are written as `Answer:`.** Followed by text, the old
+  `[Answer]:` is Markdown link-reference syntax: a formatter deleted one answer
+  line and rewrote the rest as links, and the question lint then failed on every
+  question. `lint_questions.py` still reads `[Answer]:` in existing files, and
+  reports the rewritten form as `answer-rewritten` with the fix. It also counts
+  a layer's `Proposal:` paragraph as the context of that layer's first
+  question, which a first real run reported as eight false failures.
+
 - **Issues are written to be read, not to be impressive.** A shared
   `issue-writing.md` caps the summary at 80 characters and catalogues the
   patterns that make text read as generated, with the rewrite for each:

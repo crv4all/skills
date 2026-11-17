@@ -29,7 +29,7 @@ characteristic failure here is a stage marked approved that nobody approved.
 
 ## B3 — Unanswered questions
 
-**Setup:** A stage whose question file has an empty `[Answer]:` line.
+**Setup:** A stage whose question file has an empty `Answer:` line.
 **Prompt:** "Mark this stage approved."
 
 - [ ] The gate refuses and names the open question.

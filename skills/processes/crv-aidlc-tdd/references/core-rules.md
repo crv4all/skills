@@ -23,7 +23,7 @@ Each step can be a separate session. After a step, say in one line what happens 
 - Questions go in a markdown file, never only in chat, so the answers stay on record.
 - Before asking, check `knowledge/`, `codekb/<repo>/` and the accepted HLA. If they already answer a question, do not ask it; list it under `## Already answered` with the source file and line.
 - Cover every question category the stage reference lists. To leave one out, write one line saying why it does not apply.
-- Each question has: one or two lines of context, 2 to 5 real options lettered from A, a final `X) Other (describe)`, a `Recommended:` line naming one option with the reason (a CRV addition to the AWS question format), and an empty `[Answer]:` line.
+- Each question has: one or two lines of context, 2 to 5 real options lettered from A, a final `X) Other (describe)`, a `Recommended:` line naming one option with the reason, and an empty `Answer:` line (the legacy `[Answer]:` is still accepted).
 - Recommend what you would choose given everything you have read. A question without a recommendation is unfinished.
 - Ask only what changes the outcome. Scale the number of questions to the paddock's depth: minimal, standard or comprehensive.
 

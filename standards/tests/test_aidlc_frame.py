@@ -24,7 +24,7 @@ FRAME_REASON = "frame paddock: designs no component"
 
 QUESTIONS = (
     "## Q1 Scope\nContext.\n\nA) One\nB) Two\nX) Other (describe)\n\n"
-    "Recommended: A - simple.\n\n[Answer]: A\n"
+    "Recommended: A - simple.\n\nAnswer: A\n"
 )
 SIGNED = (
     '# HLA\n\n```yaml\nstatus: accepted\nsigned_off_by: "Rae Viewer"\n'

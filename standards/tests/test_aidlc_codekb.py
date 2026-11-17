@@ -25,7 +25,7 @@ GIT_ENV = {
     "GIT_COMMITTER_EMAIL": "t@e.com",
     "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
 }
-QUESTIONS = "## Q1 Scope\nContext.\n\nA) One\nB) Two\nX) Other (describe)\n\nRecommended: A - simple.\n\n[Answer]: A\n"
+QUESTIONS = "## Q1 Scope\nContext.\n\nA) One\nB) Two\nX) Other (describe)\n\nRecommended: A - simple.\n\nAnswer: A\n"
 
 
 def git(repo: Path, *args: str) -> str:

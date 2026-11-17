@@ -23,7 +23,7 @@ X) Other (describe)
 
 Recommended: A - records are queried by several fields.
 
-[Answer]: A
+Answer: A
 """
 
 
@@ -77,11 +77,11 @@ CASES = {
     "no-recommendation-reason": GOOD.replace(
         "Recommended: A - records are queried by several fields.", "Recommended: A"
     ),
-    "no-answer-line": GOOD.replace("[Answer]: A\n", ""),
-    "empty-answer": GOOD.replace("[Answer]: A", "[Answer]:"),
-    "answer-not-offered": GOOD.replace("[Answer]: A", "[Answer]: D"),
-    "other-without-text": GOOD.replace("[Answer]: A", "[Answer]: X"),
-    "multiple-letters": GOOD.replace("[Answer]: A", "[Answer]: A, B"),
+    "no-answer-line": GOOD.replace("Answer: A\n", ""),
+    "empty-answer": GOOD.replace("Answer: A", "Answer:"),
+    "answer-not-offered": GOOD.replace("Answer: A", "Answer: D"),
+    "other-without-text": GOOD.replace("Answer: A", "Answer: X"),
+    "multiple-letters": GOOD.replace("Answer: A", "Answer: A, B"),
 }
 
 
@@ -93,20 +93,20 @@ def test_each_finding_type(tmp_path: Path, expected: str) -> None:
 
 
 def test_other_with_text_is_fine(tmp_path: Path) -> None:
-    code, _ = lint(tmp_path, GOOD.replace("[Answer]: A", "[Answer]: X - a graph database"))
+    code, _ = lint(tmp_path, GOOD.replace("Answer: A", "Answer: X - a graph database"))
     assert code == 0
 
 
 def test_multi_select_question_allows_several_letters(tmp_path: Path) -> None:
     text = GOOD.replace("keep records.", "keep records. Select all that apply.").replace(
-        "[Answer]: A", "[Answer]: A, B"
+        "Answer: A", "Answer: A, B"
     )
     code, _ = lint(tmp_path, text)
     assert code == 0
 
 
 def test_allow_open_skips_only_the_empty_answer(tmp_path: Path) -> None:
-    empty = GOOD.replace("[Answer]: A", "[Answer]:")
+    empty = GOOD.replace("Answer: A", "Answer:")
     code, result = lint(tmp_path, empty, "--allow-open")
     assert code == 0, result
     broken = empty.replace("X) Other (describe)\n", "")
@@ -116,7 +116,7 @@ def test_allow_open_skips_only_the_empty_answer(tmp_path: Path) -> None:
 
 
 def test_vague_answer_is_a_warning_only(tmp_path: Path) -> None:
-    code, result = lint(tmp_path, GOOD.replace("[Answer]: A", "[Answer]: A - depends on load"))
+    code, result = lint(tmp_path, GOOD.replace("Answer: A", "Answer: A - depends on load"))
     assert code == 0
     assert codes(result, "warnings") == ["vague-answer"]
 
@@ -126,3 +126,80 @@ def test_findings_name_the_question_and_line(tmp_path: Path) -> None:
     found = result["findings"][0]
     assert found["question"] == "Q1"
     assert isinstance(found["line"], int)
+
+
+# --- the answer marker -------------------------------------------------------
+
+
+def test_the_legacy_marker_is_read_with_the_same_rules(tmp_path: Path) -> None:
+    legacy = GOOD.replace("Answer: A", "[Answer]: A")
+    assert lint(tmp_path, legacy)[0] == 0
+    code, result = lint(tmp_path, legacy.replace("[Answer]: A", "[Answer]: D"))
+    assert code == 1 and codes(result) == ["answer-not-offered"]
+    code, result = lint(tmp_path, legacy.replace("[Answer]: A", "[Answer]:"))
+    assert code == 1 and codes(result) == ["empty-answer"]
+
+
+def test_a_rewritten_answer_line_names_the_fix(tmp_path: Path) -> None:
+    damaged = GOOD.replace("Answer: A", "[Answer](A)")
+    code, result = lint(tmp_path, damaged)
+    assert code == 1 and codes(result) == ["answer-rewritten"]
+    assert "Answer: <letter>" in result["findings"][0]["message"]
+    assert result["findings"][0]["line"] == damaged.splitlines().index("[Answer](A)") + 1
+
+
+def test_an_answer_line_beside_a_rewritten_one_is_still_checked(tmp_path: Path) -> None:
+    text = GOOD.replace("Answer: A", "[Answer](A)\nAnswer: D")
+    code, result = lint(tmp_path, text)
+    assert code == 1 and sorted(codes(result)) == ["answer-not-offered", "answer-rewritten"]
+
+
+# --- a layer proposal is the first question's context -------------------------
+
+LAYERED = """# Round A
+
+## Layer 1: Business context
+
+Proposal: keep exports in the reporting service; it already owns the data.
+
+## Q1 Storage
+
+A) Relational database
+B) Object storage
+X) Other (describe)
+
+Recommended: A - records are queried by several fields.
+
+Answer: A
+
+## Q2 Retention
+
+A) One year
+B) Seven years
+X) Other (describe)
+
+Recommended: B - the audit rule asks for seven.
+
+Answer: B
+"""
+
+
+def test_a_proposal_gives_only_the_first_question_its_context(tmp_path: Path) -> None:
+    code, result = lint(tmp_path, LAYERED)
+    assert code == 1
+    assert [(f["code"], f["question"]) for f in result["findings"]] == [("no-context", "Q2")]
+
+
+def test_a_layer_without_a_proposal_gives_no_context(tmp_path: Path) -> None:
+    text = LAYERED.replace("Proposal: keep exports", "Keep exports")
+    _, result = lint(tmp_path, text)
+    assert [f["question"] for f in result["findings"] if f["code"] == "no-context"] == [
+        "Q1",
+        "Q2",
+    ]
+
+
+def test_a_proposal_does_not_reach_past_another_section(tmp_path: Path) -> None:
+    text = LAYERED.replace("## Q1 Storage", "## Already answered\n\n- none\n\n## Q1 Storage")
+    _, result = lint(tmp_path, text)
+    assert "Q1" in [f["question"] for f in result["findings"] if f["code"] == "no-context"]

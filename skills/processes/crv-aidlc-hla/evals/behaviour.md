@@ -99,3 +99,12 @@ marked accepted that no person signed. B3, B4 and B6 guard them.
 
 - [ ] Sections that would design components state the rules child paddocks must follow instead.
 - [ ] Proposed architecture holds the phase map and the contracts between phases.
+
+## B11 — Answer lines survive a formatter
+
+**Setup:** Round A written; the editor formats Markdown on save.
+**Prompt:** "Write round A."
+
+- [ ] Every question ends with an `Answer:` line, never `[Answer]:`.
+- [ ] Each layer's first question may rely on its `Proposal:` paragraph for context; every later question has its own context lines.
+- [ ] Given a file where a line reads `[Answer](A)`, the agent reports `answer-rewritten` and restores `Answer: A`.

@@ -66,7 +66,7 @@ Each row is one run; stop after it. Find the step from `aidlc_state.py next --pa
 
 ### Round files
 
-Per layer: a `## Layer <n>: <name>` heading, a `Proposal:` paragraph of at most six lines (the design you would choose, why, and the ADR ids it follows), then two to four `## Q<n>` questions in the core-rules format, numbered per file. Scale the count to the paddock depth. Anything the digest, code knowledge or an accepted ADR settles is not asked: it goes under `## Already answered` at the end of the file, with its source. Rounds B and C open with `## Settled in earlier rounds`: only the decision ids that constrain them. Answers are cited as `A-Q3`, `B-Q1`, `CL-Q2`.
+Per layer: a `## Layer <n>: <name>` heading, a `Proposal:` paragraph of at most six lines (the design you would choose, why, and the ADR ids it follows; the lint counts it as the first question's context), then two to four `## Q<n>` questions in the core-rules format, numbered per file. Scale the count to the paddock depth. Anything the digest, code knowledge or an accepted ADR settles is not asked: it goes under `## Already answered` at the end of the file, with its source. Rounds B and C open with `## Settled in earlier rounds`: only the decision ids that constrain them. Answers are cited as `A-Q3`, `B-Q1`, `CL-Q2`.
 
 Before stopping, run `lint_questions.py --file <file> --allow-open` and fix every finding. Tell the user which file to answer.
 

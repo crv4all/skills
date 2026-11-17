@@ -11,8 +11,14 @@ not one of the options leaves the record unusable, and the cost surfaces three
 stages later. Checking the shape here is free; checking it by reading is not.
 
 The format follows the AWS AI-DLC question format (lettered options, a final
-"Other", an ``[Answer]:`` line). The ``Recommended:`` line, with its reason, is a
+"Other", an answer line). The ``Recommended:`` line, with its reason, is a
 CRV addition: upstream questions carry no recommendation.
+
+The answer line is ``Answer:`` at the start of a line. The older ``[Answer]:``
+is still read, with the same rules, but followed by text it is Markdown
+link-reference syntax: a formatter deletes it or rewrites it as ``[Answer](...)``.
+That damaged form gets its own finding, so the fix is named instead of every
+question failing for no visible reason.
 """
 
 from __future__ import annotations
@@ -38,7 +44,8 @@ EPILOG = """examples:
 
 findings (exit 1): no-questions, no-context, too-few-options, too-many-options,
   no-other-option, no-recommendation, no-recommendation-reason, no-answer-line,
-  empty-answer, answer-not-offered, other-without-text, multiple-letters
+  empty-answer, answer-not-offered, other-without-text, multiple-letters,
+  answer-rewritten (a formatter turned the answer line into a link)
 warnings (never change the exit code): vague-answer
 
 exit codes:
@@ -56,7 +63,10 @@ HEADING = re.compile(r"^##\s+Q(\d+)\b")
 ANY_H2 = re.compile(r"^##\s+")
 OPTION = re.compile(r"^\s*(?:[-*]\s*)?([A-Z])\)\s*(.*)$")
 RECOMMENDED = re.compile(r"^\s*(?:[-*]\s*)?\**Recommended\**\s*:?\**\s*(.*)$", re.IGNORECASE)
-ANSWER = re.compile(r"^\s*\[Answer\]\s*:\s*(.*)$")
+ANSWER = re.compile(r"^\s*(?:Answer|\[Answer\])\s*:\s*(.*)$")
+REWRITTEN = re.compile(r"^\s*\[Answer\]\(")
+LAYER = re.compile(r"^##\s+Layer\b")
+PROPOSAL = re.compile(r"^\s*\**Proposal\**\s*:")
 LETTERS = re.compile(
     r"^\(?([A-Za-z](?:\s*(?:,|/|&|\+|\band\b)\s*[A-Za-z]\b)*)\)?(?:[\s).:\-\u2013\u2014]+(.*))?$",
     re.DOTALL,
@@ -73,19 +83,33 @@ def finding(code: str, qid: str, line: int, message: str) -> dict[str, Any]:
     return {"code": code, "question": qid, "line": line, "message": message}
 
 
-def split_blocks(lines: list[str]) -> list[tuple[str, int, list[tuple[int, str]]]]:
-    """Return ``(id, heading_line, body_lines)`` for each ``## Q<n>`` block."""
-    blocks: list[tuple[str, int, list[tuple[int, str]]]] = []
-    current: Optional[tuple[str, int, list[tuple[int, str]]]] = None
+Block = tuple[str, int, list[tuple[int, str]], bool]
+
+
+def split_blocks(lines: list[str]) -> list[Block]:
+    """Return ``(id, heading_line, body_lines, proposal)`` for each ``## Q<n>`` block.
+
+    ``proposal`` is true only for the first question after a ``## Layer`` section
+    that holds a ``Proposal:`` paragraph: that paragraph is its context.
+    """
+    blocks: list[Block] = []
+    current: Optional[Block] = None
+    in_layer = False
+    proposal = False
     for number, text in enumerate(lines, start=1):
         match = HEADING.match(text)
         if match:
-            current = (f"Q{match.group(1)}", number, [])
+            current = (f"Q{match.group(1)}", number, [], proposal)
             blocks.append(current)
+            in_layer = proposal = False
         elif ANY_H2.match(text):
             current = None
+            in_layer = bool(LAYER.match(text))
+            proposal = False
         elif current is not None:
             current[2].append((number, text))
+        elif in_layer and PROPOSAL.match(text):
+            proposal = True
     return blocks
 
 
@@ -94,6 +118,7 @@ def check_block(
     heading_line: int,
     body: list[tuple[int, str]],
     allow_open: bool,
+    proposal: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     findings: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
@@ -101,9 +126,14 @@ def check_block(
     context: list[str] = []
     recommended: Optional[tuple[int, str]] = None
     answer: Optional[tuple[int, str]] = None
+    rewritten: Optional[int] = None
     seen_structure = False
 
     for number, text in body:
+        if REWRITTEN.match(text):
+            rewritten = number
+            seen_structure = True
+            continue
         option = OPTION.match(text)
         rec = RECOMMENDED.match(text)
         ans = ANSWER.match(text)
@@ -119,7 +149,7 @@ def check_block(
         elif not seen_structure and text.strip():
             context.append(text.strip())
 
-    if not context:
+    if not context and not proposal:
         findings.append(
             finding("no-context", qid, heading_line, "No context lines before the options.")
         )
@@ -161,8 +191,20 @@ def check_block(
                 )
             )
 
+    if rewritten is not None:
+        findings.append(
+            finding(
+                "answer-rewritten",
+                qid,
+                rewritten,
+                "A Markdown formatter rewrote the answer line as a link; "
+                "write it as `Answer: <letter>`.",
+            )
+        )
+        if answer is None:
+            return findings, warnings
     if answer is None:
-        findings.append(finding("no-answer-line", qid, heading_line, "Missing a `[Answer]:` line."))
+        findings.append(finding("no-answer-line", qid, heading_line, "Missing an `Answer:` line."))
         return findings, warnings
 
     ans_line, ans_text = answer
@@ -220,8 +262,8 @@ def lint_text(text: str, allow_open: bool = False) -> dict[str, Any]:
     warnings: list[dict[str, Any]] = []
     if not blocks:
         findings.append(finding("no-questions", "-", 1, "No `## Q<n>` question blocks found."))
-    for qid, heading_line, body in blocks:
-        block_findings, block_warnings = check_block(qid, heading_line, body, allow_open)
+    for qid, heading_line, body, proposal in blocks:
+        block_findings, block_warnings = check_block(qid, heading_line, body, allow_open, proposal)
         findings.extend(block_findings)
         warnings.extend(block_warnings)
     return {"questions": len(blocks), "findings": findings, "warnings": warnings}
