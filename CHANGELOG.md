@@ -58,6 +58,16 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Build and Test runs the commands and records each target as met, not met or
   unverified.
 
+- **A release is planned and recorded, never run by the agent.**
+  `crv-aidlc-operation` closes the gap after Build and Test, which never
+  deploys: people had no staged place to agree the order, the rollback and the
+  checks for a migration or cut-over. The agent prepares the runbook and records
+  each step with the evidence a named person gives; anything that changes an
+  environment stays a human task, because a wrong command there cannot be taken
+  back. It reuses each repository's existing release mechanism instead of
+  designing a pipeline. Paddocks opened before the two stages existed keep
+  working and are asked to decide them.
+
 - **Smaller work takes a shorter path through the same process.** The
   `express` and `bugfix` scopes skip stories, units and Bolt planning; `bugfix`
   requires a regression test that fails before the fix and passes after.

@@ -199,6 +199,7 @@ def test_status_json_carries_the_same_facts(paddock: Paddock) -> None:
         "discovery",
         "inception",
         "construction",
+        "operation",
     }
 
 
@@ -638,3 +639,66 @@ def test_missing_and_malformed_state(tmp_path: Path) -> None:
     done = subprocess.run([sys.executable, str(SCRIPT), "status", "--paddock", str(tmp_path)],
                           capture_output=True, text=True, timeout=60)  # fmt: skip
     assert done.returncode == 4
+
+
+# --- operation stages ----------------------------------------------------------
+
+OPERATION = ("deployment-pipeline", "deployment-execution")
+
+
+def test_operation_stages_follow_build_and_test_in_the_catalogue() -> None:
+    catalog = json.loads((SKILL / "assets" / "stages.json").read_text(encoding="utf-8"))["stages"]
+    order = {item["id"]: item["order"] for item in catalog}
+    assert order["build-and-test"] < order["deployment-pipeline"] < order["deployment-execution"]
+    for stage in OPERATION:
+        item = next(i for i in catalog if i["id"] == stage)
+        assert item["phase"] == "operation" and item["skill"] == "crv-aidlc-operation"
+        assert item["scopes"] == ["classic"] and item["conditional"] is True
+        assert not item["per_unit"]
+
+
+def test_operation_stages_are_decided_in_classic_and_skipped_elsewhere(tmp_path: Path) -> None:
+    p = Paddock(tmp_path, Path(json.loads(open_paddock(tmp_path).stdout)["paddock"]))
+    assert (p.path / "docs" / "operation").is_dir()
+    assert all(p.state["stages"][s]["decision"] == "pending" for s in OPERATION)
+    other = tmp_path / "b"
+    other.mkdir()
+    q = Paddock(other, Path(json.loads(open_paddock(other, "--scope", "bugfix").stdout)["paddock"]))
+    assert all(q.state["stages"][s]["decision"] == "skip" for s in OPERATION)
+
+
+def test_operation_stages_work_with_every_command(paddock: Paddock) -> None:
+    assert paddock.run("decide", "--stage", "deployment-pipeline", "--decision", "skip",
+                       "--reason", "pipeline releases on merge")[0] == 0  # fmt: skip
+    assert paddock.run("inputs", "--stage", "deployment-execution")[0] in (0, 3)
+    assert paddock.run("step", "--stage", "deployment-execution", "--to", "asked")[0] in (0, 1)
+    assert "Operation:" in paddock.run("status", "--format", "text")[2]
+
+
+def test_gate_refuses_an_operation_stage_with_a_missing_artifact(paddock: Paddock) -> None:
+    stage = "deployment-pipeline"
+    base = "docs/operation/deployment-pipeline/"
+    paddock.write(base + "release-plan.md", digest())
+    paddock.write(base + "deployment-pipeline-questions.md", QUESTIONS)
+    assert paddock.run("decide", "--stage", stage, "--decision", "execute", "--reason", "x")[0] == 0
+    assert paddock.run("step", "--stage", stage, "--to", "produced")[0] == 0
+    code, data, _ = paddock.run("gate", "--stage", stage, "--approve", "--by", "Boss")
+    assert code == 1
+    assert any("runbook.md" in json.dumps(f) for f in data["findings"])
+    assert paddock.state["stages"][stage]["step"] == "produced"
+
+
+def test_a_state_written_before_the_operation_stages_keeps_working(paddock: Paddock) -> None:
+    state = paddock.state
+    for stage in OPERATION:
+        del state["stages"][stage]
+    (paddock.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
+    for command in (("status",), ("next",), ("codekb-status",), ("workspace",)):
+        assert paddock.run(*command)[0] == 0, command
+    assert paddock.run("inputs", "--stage", "deployment-execution")[0] in (0, 3)
+    assert "deployment-pipeline" not in paddock.state["stages"]  # reads do not write
+    code, _, _ = paddock.run("decide", "--stage", "deployment-pipeline", "--decision", "skip",
+                             "--reason", "old paddock")  # fmt: skip
+    assert code == 0 and paddock.state["stages"]["deployment-pipeline"]["decision"] == "skip"
+    assert paddock.state["stages"]["deployment-execution"]["decision"] == "pending"
+    assert paddock.run("close", "--status", "archived")[0] == 0

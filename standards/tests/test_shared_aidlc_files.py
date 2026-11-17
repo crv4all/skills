@@ -26,6 +26,7 @@ STAGE_SKILLS = (
     "crv-aidlc-tdd",
     "crv-aidlc-inception",
     "crv-aidlc-construction",
+    "crv-aidlc-operation",
 )
 
 #: (relative path, canonical skill, skills that must carry an identical copy)
@@ -36,7 +37,13 @@ SHARED = (
     (
         "scripts/lint_questions.py",
         "crv-aidlc",
-        ("crv-aidlc-hla", "crv-aidlc-tdd", "crv-aidlc-inception", "crv-aidlc-construction"),
+        (
+            "crv-aidlc-hla",
+            "crv-aidlc-tdd",
+            "crv-aidlc-inception",
+            "crv-aidlc-construction",
+            "crv-aidlc-operation",
+        ),
     ),
     # The last Inception gate runs this check, so the skill that gates Inception carries it.
     ("scripts/check_traceability.py", "crv-aidlc", ("crv-aidlc-inception",)),

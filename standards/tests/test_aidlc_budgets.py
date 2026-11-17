@@ -72,7 +72,9 @@ def test_construction_stage_sessions(name: str) -> None:
         assert total <= CONSTRUCTION_LIMIT, f"{name}/{ref.name}: {total} tokens"
 
 
-@pytest.mark.parametrize("name", ["crv-aidlc-inception", "crv-aidlc-reverse-engineering"])
+@pytest.mark.parametrize(
+    "name", ["crv-aidlc-inception", "crv-aidlc-reverse-engineering", "crv-aidlc-operation"]
+)
 def test_discovery_and_inception_stage_sessions(name: str) -> None:
     skill = skill_or_skip(name)
     for ref in stage_references(skill):

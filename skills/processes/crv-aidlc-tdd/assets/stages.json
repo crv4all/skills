@@ -743,6 +743,93 @@
         "docs/construction/build-and-test/cross-unit-traceability.md"
       ],
       "order": 17
+    },
+    {
+      "id": "deployment-pipeline",
+      "phase": "operation",
+      "skill": "crv-aidlc-operation",
+      "reference": "references/deployment-pipeline.md",
+      "tier": "balanced",
+      "per_unit": false,
+      "scopes": [
+        "classic"
+      ],
+      "conditional": true,
+      "runs_when": "When people must release or cut over the paddock's change: a data migration, a cut-over, a switch of write master, a retirement, or a release across several repositories. Skip, with the reason, when each target repository's own pipeline releases on merge and nothing else has to happen. Other scopes: only when forced with `decide`.",
+      "inputs": [
+        {
+          "path": "docs/construction/build-and-test/build-and-test-summary.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/inception/delivery-planning/bolt-plan.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/inception/units-generation/unit-of-work-dependency.md",
+          "mode": "digest"
+        },
+        {
+          "path": "architecture/hla.md",
+          "mode": "digest",
+          "optional": true
+        },
+        {
+          "path": "architecture/tdd.md",
+          "mode": "digest",
+          "optional": true
+        },
+        {
+          "path": "root:codekb/<repo>/technology-stack.md",
+          "mode": "full",
+          "optional": true
+        }
+      ],
+      "questions": "docs/operation/deployment-pipeline/deployment-pipeline-questions.md",
+      "artifacts": [
+        "docs/operation/deployment-pipeline/release-plan.md",
+        "docs/operation/deployment-pipeline/runbook.md",
+        "docs/operation/deployment-pipeline/rollback-runbook.md",
+        "docs/operation/deployment-pipeline/verification-checks.md"
+      ],
+      "order": 18
+    },
+    {
+      "id": "deployment-execution",
+      "phase": "operation",
+      "skill": "crv-aidlc-operation",
+      "reference": "references/deployment-execution.md",
+      "tier": "economy",
+      "per_unit": false,
+      "scopes": [
+        "classic"
+      ],
+      "conditional": true,
+      "runs_when": "When Deployment Pipeline ran.",
+      "inputs": [
+        {
+          "path": "docs/operation/deployment-pipeline/release-plan.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/operation/deployment-pipeline/runbook.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/operation/deployment-pipeline/rollback-runbook.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/operation/deployment-pipeline/verification-checks.md",
+          "mode": "full"
+        }
+      ],
+      "questions": null,
+      "artifacts": [
+        "docs/operation/deployment-execution/deploy-log.md",
+        "docs/operation/deployment-execution/verification-results.md"
+      ],
+      "order": 19
     }
   ]
 }

@@ -150,3 +150,17 @@ def test_a_frame_can_have_a_parent(tmp_path: Path) -> None:
         "--date", "2026-01-06", "--kind", "frame", "--parent", paddock.name,
     )  # fmt: skip
     assert code == 0, data
+
+
+def test_a_frame_skips_the_operation_stages_and_an_old_frame_state_still_works(
+    tmp_path: Path,
+) -> None:
+    paddock = open_paddock(tmp_path, "--kind", "frame")
+    data = state(paddock)
+    for stage in ("deployment-pipeline", "deployment-execution"):
+        assert data["stages"][stage]["reason"] == FRAME_REASON
+        del data["stages"][stage]
+    (paddock / "state.json").write_text(json.dumps(data), encoding="utf-8")
+    approve_hla(paddock)
+    code, out = run("next", "--paddock", str(paddock))
+    assert code == 0 and out["done"], out

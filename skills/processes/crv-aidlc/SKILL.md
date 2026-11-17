@@ -1,7 +1,7 @@
 ---
 name: crv-aidlc
 description: >-
-  Opens, resumes and closes a paddock (the folder for one piece of work in a planning repo), routes to the next AI-DLC stage and enforces approval gates with deterministic scripts. Use when someone wants to start, open, resume or close a paddock, asks what is next, mentions AI-DLC, or wants a structured, staged delivery of a feature, migration or bug fix. Not for the stage work itself: crv-aidlc-reverse-engineering, crv-aidlc-hla, crv-aidlc-tdd, crv-aidlc-inception and crv-aidlc-construction own that, and the crv-create-jira-* skills file tickets.
+  Opens, resumes and closes a paddock (the folder for one piece of work in a planning repo), routes to the next AI-DLC stage and enforces approval gates with deterministic scripts. Use when someone wants to start, open, resume or close a paddock, asks what is next, mentions AI-DLC, or wants a structured, staged delivery of a feature, migration or bug fix. Not for the stage work itself: crv-aidlc-reverse-engineering, crv-aidlc-hla, crv-aidlc-tdd, crv-aidlc-inception, crv-aidlc-construction and crv-aidlc-operation own that, and the crv-create-jira-* skills file tickets.
 license: Apache-2.0
 metadata:
   owner: cloudforce-team-data
@@ -33,7 +33,7 @@ A paddock `paddocks/<date>-<slug>/` in the planning repo, a `state.json` that is
 
 ## When not to use this
 
-- Doing the stage itself: `crv-aidlc-reverse-engineering`, `crv-aidlc-hla`, `crv-aidlc-tdd`, `crv-aidlc-inception`, `crv-aidlc-construction`. This skill only routes to them.
+- Doing the stage itself: `crv-aidlc-reverse-engineering`, `crv-aidlc-hla`, `crv-aidlc-tdd`, `crv-aidlc-inception`, `crv-aidlc-construction`, `crv-aidlc-operation`. This skill only routes to them.
 - Filing Jira epics or stories: `crv-create-jira-epic`, `crv-create-jira-story`.
 - A small change with no staged process asked for: just do it.
 
@@ -63,6 +63,7 @@ Run `aidlc_state.py status --paddock <p> --format text`, then `aidlc_state.py ne
 | tdd | `crv-aidlc-tdd` |
 | requirements-analysis, user-stories, domain-design, units-generation, contract-design, delivery-planning | `crv-aidlc-inception` |
 | functional-design, nfr-requirements, nfr-design, infrastructure-design, code-generation, build-and-test | `crv-aidlc-construction` |
+| deployment-pipeline, deployment-execution | `crv-aidlc-operation` |
 
 Action `decide`: ask the approver for EXECUTE or SKIP with a reason (`next` shows `runs_when` and, per unit, the unit's `kind`), then `decide`. A per-unit design stage is decided when that unit's construction starts. Action `load-units`: units (each with `kind`: `service`, `spec`, `ui`, `packaging` or `library`) come from Units Generation, bolts from Delivery Planning; write them to a JSON file and run `units --set`. `hla` and `tdd` run in `classic` only unless forced with `decide`. The stage skill moves steps with `step --to asked|analysed|produced`.
 

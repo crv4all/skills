@@ -2,7 +2,7 @@
 
 # Skill catalogue
 
-10 skill(s) in [crv4all/agent-skills](https://github.com/crv4all/agent-skills).
+11 skill(s) in [crv4all/agent-skills](https://github.com/crv4all/agent-skills).
 
 Install any of them with `install.sh`; see [docs/installing.md](docs/installing.md).
 
@@ -15,6 +15,7 @@ Every skill runs in a subagent and states its model tier before starting. See
 | [`crv-aidlc-construction`](skills/processes/crv-aidlc-construction/SKILL.md) | processes | draft | subagent | balanced | cloudforce-team-data | Builds a paddock's Units in code: per-Unit design stages when they apply, an approved checkbox code plan, code in the target repositories, then Build and Test. |
 | [`crv-aidlc-hla`](skills/processes/crv-aidlc-hla/SKILL.md) | processes | draft | subagent | frontier | cloudforce-team-data | Produces the High-Level Architecture (HLA) for a paddock before Inception: three file-based question rounds over twelve design layers, opinionated proposals… |
 | [`crv-aidlc-inception`](skills/processes/crv-aidlc-inception/SKILL.md) | processes | draft | subagent | balanced | cloudforce-team-data | Runs the AI-DLC Inception stages for a paddock: requirements that reconcile the accepted HLA, user stories, a domain design, units of work, contracts between… |
+| [`crv-aidlc-operation`](skills/processes/crv-aidlc-operation/SKILL.md) | processes | draft | subagent | balanced | cloudforce-team-data | Prepares and records the release of a paddock's change: a release plan, a runbook with named people, a rollback runbook and verification checks, then an… |
 | [`crv-aidlc-reverse-engineering`](skills/processes/crv-aidlc-reverse-engineering/SKILL.md) | processes | draft | subagent | balanced | cloudforce-team-data | Builds or refreshes the code knowledge for each existing (brownfield) target repository of a paddock before the architecture is written: a deterministic… |
 | [`crv-aidlc-tdd`](skills/processes/crv-aidlc-tdd/SKILL.md) | processes | draft | subagent | balanced | cloudforce-team-data | Produces the Technical Design Document (TDD), the detailed design that follows an accepted high-level architecture in a paddock. |
 | [`crv-codebase-onboarding`](skills/processes/crv-codebase-onboarding/SKILL.md) | processes | draft | subagent | economy | cloudforce-team-data | Produces durable, evidence-backed codebase context in docs/codebase/ — architecture, stack divergences, conventions, workflows, data, integrations, testing,… |
@@ -46,7 +47,7 @@ End-to-end workflows with a reviewable deliverable.
 
 ### [`crv-aidlc`](skills/processes/crv-aidlc/SKILL.md)
 
-Opens, resumes and closes a paddock (the folder for one piece of work in a planning repo), routes to the next AI-DLC stage and enforces approval gates with deterministic scripts. Use when someone wants to start, open, resume or close a paddock, asks what is next, mentions AI-DLC, or wants a structured, staged delivery of a feature, migration or bug fix. Not for the stage work itself: crv-aidlc-reverse-engineering, crv-aidlc-hla, crv-aidlc-tdd, crv-aidlc-inception and crv-aidlc-construction own that, and the crv-create-jira-* skills file tickets.
+Opens, resumes and closes a paddock (the folder for one piece of work in a planning repo), routes to the next AI-DLC stage and enforces approval gates with deterministic scripts. Use when someone wants to start, open, resume or close a paddock, asks what is next, mentions AI-DLC, or wants a structured, staged delivery of a feature, migration or bug fix. Not for the stage work itself: crv-aidlc-reverse-engineering, crv-aidlc-hla, crv-aidlc-tdd, crv-aidlc-inception, crv-aidlc-construction and crv-aidlc-operation own that, and the crv-create-jira-* skills file tickets.
 
 **Owner:** cloudforce-team-data · **Maturity:** draft · **Runs as:** subagent · **Model tier:** economy
 
@@ -65,6 +66,12 @@ Produces the High-Level Architecture (HLA) for a paddock before Inception: three
 ### [`crv-aidlc-inception`](skills/processes/crv-aidlc-inception/SKILL.md)
 
 Runs the AI-DLC Inception stages for a paddock: requirements that reconcile the accepted HLA, user stories, a domain design, units of work, contracts between units and a Bolt delivery plan, each as file-based questions with answers analysed before artifacts are written, stable traceable ids, and a traceability check before the last gate. Use when someone wants requirements, user stories, a domain design or component catalogue, units of work, API or event contracts, or a Bolt or delivery plan for a paddock, or resumes one of those stages. Not for opening, resuming or routing a paddock (crv-aidlc), the HLA (crv-aidlc-hla), the Technical Design Document (crv-aidlc-tdd), scanning existing code (crv-aidlc-reverse-engineering), building units (crv-aidlc-construction), or filing tickets (crv-create-jira-story, crv-create-jira-epic).
+
+**Owner:** cloudforce-team-data · **Maturity:** draft · **Runs as:** subagent · **Model tier:** balanced
+
+### [`crv-aidlc-operation`](skills/processes/crv-aidlc-operation/SKILL.md)
+
+Prepares and records the release of a paddock's change: a release plan, a runbook with named people, a rollback runbook and verification checks, then an environment-by-environment execution log in which people run every step and the agent records the evidence. Use when someone wants to plan or run a release, a data migration, a cut-over, a switch of write master or a retirement for a paddock, or resume its deploy log. Never runs a deployment itself. Not for routing a paddock (crv-aidlc), building or testing units (crv-aidlc-construction), the design (crv-aidlc-hla, crv-aidlc-tdd), requirements and units (crv-aidlc-inception), or repo scans (crv-aidlc-reverse-engineering).
 
 **Owner:** cloudforce-team-data · **Maturity:** draft · **Runs as:** subagent · **Model tier:** balanced
 

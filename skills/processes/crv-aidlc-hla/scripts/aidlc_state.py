@@ -87,7 +87,7 @@ ROOT_PREFIX = "root:"
 PARENT_PREFIX = "parent:"
 FOCUSED_RESCAN_MAX = 0.30
 CHANGED_FILES_CAP = 50
-PHASES = ["discovery", "inception", "construction"]
+PHASES = ["discovery", "inception", "construction", "operation"]
 SOURCE_SUFFIXES = {
     ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".kt", ".go", ".rs", ".rb", ".cs",
     ".sql", ".scala", ".sh", ".php", ".swift", ".c", ".cc", ".cpp", ".h", ".hpp",
@@ -185,6 +185,25 @@ def load_state(paddock: Path) -> dict[str, Any]:
     if not isinstance(state, dict) or state.get("schema") != 1:
         die(EXIT_MALFORMED, f'{path}: expected an object with "schema": 1.')
     return state
+
+
+def backfill_stages(state: dict[str, Any], catalog: list[dict[str, Any]]) -> None:
+    """Give a stage added to the catalogue after this paddock opened a record, in memory.
+
+    Without it a ``state.json`` written earlier would crash or need a hand edit. The
+    record is saved with the next write. A closed paddock gets a skip, so it stays done.
+    """
+    stages = state.setdefault("stages", {})
+    brownfield = any(t.get("kind") == "brownfield" for t in state.get("targets", []))
+    after = frame_after(catalog, paddock_kind(state))
+    for item in catalog:
+        if item["per_unit"] or item["id"] in stages:
+            continue
+        if state.get("status") != "open":
+            stages[item["id"]] = new_record("skip", "added after this paddock closed")
+            continue
+        decision, reason = initial_decision(item, state.get("scope", "classic"), brownfield, after)
+        stages[item["id"]] = new_record(decision, reason)
 
 
 def write_state(paddock: Path, state: dict[str, Any]) -> None:
@@ -547,6 +566,7 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
         "architecture",
         "docs/inception",
         "docs/construction",
+        "docs/operation",
     ]
     for folder in folders:
         (paddock / folder).mkdir(parents=True, exist_ok=True)
@@ -1731,6 +1751,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     paddock = Path(args.paddock)
     state = load_state(paddock)
+    backfill_stages(state, catalog)
     cmd = args.command
     if cmd == "codekb-status":
         return {
