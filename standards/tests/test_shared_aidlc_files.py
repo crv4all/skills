@@ -38,6 +38,7 @@ SHARED = (
         "scripts/lint_questions.py",
         "crv-aidlc",
         (
+            "crv-aidlc-reverse-engineering",
             "crv-aidlc-hla",
             "crv-aidlc-tdd",
             "crv-aidlc-inception",

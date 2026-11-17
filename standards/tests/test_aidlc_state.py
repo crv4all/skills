@@ -266,7 +266,8 @@ def test_inputs_treats_a_skipped_producer_as_satisfied(paddock: Paddock) -> None
     paddock.run("decide", "--stage", "tdd", "--decision", "skip", "--reason", "n/a")
     paddock.run("decide", "--stage", "document-knowledge", "--decision", "skip", "--reason", "n/a")
     code, data, _ = paddock.run("inputs", "--stage", "requirements-analysis")
-    assert code == 0 and all(row["skipped"] for row in data["inputs"])
+    assert code == 0
+    assert all(row["skipped"] for row in data["inputs"] if not row["optional"])
 
 
 def test_inputs_unknown_stage_exits_2(paddock: Paddock) -> None:
@@ -831,3 +832,21 @@ def test_a_state_without_jira_keys_keeps_working(bugfix: Paddock) -> None:
     assert (
         bugfix.run("step", "--stage", "code-generation", "--unit", "u1", "--to", "produced")[0] == 0
     )
+
+
+def test_inputs_lists_the_presets_file_when_it_exists_and_is_silent_when_not(
+    paddock: Paddock,
+) -> None:
+    paddock.run("decide", "--stage", "document-knowledge", "--decision", "skip", "--reason", "n")
+    code, data, _ = paddock.run("inputs", "--stage", "hla")
+    assert code == 0 and not any(
+        r["path"].endswith("presets.md") for r in data["inputs"] if r["exists"]
+    )
+    row = next(r for r in data["inputs"] if r["path"].endswith("presets.md"))
+    assert row["optional"] and not row["exists"]
+    presets = paddock.root / "docs" / "presets.md"
+    presets.parent.mkdir(parents=True)
+    presets.write_text("# Presets\n", encoding="utf-8")
+    code, data, _ = paddock.run("inputs", "--stage", "hla")
+    row = next(r for r in data["inputs"] if r["path"].endswith("presets.md"))
+    assert code == 0 and row["exists"] and row["mode"] == "full"

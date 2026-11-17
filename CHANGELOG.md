@@ -77,6 +77,15 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   recorded as done. User stories stay planning detail and are never filed.
   Older paddocks work unchanged.
 
+- **The organisation answers its policy questions once.** A programme of seven
+  paddocks asked the same questions about story format, acceptance-criteria
+  style and unit granularity seven times. `docs/presets.md` in the planning
+  repo now holds default answers written by people; a stage does not ask what
+  a preset answers, and a paddock can override one, for itself only, with the
+  approver's reason. `lint_questions.py --presets` checks the file and the
+  preset ids a question file cites. The template ships empty, because a
+  default invented by a tool is not the organisation's answer.
+
 - **Smaller work takes a shorter path through the same process.** The
   `express` and `bugfix` scopes skip stories, units and Bolt planning; `bugfix`
   requires a regression test that fails before the fix and passes after.

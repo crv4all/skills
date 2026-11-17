@@ -24,6 +24,7 @@ question failing for no visible reason.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import logging
 import re
@@ -41,11 +42,15 @@ EXIT_INTERNAL = 5
 EPILOG = """examples:
   python3 lint_questions.py --file docs/inception/user-stories/user-stories-questions.md
   python3 lint_questions.py --file questions.md --allow-open   # right after the Ask step
+  python3 lint_questions.py --presets docs/presets.md          # the organisation's presets
+  python3 lint_questions.py --file q.md --presets docs/presets.md  # also checks cited preset ids
 
 findings (exit 1): no-questions, no-context, too-few-options, too-many-options,
   no-other-option, no-recommendation, no-recommendation-reason, no-answer-line,
   empty-answer, answer-not-offered, other-without-text, multiple-letters,
   answer-rewritten (a formatter turned the answer line into a link)
+presets findings (exit 1): preset-field-missing, preset-field-empty, preset-duplicate-id,
+  preset-unknown-stage, preset-bad-date, preset-unknown-id (cited in a question file)
 warnings (never change the exit code): vague-answer
 
 exit codes:
@@ -269,13 +274,119 @@ def lint_text(text: str, allow_open: bool = False) -> dict[str, Any]:
     return {"questions": len(blocks), "findings": findings, "warnings": warnings}
 
 
+PRESET_HEADING = re.compile(r"^##\s+(P-\d+)\b")
+PRESET_FIELDS = ("Applies to", "Answer", "Reason", "Set by")
+FENCE = re.compile(r"^\s*(```|~~~)")
+DATE_END = re.compile(r",\s*(\d{4}-\d{2}-\d{2})\s*$")
+PRESET_CITE = re.compile(r"(?:preset|override of)\s+(P-\d+)", re.IGNORECASE)
+
+
+def stage_ids() -> Optional[set[str]]:
+    """Stage ids of the stages.json next to this skill's scripts; ``None`` when absent."""
+    path = Path(__file__).resolve().parent.parent / "assets" / "stages.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return {str(item["id"]) for item in data["stages"]}
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def preset_finding(code: str, pid: str, line: int, message: str) -> dict[str, Any]:
+    return {"code": code, "preset": pid, "line": line, "message": message}
+
+
+def lint_presets(text: str, known_stages: Optional[set[str]] = None) -> dict[str, Any]:
+    """Validate a presets file: entries are ``## P-n`` blocks; fenced code is ignored."""
+    entries: list[tuple[str, int, dict[str, tuple[int, str]]]] = []
+    in_fence = False
+    for number, line in enumerate(text.splitlines(), start=1):
+        if FENCE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        head = PRESET_HEADING.match(line)
+        if head:
+            entries.append((head.group(1), number, {}))
+        elif ANY_H2.match(line):
+            entries.append(("", number, {}))  # another section ends the entry
+        elif entries and entries[-1][0]:
+            field = re.match(r"^\s*\**(Applies to|Answer|Reason|Set by)\**\s*:\s*(.*)$", line)
+            if field and field.group(1) not in entries[-1][2]:
+                entries[-1][2][field.group(1)] = (number, field.group(2).strip())
+    findings: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    ids: list[str] = []
+    for pid, line, fields in (e for e in entries if e[0]):
+        ids.append(pid)
+        if pid in seen:
+            findings.append(preset_finding("preset-duplicate-id", pid, line, f"{pid} is reused."))
+        seen.add(pid)
+        for name in PRESET_FIELDS:
+            if name not in fields:
+                findings.append(
+                    preset_finding("preset-field-missing", pid, line, f"Missing `{name}:`.")
+                )
+            elif not fields[name][1]:
+                findings.append(
+                    preset_finding(
+                        "preset-field-empty", pid, fields[name][0], f"`{name}:` is empty."
+                    )
+                )
+        if fields.get("Applies to", (0, ""))[1]:
+            number, value = fields["Applies to"]
+            names = [n.strip() for n in value.split(",") if n.strip()]
+            if "all" in names and len(names) > 1:
+                findings.append(
+                    preset_finding("preset-unknown-stage", pid, number, "`all` stands alone.")
+                )
+            elif known_stages is not None:
+                for name in names:
+                    if name != "all" and name not in known_stages:
+                        findings.append(
+                            preset_finding(
+                                "preset-unknown-stage", pid, number, f"'{name}' is not a stage id."
+                            )
+                        )
+        if fields.get("Set by", (0, ""))[1]:
+            number, value = fields["Set by"]
+            match = DATE_END.search(value)
+            valid = False
+            if match:
+                try:
+                    dt.date.fromisoformat(match.group(1))
+                    valid = True
+                except ValueError:
+                    valid = False
+            if not valid:
+                findings.append(
+                    preset_finding(
+                        "preset-bad-date", pid, number, "`Set by:` must end in `, YYYY-MM-DD`."
+                    )
+                )
+    return {"presets": len(ids), "ids": ids, "findings": findings}
+
+
+def cited_presets(text: str) -> list[tuple[str, int]]:
+    """Preset ids a question file cites as ``preset P-n`` or ``override of P-n``."""
+    cites: list[tuple[str, int]] = []
+    for number, line in enumerate(text.splitlines(), start=1):
+        for match in PRESET_CITE.finditer(line):
+            cites.append((match.group(1), number))
+    return cites
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Lint a stage question file for shape and answers.",
         epilog=EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--file", required=True, help="Question file to check.")
+    parser.add_argument("--file", help="Question file to check.")
+    parser.add_argument(
+        "--presets",
+        help="Presets file to validate; with --file, also checks the preset ids it cites.",
+    )
     parser.add_argument(
         "--allow-open",
         action="store_true",
@@ -292,11 +403,65 @@ def main(argv: Optional[list[str]] = None) -> int:
         format="%(levelname)s: %(message)s",
         stream=sys.stderr,
     )
-    path = Path(args.file)
+    if not args.file and not args.presets:
+        LOG.error("give --file, --presets or both.")
+        return EXIT_USAGE
+    result: dict[str, Any] = {"findings": [], "warnings": []}
+    question_text: Optional[str] = None
+    if args.file:
+        path = Path(args.file)
+        text = read_text(path)
+        if isinstance(text, int):
+            return text
+        question_text = text
+        result = lint_text(text, allow_open=args.allow_open)
+        result["file"] = str(path)
+        for item in result["findings"]:
+            LOG.error(
+                "%s:%s %s %s: %s",
+                path,
+                item["line"],
+                item["question"],
+                item["code"],
+                item["message"],
+            )
+    if args.presets:
+        ppath = Path(args.presets)
+        ptext = read_text(ppath)
+        if isinstance(ptext, int):
+            return ptext
+        known = stage_ids()
+        report = lint_presets(ptext, known)
+        if known is None:
+            result["warnings"].append(
+                {"code": "stages-unknown", "message": "no stages.json; stage ids not checked."}
+            )
+        for number_id, number in cited_presets(question_text or ""):
+            if number_id not in report["ids"]:
+                report["findings"].append(
+                    preset_finding(
+                        "preset-unknown-id",
+                        number_id,
+                        number,
+                        f"{number_id} is cited in the question file but not in the presets file.",
+                    )
+                )
+        result["presets_file"] = str(ppath)
+        result["presets"] = report["presets"]
+        result["findings"].extend(report["findings"])
+        for item in report["findings"]:
+            LOG.error("%s:%s %s: %s", ppath, item["line"], item["code"], item["message"])
+    result["ok"] = not result["findings"]
+    sys.stdout.write(json.dumps(result, indent=2) + "\n")
+    return EXIT_FINDINGS if result["findings"] else EXIT_OK
+
+
+def read_text(path: Path) -> Any:
+    """The file's text, or the exit code to return after logging why it cannot be read."""
     try:
-        text = path.read_text(encoding="utf-8")
+        return path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        LOG.error("%s: file not found. Write the question file first.", path)
+        LOG.error("%s: file not found. Write the file first.", path)
         return EXIT_INPUT
     except UnicodeDecodeError as exc:
         LOG.error("%s: not valid UTF-8 (%s). Re-save the file as UTF-8.", path, exc.reason)
@@ -304,16 +469,6 @@ def main(argv: Optional[list[str]] = None) -> int:
     except OSError as exc:
         LOG.error("%s: unreadable: %s", path, exc)
         return EXIT_INPUT
-
-    result = lint_text(text, allow_open=args.allow_open)
-    result["file"] = str(path)
-    result["ok"] = not result["findings"]
-    for item in result["findings"]:
-        LOG.error(
-            "%s:%s %s %s: %s", path, item["line"], item["question"], item["code"], item["message"]
-        )
-    sys.stdout.write(json.dumps(result, indent=2) + "\n")
-    return EXIT_FINDINGS if result["findings"] else EXIT_OK
 
 
 if __name__ == "__main__":

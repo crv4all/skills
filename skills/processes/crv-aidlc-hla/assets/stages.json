@@ -72,6 +72,11 @@
           "mode": "full",
           "optional": true,
           "if_exists": true
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
         }
       ],
       "questions": "docs/inception/reverse-engineering/reverse-engineering-questions.md",
@@ -143,6 +148,11 @@
           "path": "parent:knowledge/_digest.md",
           "mode": "digest",
           "optional": true
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
         }
       ],
       "questions": [
@@ -199,6 +209,11 @@
           "path": "root:architecture-index.json",
           "mode": "full",
           "optional": true
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
         }
       ],
       "questions": [
@@ -246,6 +261,11 @@
         {
           "path": "root:codekb/<repo>/overview.md",
           "mode": "digest"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
         }
       ],
       "questions": "docs/inception/requirements-analysis/requirements-analysis-questions.md",
@@ -274,6 +294,11 @@
         {
           "path": "root:codekb/<repo>/overview.md",
           "mode": "digest"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
         }
       ],
       "questions": "docs/inception/user-stories/user-stories-questions.md",
@@ -320,6 +345,11 @@
         {
           "path": "architecture/hla.md",
           "mode": "digest"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
         }
       ],
       "questions": "docs/inception/domain-design/domain-design-questions.md",
@@ -357,6 +387,11 @@
         {
           "path": "docs/inception/user-stories/stories.md",
           "mode": "digest"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
         }
       ],
       "questions": "docs/inception/units-generation/units-generation-questions.md",
@@ -395,6 +430,11 @@
         {
           "path": "docs/inception/requirements-analysis/requirements.md",
           "mode": "digest"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
         }
       ],
       "questions": "docs/inception/contract-design/contract-design-questions.md",
@@ -439,6 +479,11 @@
         {
           "path": "docs/inception/contract-design/contract-summary.md",
           "mode": "digest"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
         }
       ],
       "questions": "docs/inception/delivery-planning/delivery-planning-questions.md",
@@ -483,6 +528,11 @@
         {
           "path": "docs/inception/contract-design/contract-summary.md",
           "mode": "digest"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
         }
       ],
       "questions": "docs/construction/<unit>/functional-design/functional-design-questions.md",
@@ -522,6 +572,11 @@
         {
           "path": "root:codekb/<repo>/technology-stack.md",
           "mode": "full"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
         }
       ],
       "questions": "docs/construction/<unit>/nfr-requirements/nfr-requirements-questions.md",
@@ -584,6 +639,11 @@
         {
           "path": "docs/inception/domain-design/components.md",
           "mode": "digest"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
         }
       ],
       "questions": "docs/construction/<unit>/nfr-design/nfr-design-questions.md",
@@ -630,6 +690,11 @@
         {
           "path": "docs/inception/contract-design/contract-summary.md",
           "mode": "digest"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
         }
       ],
       "questions": "docs/construction/<unit>/infrastructure-design/infrastructure-design-questions.md",
@@ -781,6 +846,11 @@
         },
         {
           "path": "root:codekb/<repo>/technology-stack.md",
+          "mode": "full",
+          "optional": true
+        },
+        {
+          "path": "root:docs/presets.md",
           "mode": "full",
           "optional": true
         }

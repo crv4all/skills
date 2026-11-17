@@ -203,3 +203,86 @@ def test_a_proposal_does_not_reach_past_another_section(tmp_path: Path) -> None:
     text = LAYERED.replace("## Q1 Storage", "## Already answered\n\n- none\n\n## Q1 Storage")
     _, result = lint(tmp_path, text)
     assert "Q1" in [f["question"] for f in result["findings"] if f["code"] == "no-context"]
+
+
+# --- presets -------------------------------------------------------------------
+
+PRESET = """## P-1 Story format
+Applies to: user-stories, units-generation
+Answer: One story per persona.
+Reason: Keeps stories small.
+Set by: Rae Viewer, 2026-03-02
+"""
+TEMPLATE = REPO_ROOT / "skills" / "processes" / "crv-aidlc" / "assets" / "presets-template.md"
+
+
+def lint_presets(tmp_path: Path, text: str, question: str | None = None) -> tuple[int, dict]:
+    presets = tmp_path / "presets.md"
+    presets.write_text(text, encoding="utf-8")
+    args = [sys.executable, str(SCRIPT), "--presets", str(presets)]
+    if question is not None:
+        qfile = tmp_path / "q.md"
+        qfile.write_text(question, encoding="utf-8")
+        args += ["--file", str(qfile)]
+    done = subprocess.run(args, capture_output=True, text=True, timeout=60)
+    return done.returncode, json.loads(done.stdout)
+
+
+def test_a_valid_presets_file_passes(tmp_path: Path) -> None:
+    code, result = lint_presets(
+        tmp_path, "# Presets\n\n" + PRESET + "\n" + PRESET.replace("1", "2")
+    )
+    assert code == 0 and result["presets"] == 2 and result["ok"]
+
+
+def test_an_empty_presets_file_passes(tmp_path: Path) -> None:
+    assert lint_presets(tmp_path, "# Presets\n\nNo presets yet.\n")[0] == 0
+
+
+def test_a_missing_or_empty_field_is_reported_with_its_line(tmp_path: Path) -> None:
+    code, result = lint_presets(tmp_path, PRESET.replace("Reason: Keeps stories small.\n", ""))
+    assert code == 1 and codes(result) == ["preset-field-missing"]
+    code, result = lint_presets(tmp_path, PRESET.replace("Keeps stories small.", ""))
+    assert (
+        code == 1 and codes(result) == ["preset-field-empty"] and result["findings"][0]["line"] == 4
+    )
+
+
+def test_a_duplicate_id_is_reported(tmp_path: Path) -> None:
+    code, result = lint_presets(tmp_path, PRESET + "\n" + PRESET)
+    assert code == 1 and codes(result) == ["preset-duplicate-id"]
+
+
+def test_an_unknown_stage_is_reported_and_all_is_valid(tmp_path: Path) -> None:
+    code, result = lint_presets(tmp_path, PRESET.replace("units-generation", "no-such-stage"))
+    assert code == 1 and codes(result) == ["preset-unknown-stage"]
+    assert lint_presets(tmp_path, PRESET.replace("user-stories, units-generation", "all"))[0] == 0
+
+
+@pytest.mark.parametrize("tail", ["Rae Viewer", "Rae Viewer, 2026-13-40", "Rae Viewer, 02/03/2026"])
+def test_a_bad_date_is_reported(tmp_path: Path, tail: str) -> None:
+    code, result = lint_presets(tmp_path, PRESET.replace("Rae Viewer, 2026-03-02", tail))
+    assert code == 1 and codes(result) == ["preset-bad-date"]
+
+
+def test_an_entry_inside_a_code_fence_is_ignored(tmp_path: Path) -> None:
+    broken = "```\n## P-1 Example\nApplies to: nowhere\n```\n"
+    code, result = lint_presets(tmp_path, broken)
+    assert code == 0 and result["presets"] == 0
+
+
+def test_a_cited_id_missing_from_the_presets_file_is_reported(tmp_path: Path) -> None:
+    question = GOOD + "\n## Already answered\n- preset P-1\n- override of P-9: approver said so\n"
+    code, result = lint_presets(tmp_path, PRESET, question)
+    assert code == 1 and codes(result) == ["preset-unknown-id"]
+    assert result["findings"][0]["preset"] == "P-9"
+
+
+def test_the_shipped_template_passes_and_has_no_entries(tmp_path: Path) -> None:
+    code, result = lint_presets(tmp_path, TEMPLATE.read_text(encoding="utf-8"))
+    assert code == 0 and result["presets"] == 0
+
+
+def test_lint_needs_a_file_or_presets() -> None:
+    done = subprocess.run([sys.executable, str(SCRIPT)], capture_output=True, text=True, timeout=60)
+    assert done.returncode == 2
