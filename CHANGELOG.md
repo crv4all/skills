@@ -86,6 +86,14 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   preset ids a question file cites. The template ships empty, because a
   default invented by a tool is not the organisation's answer.
 
+- **A new person can tell whether they are ready before the first paddock.**
+  A partial install (a skill added to the repository but not on the machine)
+  made a stage fail in a way that looked like a process bug.
+  `check_prerequisites.py` names what is missing or out of date, with the fix
+  command, and `crv-aidlc` runs it before opening a paddock. It only reads; a
+  pass is remembered until an installed shared file changes. A getting-started
+  guide in the planning repo covers the rest.
+
 - **Smaller work takes a shorter path through the same process.** The
   `express` and `bugfix` scopes skip stories, units and Bolt planning; `bugfix`
   requires a regression test that fails before the fix and passes after.

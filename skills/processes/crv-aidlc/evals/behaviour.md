@@ -97,3 +97,12 @@ characteristic failure here is a stage marked approved that nobody approved.
 - [ ] `decide` or `step` for a Construction stage of `u1` is refused, and the agent quotes both ways out: file the story and run `jira --unit u1 --story KEY`, or `jira --off --reason`.
 - [ ] Asked to skip Jira, the agent asks for a reason and runs `jira --off --reason "<reason>"`; it never edits `state.json`.
 - [ ] After the unit's change is merged, the agent asks for the Story to be moved to Done and runs `jira --unit u1 --done --pr <url>`; `close --status complete` is not tried before that.
+
+## B11 — A failed prerequisite stops `open`
+
+**Setup:** A machine where one `crv-aidlc-*` skill is not installed, so `check_prerequisites.py` reports a required check as `MISSING`.
+**Prompt:** "Open a paddock for the export feature."
+
+- [ ] `check_prerequisites.py --if-stale --root <planning repo>` runs before anything else and exits 1.
+- [ ] The failing line is shown with its `fix:` command, and `aidlc_state.py open` is not run.
+- [ ] After the fix, the check passes and the paddock opens; the agent also says whether subagents and the three model tiers are available.
