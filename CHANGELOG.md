@@ -12,6 +12,25 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Paddock work is committed and pushed by the state script.** Every
+  `aidlc_state.py` command that changes a paddock first brings in the team's
+  work, then commits the paddock and pushes it to the shared branch named in
+  `aidlc.json`; a new `sync` command does the same for work that changes files
+  but no state. A conflict stops with exit 6 and a rule per file, so the agent
+  resolves it without asking the person. A likely secret in the commit also
+  stops it.
+- **`onboard.py` sets up a new machine.** It checks the tools and the git
+  identity, creates and registers an SSH key for Azure DevOps when none works,
+  clones or updates the ADR registry, the planning repo and this repository over
+  SSH, installs the skills and runs the readiness check. It runs on macOS,
+  Windows and Linux, and a second run is the update path.
+- **The readiness check covers access and freshness.** It now checks SSH access
+  to Azure DevOps, that no remote uses https, the working branch, whether the
+  installed skills are current, and compares the ADR index with the registry's
+  remote, not only the local checkout.
+- **`build_adr_index.py --refresh`** fetches the ADR registry, fast-forwards a
+  clean checkout and reports which ADRs were added or changed in status. The
+  architecture skill runs it before shortlisting ADRs.
 - **A staged delivery process starts with its entry skill.** `crv-aidlc` opens,
   resumes and closes a "paddock" (the folder for one piece of work), says which
   stage skill is next, and refuses to approve a stage whose artifact is missing,

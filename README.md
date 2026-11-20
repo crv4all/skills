@@ -52,6 +52,10 @@ build, because a skill nobody can find is a skill nobody uses.
 
 ## Install
 
+New to the AI-DLC process? Run `python3 onboard.py` from a clone of this
+repository: it sets up SSH for Azure DevOps, clones the planning repo and the ADR
+registry, installs the skills and checks that the machine is ready.
+
 ```bash
 git clone <this-repo> ~/src/agent-skills
 cd ~/src/agent-skills

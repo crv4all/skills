@@ -43,14 +43,14 @@ Opening, resuming or closing a paddock; "what is next"; and "am I ready to use A
 
 ## Open a paddock
 
-1. Run `check_prerequisites.py --if-stale --root <planning repo>` (add `--jira` when the paddock will use Jira). On exit 1 show the failing lines with their fix commands and stop; do not open the paddock. In the same line say whether subagents and the three model tiers are available in this session: a script cannot know.
+1. Run `check_prerequisites.py --if-stale --root <planning repo>` (add `--jira` when the paddock will use Jira). On exit 1 show the failing lines with their fix commands and stop; do not open the paddock. In the same line say whether subagents and the three model tiers are available in this session: a script cannot know. A new machine is set up with `python3 onboard.py` from the skills checkout: SSH key for Azure DevOps, the three clones, the skills, then this check.
 2. Ask for what is missing, in one message: title, one-sentence intent, target repositories (`name=path`), scope (default `classic`: every stage; `express`: requirements, code, build and test, with one default unit; `bugfix`: the same at minimal depth, with a mandatory regression test; the names are AWS v2.11.4's), depth (`minimal`, `standard`, `comprehensive`; default `standard`, `minimal` for `bugfix`), the ADR registry path if one applies.
 3. Run `aidlc_state.py open --root <planning repo> --slug <kebab-case> --title ... --intent ... [--scope ..] [--depth ..] [--target name=path]... [--architecture-ref <path>] [--parent <paddock id>] [--kind frame|delivery]`. It refuses when the folder exists: resume instead. `--parent` makes this paddock a child whose HLA builds on the parent's. Use `--kind frame` for programme-level design whose phases become child paddocks: it ends at the HLA gate, every later stage is skipped, and `kind --set` converts a paddock before those stages start.
 4. Tell the user which target was classified brownfield or greenfield and the rule that matched (in `log.md`). If a person disagrees, say so at the Workspace Detection gate.
 5. Raw documents the user hands in go to `inputs/`, untouched. When there are any, run `index_inputs.py --paddock <p>`, then give the outline to economy-tier workers, one section each, to write `knowledge/_digest.md`: at most 5 lines per section, each with source path and line range.
 6. For each brownfield target, `open` reports the shared code knowledge (`codekb/<repo>/` at the planning repo root) as missing, fresh or stale. Re-run it any time with `aidlc_state.py codekb-status --paddock <p>`; a stale store comes with the changed files and `rescan: focused|full` for the reverse-engineering stage.
 7. Organisation-wide presets (default answers, so a question they answer is not asked) live in `docs/presets.md` at the planning repo root, written by people (template: `assets/presets-template.md`); `lint_questions.py --presets <file>` checks it.
-8. If the ADR registry applies, run `build_adr_index.py --registry <path> --out <planning repo>/architecture-index.json`.
+8. If the ADR registry applies, run `build_adr_index.py --registry <path> --out <planning repo>/architecture-index.json --refresh`. It fetches the registry, fast-forwards a clean checkout and prints the ADRs added or changed in status. If it warns that the checkout is behind and was left alone, tell the user.
 9. Give the user the `workspace.file` from `open` (a multi-root workspace for the editor) and its `claude_command` for the terminal, and report any checkout marked `stale` before a stage reads code. The file holds machine-specific paths: `*.code-workspace` belongs in the planning repo's `.gitignore`. Change targets later with `target --add name=path | --remove name`; other folders with `workspace --extra name=path`.
 
 ## Resume
@@ -88,6 +88,10 @@ Action `decide`: ask the approver for EXECUTE or SKIP with a reason (`next` show
 - `decide` and `step` on a unit's Construction stage are refused until the unit has a story, unless Jira is off.
 - When a unit's change is merged, its Story is moved to Done by a person, or by the session when it has Jira access. Then record `jira --unit <u> --done`. `close --status complete` is refused while a filed Story is not recorded as done.
 
+## Git
+
+The planning repo is shared and everyone works on one branch, named in `aidlc.json` at its root. Every command that changes a paddock first brings in the team's work, then commits the paddock and pushes it; do not commit paddock files by hand. After file changes with no state change, run `aidlc_state.py sync --paddock <p> -m "<what changed>"`, and never end a turn with uncommitted paddock work (`status` shows the count). The script never commits in a target repository.
+
 ## Close
 
 `aidlc_state.py close --paddock <p> --status complete|superseded|archived [--successor <id>]`. `complete` is refused while any executed stage is unapproved; report the list instead of forcing it. To pause, `park --note "<hand-over>"`; `unpark` clears it.
@@ -97,4 +101,5 @@ Action `decide`: ask the approver for EXECUTE or SKIP with a reason (`next` show
 - Exit 2: a flag is wrong; read the message and fix the command.
 - Exit 3: something is missing; name it and the stage that produces it.
 - Exit 4: a file is malformed; report its path, do not repair `state.json` by hand.
+- Exit 6: git needs you. The output names each file and its rule. Resolve it yourself, then run the command or `sync` again; a merge conflict is never a question for the user. A possible secret in the commit is the one stop: remove or mask it, then `sync` again.
 - Exit 5 or anything unexpected: stop and report the command and the error.
