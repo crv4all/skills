@@ -22,10 +22,13 @@ import hashlib
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import quote, unquote, urlparse
 
 EXIT_OK = 0
 EXIT_FINDINGS = 1
@@ -34,6 +37,7 @@ EXIT_USAGE = 2
 EPILOG = """examples:
   python3 check_prerequisites.py --root ~/planning
   python3 check_prerequisites.py --if-stale --root ~/planning --jira
+  python3 check_prerequisites.py --root ~/planning --offline
 
 exit codes:
   0  every required check is ok (conditional failures are shown as warnings)
@@ -65,6 +69,17 @@ SHARED = (
     ("scripts/validate_doc.py", "crv-aidlc-hla", ("crv-aidlc-tdd",)),
 )
 JIRA_SKILLS = ("crv-create-jira-epic", "crv-create-jira-story")
+AZURE_SSH_HOST = "ssh.dev.azure.com"
+#: Results that depend on the network or on git state are not trusted for longer than this.
+MAX_AGE_SECONDS = 24 * 60 * 60
+STAMP_NAME = ".crv-install"
+#: Same list as ``MANUAL_ITEMS`` in onboard.py: things only a person can arrange.
+MANUAL_ITEMS = (
+    "Access to the target repositories of your paddock (ask the repository owner).",
+    "The Jira and Confluence connector, when your paddock uses Jira.",
+    "Databricks access, when a stage reads data.",
+    "az login, only if you list repositories.",
+)
 INSTALL_FIX = "from your clone of the skills repository run: ./install.sh --all"
 MARKER_NAME = "prerequisites.json"
 THIS = Path(__file__)
@@ -93,12 +108,75 @@ def skill_dirs() -> dict[str, Path]:
     return found
 
 
-def git_value(*args: str) -> Optional[str]:
+def git_value(*args: str, timeout: int = 20, network: bool = False) -> Optional[str]:
+    env = None
+    if network:  # never wait for a prompt: a missing key must fail fast
+        env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+        env.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes -o ConnectTimeout=10")
     try:
-        done = subprocess.run(["git", *args], capture_output=True, text=True, timeout=20)
+        done = subprocess.run(
+            ["git", *args], capture_output=True, text=True, timeout=timeout, env=env,
+            stdin=subprocess.DEVNULL,
+        )  # fmt: skip
     except (OSError, subprocess.SubprocessError):
         return None
     return done.stdout.strip() if done.returncode == 0 else None
+
+
+def to_ssh_url(url: str) -> Optional[str]:
+    """The SSH form of an https remote on Azure DevOps or GitHub, or None."""
+    parts = urlparse(url.strip())
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return None
+    host = parts.hostname.lower()
+    segments = [unquote(seg) for seg in parts.path.split("/") if seg]
+    if host == "github.com" and len(segments) >= 2:
+        repo = segments[1][:-4] if segments[1].endswith(".git") else segments[1]
+        return f"git@github.com:{segments[0]}/{repo}.git"
+    if host == "dev.azure.com" and "_git" in segments:
+        at = segments.index("_git")
+        if at >= 1 and len(segments) > at + 1:
+            org, repo = segments[0], segments[at + 1]
+            project = segments[1] if at >= 2 else repo
+            return f"git@{AZURE_SSH_HOST}:v3/{org}/{quote(project, safe='')}/{quote(repo, safe='')}"
+    if host.endswith(".visualstudio.com") and "_git" in segments:
+        org = host.split(".")[0]
+        rest = [seg for seg in segments if seg != "DefaultCollection"]
+        at = rest.index("_git")
+        if len(rest) > at + 1:
+            project = rest[0] if at >= 1 else rest[at + 1]
+            repo = rest[at + 1]
+            return f"git@{AZURE_SSH_HOST}:v3/{org}/{quote(project, safe='')}/{quote(repo, safe='')}"
+    return None
+
+
+def find_checkout(explicit: Optional[str]) -> Optional[Path]:
+    """The skills checkout this script runs from (it may be reached through a symlink)."""
+    if explicit:
+        return Path(explicit).expanduser().resolve()
+    for folder in THIS.resolve().parents:
+        if (folder / ".git").exists() and (folder / "install.sh").is_file():
+            return folder
+    return None
+
+
+def onboard_command(checkout: Optional[Path]) -> str:
+    if checkout and (checkout / "onboard.py").is_file():
+        return f"python3 {checkout / 'onboard.py'}"
+    return "python3 onboard.py (from your clone of the skills repository)"
+
+
+def ssh_reaches_azure() -> bool:
+    """Batch-mode test. A working key prints 'Shell access is not supported.'"""
+    target = f"git@{AZURE_SSH_HOST}"
+    try:
+        done = subprocess.run(
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-T", target],
+            capture_output=True, text=True, timeout=25, stdin=subprocess.DEVNULL,
+        )  # fmt: skip
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return "Shell access is not supported" in (done.stdout + done.stderr)
 
 
 def find_root(explicit: Optional[str]) -> Optional[Path]:
@@ -190,7 +268,146 @@ def r5_planning(root: Optional[Path]) -> dict[str, str]:
     return check("R5", name, "required", "ok", str(root))
 
 
-def c1_adr(root: Optional[Path], ref: Optional[str], found: dict[str, Path]) -> dict[str, str]:
+def r6_ssh_tools() -> dict[str, str]:
+    absent = [t for t in ("ssh", "ssh-keygen") if shutil.which(t) is None]
+    if absent:
+        return check(
+            "R6", "SSH tools", "required", "missing", "not on PATH: " + ", ".join(absent),
+            "install OpenSSH (macOS: built in; Windows: winget install Microsoft.OpenSSH.Beta; "
+            "Linux: apt install openssh-client)",
+        )  # fmt: skip
+    return check("R6", "SSH tools", "required", "ok", "ssh and ssh-keygen found")
+
+
+def r7_azure(offline: bool, checkout: Optional[Path]) -> dict[str, str]:
+    name = "Azure DevOps over SSH"
+    if offline:
+        return check("R7", name, "required", "skipped", "not tested (--offline)")
+    if shutil.which("ssh") is None:
+        return check("R7", name, "required", "skipped", "ssh is missing, see the SSH tools check")
+    if ssh_reaches_azure():
+        return check("R7", name, "required", "ok", f"git@{AZURE_SSH_HOST} accepts your key")
+    return check(
+        "R7", name, "required", "missing", f"git@{AZURE_SSH_HOST} did not accept your key",
+        onboard_command(checkout),
+    )  # fmt: skip
+
+
+def registry_path(root: Optional[Path], ref: Optional[str], name: Optional[str]) -> Optional[Path]:
+    if ref:
+        return Path(ref).expanduser()
+    if root:
+        for sibling in (name, "adr-registry"):
+            if sibling and (root.parent / sibling).is_dir():
+                return root.parent / sibling
+    return None
+
+
+def r8_remotes(root: Optional[Path], registry: Optional[Path]) -> dict[str, str]:
+    name = "Git remotes use SSH"
+    bad: list[str] = []
+    fixes: list[str] = []
+    for label, path in (("planning repo", root), ("ADR registry", registry)):
+        if path is None or not path.is_dir():
+            continue
+        url = git_value("-C", str(path), "remote", "get-url", "origin")
+        if not url or not url.lower().startswith(("http://", "https://")):
+            continue
+        bad.append(label)
+        ssh = to_ssh_url(url)
+        fixes.append(
+            f"git -C {path} remote set-url origin {ssh}" if ssh
+            else f"git -C {path} remote set-url origin <the SSH url of {label}>"
+        )  # fmt: skip
+    if bad:
+        return check(
+            "R8", name, "required", "outdated", "https remote: " + ", ".join(bad), "; ".join(fixes)
+        )
+    return check("R8", name, "required", "ok", "no https remotes")
+
+
+def branch_wanted(root: Optional[Path]) -> Optional[str]:
+    if root is None:
+        return None
+    try:
+        data = json.loads((root / "aidlc.json").read_text(encoding="utf-8"))
+        branch = data["git"]["branch"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return branch if isinstance(branch, str) and branch else None
+
+
+def r9_branch(root: Optional[Path]) -> dict[str, str]:
+    name = "Planning branch"
+    wanted = branch_wanted(root)
+    if wanted is None or root is None:
+        return check("R9", name, "required", "skipped", "aidlc.json names no branch")
+    current = git_value("-C", str(root), "symbolic-ref", "--short", "HEAD")
+    if current == wanted:
+        return check("R9", name, "required", "ok", f"on {wanted}")
+    return check(
+        "R9", name, "required", "outdated",
+        f"on {current or 'no branch'}, aidlc.json wants {wanted}",
+        f"git -C {root} switch {wanted}",
+    )  # fmt: skip
+
+
+def read_stamp(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return values
+    for line in lines:
+        if "=" in line and not line.startswith("#"):
+            key, _, value = line.partition("=")
+            values[key.strip()] = value.strip()
+    return values
+
+
+def c4_current(found: dict[str, Path], checkout: Optional[Path], offline: bool) -> dict[str, str]:
+    name = "Skills current"
+    homes = [Path.home() / ".claude" / "skills", Path.home() / ".cursor" / "skills"]
+    stamps: dict[str, dict[str, str]] = {}
+    for skill in SKILLS:
+        places = [found[skill]] if skill in found else []
+        for place in [*places, *(home / skill for home in homes)]:
+            if (place / STAMP_NAME).is_file():
+                stamps[f"{skill} ({place.parent})"] = read_stamp(place / STAMP_NAME)
+    if not stamps:
+        return check("C4", name, "conditional", "skipped", "no install stamps (not an install)")
+    fix = f"{onboard_command(checkout)}  (or ./install.sh --all)"
+    if checkout is None:
+        return check("C4", name, "conditional", "skipped", "no skills checkout to compare with")
+    head = git_value("-C", str(checkout), "rev-parse", "HEAD")
+    issues: list[str] = []
+    old = [n for n, st in stamps.items() if not st.get("commit") or st.get("commit") != head]
+    if old:
+        issues.append(
+            "installed from an older checkout: "
+            + ", ".join(sorted({n.split(" (")[0] for n in old}))
+        )
+    note = ""
+    if offline:
+        note = " (remote not checked: --offline)"
+    elif git_value("-C", str(checkout), "fetch", "--quiet", timeout=60, network=True) is None:
+        note = " (remote not reached: compared with the local checkout)"
+    else:
+        counts = git_value("-C", str(checkout), "rev-list", "--count", "HEAD..@{u}")
+        if counts and counts.isdigit() and int(counts) > 0:
+            issues.append(f"the checkout is {counts} commits behind its remote")
+    if issues:
+        return check("C4", name, "conditional", "outdated", "; ".join(issues), fix)
+    if note:
+        return check(
+            "C4", name, "conditional", "warning", "installed skills match the checkout" + note
+        )
+    return check("C4", name, "conditional", "ok", "installed skills match the checkout")
+
+
+def c1_adr(
+    root: Optional[Path], ref: Optional[str], found: dict[str, Path], offline: bool = False
+) -> dict[str, str]:
     name = "ADR registry"
     index = root / "architecture-index.json" if root else None
     if not ref and not (index and index.is_file()):
@@ -206,10 +423,7 @@ def c1_adr(root: Optional[Path], ref: Optional[str], found: dict[str, Path]) -> 
                 "C1", name, "conditional", "outdated", f"{index} is not valid JSON",
                 "rebuild it with build_adr_index.py",
             )  # fmt: skip
-    path: Optional[Path] = Path(ref).expanduser() if ref else None
-    if path is None and root and registry_name:
-        sibling = root.parent / registry_name
-        path = sibling if sibling.is_dir() else None
+    path = registry_path(root, ref, registry_name) if (ref or registry_name) else None
     if path is None:
         return check(
             "C1", name, "conditional", "skipped", "registry path unknown",
@@ -217,20 +431,39 @@ def c1_adr(root: Optional[Path], ref: Optional[str], found: dict[str, Path]) -> 
         )  # fmt: skip
     script = (found.get("crv-aidlc") or THIS.parent.parent) / "scripts" / "build_adr_index.py"
     out = (root / "architecture-index.json") if root else Path("architecture-index.json")
-    fix = f"python3 {script} --registry {path} --out {out}"
+    fix = f"python3 {script} --registry {path} --out {out} --refresh"
     if not path.is_dir() or git_value("-C", str(path), "rev-parse", "--git-dir") is None:
         return check(
             "C1", name, "conditional", "missing", f"{path} is not a git repository",
             "clone the ADR registry, then pass --architecture-ref <path>",
         )  # fmt: skip
     head = git_value("-C", str(path), "rev-parse", "HEAD")
+    target, where, note = head, "HEAD", ""
+    if git_value("-C", str(path), "remote"):  # there is a remote to compare with
+        if offline:
+            note = "offline: compared with the local checkout"
+        elif git_value("-C", str(path), "fetch", "--quiet", timeout=60, network=True) is None:
+            note = "no network: compared with the local checkout"
+        else:
+            for spec in ("origin/HEAD", "@{u}"):
+                remote_head = git_value("-C", str(path), "rev-parse", spec)
+                if remote_head:
+                    target, where = remote_head, "remote"
+                    break
+    suffix = f" ({note})" if note else ""
     if recorded is None:
-        return check("C1", name, "conditional", "ok", "registry found; no index to compare")
-    if head != recorded:
         return check(
-            "C1", name, "conditional", "outdated", "the index is behind the registry's HEAD", fix
+            "C1", name, "conditional", "ok", "registry found; no index to compare" + suffix
         )
-    return check("C1", name, "conditional", "ok", "index matches the registry's HEAD")
+    if target != recorded:
+        return check(
+            "C1", name, "conditional", "outdated",
+            f"the index is behind the registry's {where}" + suffix, fix,
+        )  # fmt: skip
+    status = "warning" if note else "ok"
+    return check(
+        "C1", name, "conditional", status, f"index matches the registry's {where}" + suffix
+    )
 
 
 def jira_config_path() -> Path:
@@ -310,6 +543,7 @@ def write_marker(directory: Path, verdict: str, print_value: str) -> Optional[st
         directory.mkdir(parents=True, exist_ok=True)
         payload = {
             "date": dt.date.today().isoformat(),
+            "checked_at": int(time.time()),
             "verdict": verdict,
             "fingerprint": print_value,
         }
@@ -319,7 +553,22 @@ def write_marker(directory: Path, verdict: str, print_value: str) -> Optional[st
     return None
 
 
-LABEL = {"ok": "OK", "missing": "MISSING", "outdated": "OUTDATED", "skipped": "SKIPPED"}
+def marker_is_fresh(marker: dict[str, Any], now: Optional[float] = None) -> bool:
+    """Network and git results are only trusted for 24 hours."""
+    stamped = marker.get("checked_at")
+    if not isinstance(stamped, (int, float)):
+        return False
+    age = (time.time() if now is None else now) - stamped
+    return 0 <= age < MAX_AGE_SECONDS
+
+
+LABEL = {
+    "ok": "OK",
+    "missing": "MISSING",
+    "outdated": "OUTDATED",
+    "skipped": "SKIPPED",
+    "warning": "WARNING",
+}
 
 
 def render(checks: list[dict[str, str]], verdict: str, notes: list[str]) -> str:
@@ -329,8 +578,9 @@ def render(checks: list[dict[str, str]], verdict: str, notes: list[str]) -> str:
         if item["status"] in ("missing", "outdated") and item["fix"]:
             lines.append(f"  fix: {item['fix']}")
     lines.extend(notes)
-    lines.append(f"Verdict: {verdict}")
-    return "\n".join(lines[:25]) + "\n"
+    lines.append("Only you can arrange these (not counted as failures):")
+    lines.extend(f"  MANUAL {item}" for item in MANUAL_ITEMS)
+    return "\n".join([*lines[:40], f"Verdict: {verdict}"]) + "\n"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -343,7 +593,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--architecture-ref", help="ADR registry checkout.")
     parser.add_argument("--jira", action="store_true", help="Also check the Jira items.")
     parser.add_argument("--format", choices=["text", "json"], default="text")
-    parser.add_argument("--if-stale", action="store_true", help="Skip when a marker says ok.")
+    parser.add_argument(
+        "--if-stale",
+        action="store_true",
+        help="Skip when a marker says ok. The marker is not trusted for more than 24 hours.",
+    )
+    parser.add_argument(
+        "--offline", action="store_true", help="Make no network call; say so in the table."
+    )
+    parser.add_argument("--skills-checkout", help="The skills checkout (default: where this runs).")
     parser.add_argument(
         "--marker-dir",
         default="~/.config/crv-aidlc",
@@ -365,32 +623,55 @@ def main(argv: Optional[list[str]] = None) -> int:
     current = fingerprint(found)
     if args.if_stale:
         marker = read_marker(marker_dir)
-        if marker and marker.get("verdict") == "ok" and marker.get("fingerprint") == current:
+        if (
+            marker
+            and marker.get("verdict") == "ok"
+            and marker.get("fingerprint") == current
+            and marker_is_fresh(marker)
+        ):
             if args.format == "json":
                 sys.stdout.write(json.dumps({"ok": True, "skipped": True, **marker}) + "\n")
             else:
                 sys.stdout.write(f"ok, checked {marker.get('date')}\n")
             return EXIT_OK
     root = find_root(args.root)
+    checkout = find_checkout(args.skills_checkout)
+    registry = registry_path(root, args.architecture_ref, None)
     checks = [
         r1_python(), r2_git(), r3_installed(found), r4_consistent(found), r5_planning(root),
-        c1_adr(root, args.architecture_ref, found), c2_jira(args.jira, found), c3_presets(root),
+        r6_ssh_tools(), r7_azure(args.offline, checkout), r8_remotes(root, registry),
+        r9_branch(root),
+        c1_adr(root, args.architecture_ref, found, args.offline), c2_jira(args.jira, found),
+        c3_presets(root), c4_current(found, checkout, args.offline),
     ]  # fmt: skip
-    required_ok = all(c["status"] == "ok" for c in checks if c["level"] == "required")
-    warned = any(c["status"] in ("missing", "outdated") for c in checks if c["level"] != "required")
+    required_ok = all(c["status"] in ("ok", "skipped") for c in checks if c["level"] == "required")
+    warned = any(
+        c["status"] in ("missing", "outdated", "warning")
+        for c in checks
+        if c["level"] != "required"
+    )
     verdict = "ok" if required_ok else "not ready"
     if required_ok and warned:
         verdict = "ok, with warnings"
     notes = []
+    if args.offline:
+        notes.append("Offline: no network call was made; SSH and remote checks used local data.")
     if args.jira:
         notes.append(
             "Jira access cannot be checked here: the session must confirm it has Jira tools."
         )
-    warning = write_marker(marker_dir, "ok" if required_ok else "failed", current)
+    remembered = "ok" if required_ok and not args.offline else "failed"
+    warning = write_marker(marker_dir, remembered, current)
     if warning:
         LOG.warning("%s", warning)
     if args.format == "json":
-        payload = {"ok": required_ok, "verdict": verdict, "checks": checks, "notes": notes}
+        payload = {
+            "ok": required_ok,
+            "verdict": verdict,
+            "checks": checks,
+            "notes": notes,
+            "manual": list(MANUAL_ITEMS),
+        }
         if warning:
             payload["warning"] = warning
         sys.stdout.write(json.dumps(payload, indent=2) + "\n")
