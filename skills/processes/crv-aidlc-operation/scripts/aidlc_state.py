@@ -22,6 +22,7 @@ import os
 import re
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NoReturn, Optional, cast
 
@@ -31,6 +32,7 @@ EXIT_USAGE = 2
 EXIT_INPUT = 3
 EXIT_MALFORMED = 4
 EXIT_INTERNAL = 5
+EXIT_GIT = 6
 
 EPILOG = """commands:
   open        create a paddock           --root R --slug S --title T --intent I [--parent P]
@@ -51,6 +53,12 @@ EPILOG = """commands:
                                          [--pr URL] | --off --reason R | --on
   park/unpark hand-over note             --paddock P --note N
   close       close the paddock          --paddock P --status complete|superseded|archived
+  sync        commit and push your work  --paddock P [-m "what changed"] | --root R
+
+Git: a command that changes a paddock first brings in the team's work, then commits the
+paddock and pushes it. `aidlc.json` at the planning root may hold
+{"git": {"branch": "..", "remote": "origin", "commit": true, "push": true}}.
+AIDLC_GIT=off or --no-git turns git writes off; a folder outside git is skipped.
 
 examples:
   python3 aidlc_state.py open --root . --slug billing --title "Billing" --intent "Move billing"
@@ -66,6 +74,7 @@ exit codes:
   3  missing input: no paddock, no state.json, a stage input, a folder or a named target is absent
   4  malformed input: state.json, stages.json or a units file cannot be parsed
   5  internal error
+  6  git needs you: a rebase or merge conflict, or a possible secret in the commit
 """
 
 LOG = logging.getLogger("aidlc_state")
@@ -919,6 +928,9 @@ def cmd_status(
     if parent:
         facts["parent"] = parent
         facts["parent_hla_status"] = parent_hla_status(paddock, state)
+    git_block = git_status_block(paddock)
+    if git_block is not None:
+        facts["git"] = git_block
     if fmt == "json":
         return facts
     lines = [
@@ -935,6 +947,8 @@ def cmd_status(
         lines.append(f"{phase.capitalize()}: {entry['done']}/{entry['total']} done{note}")
     lines.append(f"Units: {len(state['units'])} | Bolts: {len(state['bolts'])}")
     lines.append(jira_line(state))
+    if git_block is not None:
+        lines.append(git_status_line(git_block))
     if nxt["done"]:
         lines.append("Current: none")
     else:
@@ -1769,6 +1783,525 @@ def cmd_close(
     return {"ok": True, "status": status, "successor": successor}
 
 
+# --- git: commit and push for a shared planning repo ---------------------------
+
+GIT_TIMEOUT = 60
+PUSH_ROUNDS = 3
+REBASE_STEPS = 50
+UNCOMMITTED_CAP = 50
+SHARED_FILES = ("architecture-index.json", "aidlc.json")
+SHARED_DIRS = ("codekb/",)
+INDEX_FILE = "architecture-index.json"
+SIDES = (
+    "During a rebase 'ours' is the team's version from the remote and 'theirs' is your own commit."
+)
+SECRET_PATTERNS = [
+    ("private key header", re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY")),
+    (
+        "password, secret or token assignment",
+        re.compile(r"\b(?:password|passwd|secret|token)\s*=\s*[\"']?[^\s\"'<>{}$*]{8,}", re.I),
+    ),
+    (
+        "connection string with credentials",
+        re.compile(r"\b[a-z][a-z0-9+.-]*://[^\s/:@]+:[^\s/@]{3,}@", re.I),
+    ),
+    ("long bearer token", re.compile(r"\bbearer\s+[A-Za-z0-9._~+/=-]{40,}", re.I)),
+    ("SAS signature", re.compile(r"[?&]sig=[A-Za-z0-9%+/=]{30,}")),
+]
+
+
+@dataclass
+class GitCtx:
+    top: Path
+    prefix: str  # path of the planning root inside the repo, "" or "sub/"
+    remote: str = "origin"
+    branch: Optional[str] = None  # None: no branch enforced
+    commit: bool = True
+    push: bool = True
+
+
+class SoftGitError(Exception):
+    """A push-side problem that keeps the local commit and only warns."""
+
+
+def run_git(
+    top: Path,
+    *args: str,
+    timeout: int = GIT_TIMEOUT,
+    env: Optional[dict[str, str]] = None,
+    stdin: Optional[str] = None,
+) -> subprocess.CompletedProcess[str]:
+    full_env = {**os.environ, **env} if env else None
+    cmd = ["git", "-C", str(top), "-c", "core.quotepath=off", *args]
+    try:
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            check=False,
+            input=stdin,
+            env=full_env,
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(cmd, 124, "", "timed out")
+    except OSError as exc:
+        return subprocess.CompletedProcess(cmd, 127, "", str(exc))
+
+
+def load_git_config(root: Path) -> dict[str, Any]:
+    path = root / "aidlc.json"
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        die(EXIT_MALFORMED, f"{path}: invalid JSON at line {exc.lineno}: {exc.msg}")
+    section = data.get("git", {}) if isinstance(data, dict) else None
+    if not isinstance(section, dict):
+        die(EXIT_MALFORMED, f'{path}: "git" must be an object.')
+    for key, kind in (("branch", str), ("remote", str), ("commit", bool), ("push", bool)):
+        if key in section and not isinstance(section[key], kind):
+            die(EXIT_MALFORMED, f"{path}: git.{key} must be a {kind.__name__}.")
+    return section
+
+
+def open_git(root: Path, no_git: bool = False) -> tuple[Optional[GitCtx], str]:
+    """The git context of a planning root, or ``None`` and why git is skipped."""
+    if no_git:
+        return None, "--no-git"
+    if os.environ.get("AIDLC_GIT", "").strip().lower() == "off":
+        return None, "AIDLC_GIT=off"
+    if not root.is_dir():
+        return None, "not a folder"
+    inside = run_git(root, "rev-parse", "--is-inside-work-tree")
+    if inside.returncode != 0 or inside.stdout.strip() != "true":
+        return None, "not inside a git work tree"
+    top = run_git(root, "rev-parse", "--show-toplevel").stdout.strip()
+    prefix = run_git(root, "rev-parse", "--show-prefix").stdout.strip()
+    section = load_git_config(root)
+    ctx = GitCtx(
+        top=Path(top),
+        prefix=prefix,
+        remote=section.get("remote") or "origin",
+        branch=section.get("branch") or None,
+        commit=section.get("commit", True),
+        push=section.get("push", True),
+    )
+    return ctx, ""
+
+
+def current_branch(ctx: GitCtx) -> Optional[str]:
+    done = run_git(ctx.top, "symbolic-ref", "--short", "-q", "HEAD")
+    return done.stdout.strip() or None if done.returncode == 0 else None
+
+
+def in_progress(ctx: GitCtx) -> Optional[str]:
+    for name, label in (
+        ("rebase-merge", "rebase"),
+        ("rebase-apply", "rebase"),
+        ("MERGE_HEAD", "merge"),
+    ):
+        done = run_git(ctx.top, "rev-parse", "--git-path", name)
+        found = Path(done.stdout.strip())
+        if not found.is_absolute():
+            found = ctx.top / found
+        if done.returncode == 0 and found.exists():
+            return label
+    return None
+
+
+def scope_match(ctx: GitCtx, path: str, paddock_rel: Optional[str]) -> bool:
+    if not path.startswith(ctx.prefix):
+        return False
+    rel = path[len(ctx.prefix) :]
+    if paddock_rel and rel.startswith(paddock_rel.rstrip("/") + "/"):
+        return True
+    return rel in SHARED_FILES or any(rel.startswith(d) for d in SHARED_DIRS)
+
+
+def changed_paths(ctx: GitCtx) -> list[str]:
+    """Every changed path of the repository, relative to its top; ignored files are absent."""
+    done = run_git(ctx.top, "status", "--porcelain=v1", "-z", "-uall", "--no-renames")
+    return [item[3:] for item in done.stdout.split("\0") if len(item) > 3]
+
+
+def pathspec(paths: list[str]) -> str:
+    return "".join(f":(literal){p}\0" for p in paths)
+
+
+def git_paths(ctx: GitCtx, *args: str, paths: list[str]) -> subprocess.CompletedProcess[str]:
+    return run_git(
+        ctx.top, *args, "--pathspec-from-file=-", "--pathspec-file-nul", stdin=pathspec(paths)
+    )
+
+
+def staged_paths(ctx: GitCtx) -> list[str]:
+    done = run_git(ctx.top, "diff", "--cached", "--name-only", "-z", "--no-renames")
+    return [p for p in done.stdout.split("\0") if p]
+
+
+def scan_staged(ctx: GitCtx, scope: set[str]) -> list[tuple[str, int, str]]:
+    """``(file, line, pattern name)`` for each likely secret on an added line."""
+    done = run_git(
+        ctx.top, "diff", "--cached", "--unified=0", "--no-color", "--no-ext-diff", "--no-renames"
+    )
+    hits: list[tuple[str, int, str]] = []
+    name: Optional[str] = None
+    line_no = 0
+    in_hunk = False
+    for raw in done.stdout.split("\n"):
+        if raw.startswith("diff --git "):
+            name, in_hunk = None, False
+        elif not in_hunk and raw.startswith("+++ "):
+            target = raw[4:].rstrip("\t")
+            name = target[2:] if target.startswith("b/") else None
+        elif raw.startswith("@@"):
+            in_hunk = True
+            found = re.search(r"\+(\d+)", raw)
+            line_no = int(found.group(1)) if found else 0
+        elif in_hunk and raw.startswith("+"):
+            if name in scope:
+                for label, pattern in SECRET_PATTERNS:
+                    if pattern.search(raw[1:5000]):
+                        hits.append((name, line_no, label))
+                        break
+            line_no += 1
+    return hits
+
+
+def short_head(ctx: GitCtx) -> Optional[str]:
+    done = run_git(ctx.top, "rev-parse", "--short", "HEAD")
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
+def commit_scope(
+    ctx: GitCtx, paddock_rel: Optional[str], message: str, result: dict[str, Any]
+) -> None:
+    changed = changed_paths(ctx)
+    scoped = [p for p in changed if scope_match(ctx, p, paddock_rel)]
+    others = [p[len(ctx.prefix) :] if p.startswith(ctx.prefix) else p for p in changed]
+    others = [o for o, p in zip(others, changed) if not scope_match(ctx, p, paddock_rel)]
+    result["uncommitted"] = others[:UNCOMMITTED_CAP]
+    result["uncommitted_count"] = len(others)
+    if scoped:
+        added = git_paths(ctx, "add", "-A", paths=scoped)
+        if added.returncode != 0:
+            raise Fail(EXIT_GIT, f"git add failed: {added.stderr.strip()[:300]}")
+    staged = [p for p in staged_paths(ctx) if scope_match(ctx, p, paddock_rel)]
+    if not staged:
+        return
+    hits = scan_staged(ctx, set(staged))
+    if hits:
+        git_paths(ctx, "reset", "-q", paths=staged)
+        raise Fail(
+            EXIT_GIT,
+            f"possible secret in {len(hits)} added line(s); nothing was committed. "
+            "Remove or mask it, then run `sync` again.",
+            findings=[
+                {"code": "possible-secret", "path": f"{n}:{ln}", "message": label}
+                for n, ln, label in hits
+            ],
+            extra={"git": result},
+        )
+    done = git_paths(ctx, "commit", "-q", "-m", message, paths=staged)
+    if done.returncode != 0:
+        text = (done.stderr or done.stdout).strip()
+        raise Fail(
+            EXIT_GIT,
+            f"git commit failed: {text[:400]}. Fix the cause (identity, hook), then run `sync`.",
+            extra={"git": result},
+        )
+    result["commit"] = short_head(ctx)
+    result["message"] = message
+
+
+def unmerged(ctx: GitCtx) -> list[str]:
+    done = run_git(ctx.top, "diff", "--name-only", "--diff-filter=U", "-z")
+    return [p for p in done.stdout.split("\0") if p]
+
+
+def conflict_rule(ctx: GitCtx, path: str) -> str:
+    rel = path[len(ctx.prefix) :] if path.startswith(ctx.prefix) else path
+    name = rel.rsplit("/", 1)[-1]
+    if name == "state.json" and rel.startswith("paddocks/"):
+        return (
+            "take the team's version (`git checkout --ours -- <file>`, then `git add <file>`), "
+            "finish the rebase with `git rebase --continue`, then run your command again."
+        )
+    if name == "log.md" and rel.startswith("paddocks/"):
+        return (
+            "keep every line from both sides, in time order (each line starts with a UTC "
+            "time); remove the conflict markers, then `git add <file>`."
+        )
+    return (
+        "keep both people's content and never drop the other person's lines; where two "
+        "people answered the same question or decision differently, keep both and mark the "
+        "line `contested` for the gate; then run the stage's lint or validator and "
+        "`git add <file>`. Say in one line of your summary what you merged."
+    )
+
+
+def conflict_stop(ctx: GitCtx, files: list[str], result: dict[str, Any], why: str) -> Fail:
+    return Fail(
+        EXIT_GIT,
+        f"{why} {len(files)} file(s) conflict. This is not a question for the user: resolve "
+        "each one by its rule, `git add` it, run `git rebase --continue`, then run `sync` "
+        f"again. {SIDES}",
+        findings=[{"code": "conflict", "path": f, "message": conflict_rule(ctx, f)} for f in files],
+        extra={"git": result, "sides": SIDES},
+    )
+
+
+def rebase_onto(ctx: GitCtx, ref: str, result: dict[str, Any]) -> None:
+    """Rebase the local branch onto ``ref``; settle the index file, stop on other conflicts."""
+    env = {"GIT_EDITOR": "true"}
+    done = run_git(ctx.top, "rebase", "--autostash", ref, env=env, timeout=120)
+    index_path = ctx.prefix + INDEX_FILE
+    for _ in range(REBASE_STEPS):
+        if done.returncode == 0:
+            break
+        if in_progress(ctx) is None:
+            raise SoftGitError((done.stderr or done.stdout).strip()[:200])
+        files = unmerged(ctx)
+        if not files:
+            run_git(ctx.top, "rebase", "--abort")
+            raise SoftGitError("the rebase stopped without conflicts")
+        for path in [f for f in files if f == index_path]:
+            if run_git(ctx.top, "checkout", "--ours", "--", path).returncode != 0:
+                run_git(ctx.top, "rm", "-q", "--", path)
+            run_git(ctx.top, "add", "--", path)
+            result["rebuild_adr_index"] = True
+        rest = [f for f in files if f != index_path]
+        if rest:
+            raise conflict_stop(ctx, rest, result, "The rebase stopped:")
+        done = run_git(ctx.top, "rebase", "--continue", env=env, timeout=120)
+    else:
+        raise SoftGitError("the rebase did not finish")
+    leftover = unmerged(ctx)
+    if leftover:
+        raise conflict_stop(
+            ctx,
+            leftover,
+            result,
+            "Your uncommitted changes (kept in `git stash`, drop it when done) clash with the "
+            "team's work:",
+        )
+
+
+def count_commits(ctx: GitCtx, spec: str) -> Optional[int]:
+    done = run_git(ctx.top, "rev-list", "--count", spec)
+    return int(done.stdout.strip()) if done.returncode == 0 else None
+
+
+def push_branch(ctx: GitCtx, branch: Optional[str], result: dict[str, Any]) -> None:
+    warnings: list[str] = result["warnings"]
+    if branch is None:
+        warnings.append("push: skipped, HEAD is detached")
+        return
+    remotes = run_git(ctx.top, "remote").stdout.split()
+    if ctx.remote not in remotes:
+        warnings.append(f"push: skipped, no remote '{ctx.remote}'")
+        return
+    if run_git(ctx.top, "rev-parse", "--verify", "-q", "HEAD").returncode != 0:
+        return  # nothing committed yet
+    ref = f"refs/remotes/{ctx.remote}/{branch}"
+    failed = "push: failed, retried at the next event"
+    try:
+        for _round in range(PUSH_ROUNDS):
+            fetch = run_git(
+                ctx.top, "fetch", ctx.remote, branch, timeout=FETCH_TIMEOUT, env=FETCH_ENV
+            )
+            remote_has = fetch.returncode == 0
+            if not remote_has and "find remote ref" not in fetch.stderr:
+                warnings.append(failed)
+                return
+            if remote_has:
+                if (count_commits(ctx, f"HEAD..{ref}") or 0) > 0:
+                    rebase_onto(ctx, ref, result)
+                if count_commits(ctx, f"{ref}..HEAD") == 0:
+                    return  # nothing to push
+            args = ["push"]
+            if run_git(ctx.top, "rev-parse", "--abbrev-ref", "@{u}").returncode != 0:
+                args.append("-u")
+            pushed = run_git(ctx.top, *args, ctx.remote, f"HEAD:{branch}", env=FETCH_ENV)
+            if pushed.returncode == 0:
+                result["pushed"] = True
+                return
+            lost = any(w in pushed.stderr for w in ("rejected", "fetch first", "non-fast-forward"))
+            if not lost:
+                warnings.append(failed)
+                return
+        warnings.append(failed)
+    except SoftGitError:
+        warnings.append(failed)
+
+
+def sync_git(ctx: GitCtx, paddock_rel: Optional[str], slug: str, event: str) -> dict[str, Any]:
+    """Bring in the team's work, commit this paddock's changes and push them."""
+    result: dict[str, Any] = {
+        "enabled": True,
+        "branch": None,
+        "commit": None,
+        "pushed": False,
+        "warnings": [],
+        "uncommitted": [],
+        "uncommitted_count": 0,
+        "rebuild_adr_index": False,
+    }
+    pending = in_progress(ctx)
+    if pending:
+        files = unmerged(ctx)
+        text = (
+            f"a {pending} is in progress. Finish it: resolve the conflicted files, `git add` "
+            f"them, run `git {pending} --continue`, then run `sync` again. {SIDES}"
+        )
+        raise Fail(
+            EXIT_GIT,
+            text,
+            findings=[
+                {"code": "conflict", "path": f, "message": conflict_rule(ctx, f)} for f in files
+            ],
+            extra={"git": result, "sides": SIDES},
+        )
+    current = current_branch(ctx)
+    result["branch"] = current
+    if ctx.branch and current != ctx.branch:
+        raise Fail(
+            EXIT_FINDINGS,
+            f"the planning repo is on '{current or 'a detached HEAD'}' but aidlc.json expects "
+            f"'{ctx.branch}'. Run: git switch {ctx.branch}",
+        )
+    event = " ".join(event.split())
+    message = f"docs({slug}): {event}" if slug else f"docs: {event}"
+    if ctx.commit:
+        commit_scope(ctx, paddock_rel, message, result)
+    if ctx.push:
+        push_branch(ctx, ctx.branch or current, result)
+    for text in result["warnings"]:
+        LOG.warning("%s", text)
+    return result
+
+
+def git_scope(paddock: Path) -> tuple[Path, str, str]:
+    """``(planning root, paddock path inside it, slug)`` of a paddock folder."""
+    resolved = paddock.resolve()
+    root = planning_root(paddock)
+    return root, resolved.relative_to(root).as_posix(), DATE_PREFIX.sub("", resolved.name)
+
+
+def git_event(args: argparse.Namespace, result: Optional[dict[str, Any]] = None) -> str:
+    """The plain-English name of what a changing command does."""
+    cmd = args.command
+    if cmd == "open":
+        return "open the paddock"
+    if cmd == "decide":
+        return f"decide {args.stage}: {args.decision}"
+    if cmd == "step":
+        return f"move {args.stage} to {args.to}"
+    if cmd == "gate":
+        if args.approve:
+            return f"approve the {args.stage} gate"
+        return f"request changes on {args.stage}"
+    if cmd == "decision-id":
+        ids = (result or {}).get("ids") or []
+        if len(ids) > 1:
+            return f"reserve decision ids {ids[0]}-{ids[-1]}"
+        return f"reserve decision id {ids[0]}" if ids else "reserve decision ids"
+    if cmd == "units":
+        return "load the units"
+    if cmd == "kind":
+        return f"make the paddock a {args.set} paddock"
+    if cmd == "park":
+        return "park the paddock"
+    if cmd == "unpark":
+        return "unpark the paddock"
+    if cmd == "jira":
+        return "record Jira keys"
+    if cmd == "target":
+        if args.add:
+            return f"add target {args.add.partition('=')[0]}"
+        return f"remove target {args.remove}"
+    if cmd == "close":
+        return f"close the paddock as {args.status}"
+    return "update the workspace folders"
+
+
+def changes_state(args: argparse.Namespace) -> bool:
+    if args.command == "workspace":
+        return bool(args.extra)
+    return args.command in {
+        "open", "decide", "step", "gate", "units", "decision-id", "kind", "park", "unpark",
+        "jira", "target", "close",
+    }  # fmt: skip
+
+
+def cmd_sync(args: argparse.Namespace) -> dict[str, Any]:
+    if bool(args.paddock) == bool(args.root):
+        die(EXIT_USAGE, "give --paddock or --root, not both and not neither.")
+    if args.paddock:
+        paddock = Path(args.paddock)
+        if not paddock.is_dir():
+            die(EXIT_INPUT, f"{paddock}: paddock folder not found.")
+        root, rel, slug = git_scope(paddock)
+        paddock_rel: Optional[str] = rel
+    else:
+        root, paddock_rel, slug = Path(args.root), None, ""
+        if not root.is_dir():
+            die(EXIT_INPUT, f"{root}: --root is not a directory.")
+    ctx, why = open_git(root.resolve())
+    if ctx is None:
+        return {"ok": True, "git": {"enabled": False, "reason": why}}
+    return {"ok": True, "git": sync_git(ctx, paddock_rel, slug, args.message)}
+
+
+def git_status_block(paddock: Path) -> Optional[dict[str, Any]]:
+    """Branch, ahead and behind, and uncommitted paths. Reads only; never fetches."""
+    root, rel, _ = git_scope(paddock)
+    try:
+        ctx, _why = open_git(root)
+    except Fail:
+        return None
+    if ctx is None:
+        return None
+    branch = current_branch(ctx)
+    block: dict[str, Any] = {
+        "branch": branch,
+        "expected_branch": ctx.branch,
+        "remote": ctx.remote,
+        "ahead": None,
+        "behind": None,
+    }
+    target = ctx.branch or branch
+    if target:
+        ref = f"refs/remotes/{ctx.remote}/{target}"
+        if run_git(ctx.top, "rev-parse", "--verify", "-q", ref).returncode == 0:
+            block["ahead"] = count_commits(ctx, f"{ref}..HEAD")
+            block["behind"] = count_commits(ctx, f"HEAD..{ref}")
+    mine = ctx.prefix + rel + "/"
+    block["uncommitted"] = sum(1 for p in changed_paths(ctx) if p.startswith(mine))
+    if block["uncommitted"]:
+        block["hint"] = 'commit them now: sync --paddock <p> -m "<what changed>"'
+    return block
+
+
+def git_status_line(block: dict[str, Any]) -> str:
+    where = block["branch"] or "detached HEAD"
+    if block["expected_branch"] and block["expected_branch"] != block["branch"]:
+        where += f" (expected {block['expected_branch']})"
+    sync = (
+        f"ahead {block['ahead']}, behind {block['behind']}"
+        if block["ahead"] is not None
+        else "no fetched remote branch"
+    )
+    line = f"Git: {where}, {sync}, {block['uncommitted']} uncommitted in this paddock"
+    if block["uncommitted"]:
+        line += '; commit them now with `sync --paddock <p> -m "<what changed>"`'
+    return line
+
+
 # --- command line ------------------------------------------------------------
 
 
@@ -1781,10 +2314,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--verbose", action="store_true", help="Verbose diagnostics on stderr.")
     sub = parser.add_subparsers(dest="command", required=True, metavar="command")
 
+    read_only = {"status", "next", "inputs", "codekb-status"}
+
     def add(name: str, help_text: str, paddock: bool = True) -> argparse.ArgumentParser:
         sp = sub.add_parser(name, help=help_text, description=help_text)
         if paddock:
             sp.add_argument("--paddock", required=True, help="Paddock folder.")
+        if name not in read_only:
+            sp.add_argument(
+                "--no-git", action="store_true", help="Do not commit or push this change."
+            )
         return sp
 
     sp = add("open", "Create a paddock.", paddock=False)
@@ -1889,6 +2428,16 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--reason", help="Why Jira is off.")
     sp.add_argument("--on", action="store_true", help="Turn Jira on.")
 
+    sp = sub.add_parser(
+        "sync",
+        help="Commit and push work that changed files but no state.",
+        description="Bring in the team's work, commit the paddock (or only the shared paths "
+        "with --root) and push.",
+    )
+    sp.add_argument("--paddock", help="Paddock folder.")
+    sp.add_argument("--root", help="Planning repository root: commit only the shared paths.")
+    sp.add_argument("-m", "--message", default="save work in progress", help="What changed.")
+
     sp = add("close", "Close the paddock.")
     sp.add_argument("--status", required=True, choices=["complete", "superseded", "archived"])
     sp.add_argument("--successor", help="Id of the paddock that replaces this one.")
@@ -1896,6 +2445,36 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
+    """Run a command; a command that changes a paddock is wrapped in two git syncs."""
+    if args.command == "sync":
+        return cmd_sync(args)
+    if not changes_state(args) or getattr(args, "no_git", False):
+        return run_command(args)
+    if args.command == "open":
+        root, rel, slug = Path(args.root), None, ""
+    else:
+        load_state(Path(args.paddock))  # report a missing or broken paddock before any git work
+        root, rel, slug = git_scope(Path(args.paddock))
+    ctx, _why = open_git(root.resolve())
+    if ctx is None:
+        return run_command(args)
+    event = git_event(args)
+    before = sync_git(ctx, rel, slug, f"save work before {event}")
+    result = run_command(args)
+    if args.command == "open":
+        _root, rel, slug = git_scope(Path(result["paddock"]))
+    try:
+        after = sync_git(ctx, rel, slug, git_event(args, result))
+    except Fail as exc:
+        exc.extra.setdefault("result", result)
+        raise
+    result["git"] = after
+    if before["commit"] or before["rebuild_adr_index"] or before["warnings"]:
+        result["git_before"] = before
+    return result
+
+
+def run_command(args: argparse.Namespace) -> dict[str, Any]:
     catalog = load_catalog()
     if args.command == "open":
         return cmd_open(args, catalog)
