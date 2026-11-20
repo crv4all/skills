@@ -22,7 +22,12 @@
 
 set -eu
 
-REPO_URL="${CRV_SKILLS_REPO:-https://github.com/crv4all/agent-skills.git}"
+# Where the skills are cloned from when this script is not run from a checkout.
+# SSH is used when GitHub accepts the person's key. The repository is public, so
+# otherwise it is read anonymously over https (read only).
+SKILLS_SSH_URL="git@github.com:crv4all/skills.git"
+SKILLS_HTTPS_URL="https://github.com/crv4all/skills.git"
+REPO_URL="${CRV_SKILLS_REPO:-}"
 REPO_REF="${CRV_SKILLS_REF:-main}"
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/crv-agent-skills"
 STAMP_FILE=".crv-install"
@@ -135,6 +140,23 @@ esac
 # Source checkout
 # --------------------------------------------------------------------------
 
+github_ssh_works() {
+  command -v ssh >/dev/null 2>&1 || return 1
+  ssh -o BatchMode=yes -o ConnectTimeout=10 -T git@github.com 2>&1 |
+    grep -q "successfully authenticated"
+}
+
+choose_repo_url() {
+  [ -z "$REPO_URL" ] || return 0
+  if github_ssh_works; then
+    REPO_URL="$SKILLS_SSH_URL"
+    log "source url: $REPO_URL (GitHub accepted your SSH key)"
+  else
+    REPO_URL="$SKILLS_HTTPS_URL"
+    log "source url: $REPO_URL (GitHub SSH is not set up; reading the public repository, read only)"
+  fi
+}
+
 resolve_source() {
   if [ -n "$SOURCE_DIR" ]; then
     [ -d "$SOURCE_DIR/skills" ] || die $EXIT_INPUT \
@@ -153,7 +175,8 @@ resolve_source() {
   fi
 
   command -v git >/dev/null 2>&1 || die $EXIT_INPUT \
-    "git is required to fetch $REPO_URL. Install git, or pass --source with a local checkout."
+    "git is required to fetch the skills. Install git, or pass --source with a local checkout."
+  choose_repo_url
 
   mkdir -p "$CACHE_DIR"
   if [ -d "$CACHE_DIR/repo/.git" ]; then
@@ -301,7 +324,8 @@ install_one() {
 
   checksum=$(tree_checksum "$dest")
   {
-    printf 'source=%s\n' "$REPO_URL"
+    printf 'source=%s\n' "${REPO_URL:-$SKILLS_HTTPS_URL}"
+    printf 'commit=%s\n' "$(git -C "$SOURCE_DIR" rev-parse HEAD 2>/dev/null || true)"
     printf 'ref=%s\n' "$REPO_REF"
     printf 'installed_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf 'checksum=%s\n' "$checksum"
