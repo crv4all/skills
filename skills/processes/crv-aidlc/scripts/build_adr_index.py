@@ -21,6 +21,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import quote, unquote, urlparse
 
 EXIT_OK = 0
 EXIT_FINDINGS = 1
@@ -31,6 +32,12 @@ EXIT_INTERNAL = 5
 
 EPILOG = """examples:
   python3 build_adr_index.py --registry ../adr-registry --out architecture-index.json
+  python3 build_adr_index.py --registry ../adr-registry --out architecture-index.json --refresh
+
+--refresh first fetches the registry and fast-forwards it when it is clean and
+only behind its remote. A registry with local changes, or one that has
+diverged, is never touched: the index is built from it and a warning says how
+far behind it is.
 
 Accepted ADRs are binding, Proposed are directional, Superseded and Deprecated
 are listed but flagged.
@@ -137,6 +144,115 @@ def registry_commit(registry: Path) -> Optional[str]:
     return done.stdout.strip() if done.returncode == 0 else None
 
 
+def to_ssh_url(url: str) -> Optional[str]:
+    """The SSH form of an https remote on Azure DevOps or GitHub, or None."""
+    parts = urlparse(url.strip())
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return None
+    host = parts.hostname.lower()
+    segments = [unquote(seg) for seg in parts.path.split("/") if seg]
+    if host == "github.com" and len(segments) >= 2:
+        repo = segments[1][:-4] if segments[1].endswith(".git") else segments[1]
+        return f"git@github.com:{segments[0]}/{repo}.git"
+    if host == "dev.azure.com" and "_git" in segments:
+        at = segments.index("_git")
+        if at >= 1 and len(segments) > at + 1:
+            org, repo = segments[0], segments[at + 1]
+            project = segments[1] if at >= 2 else repo
+            return (
+                f"git@ssh.dev.azure.com:v3/{org}/{quote(project, safe='')}/{quote(repo, safe='')}"
+            )
+    if host.endswith(".visualstudio.com") and "_git" in segments:
+        org = host.split(".")[0]
+        rest = [seg for seg in segments if seg != "DefaultCollection"]
+        at = rest.index("_git")
+        if len(rest) > at + 1:
+            project = rest[0] if at >= 1 else rest[at + 1]
+            repo = rest[at + 1]
+            return (
+                f"git@ssh.dev.azure.com:v3/{org}/{quote(project, safe='')}/{quote(repo, safe='')}"
+            )
+    return None
+
+
+def git_out(registry: Path, *args: str, timeout: int = 60) -> Optional[str]:
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(registry), *args],
+            capture_output=True, text=True, timeout=timeout, check=False,
+        )  # fmt: skip
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
+def read_index(path: Path) -> dict[str, Any]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def refresh_registry(registry: Path) -> dict[str, Any]:
+    """Fetch the registry and fast-forward it when that is safe. Never discards work."""
+    info: dict[str, Any] = {"fetched": False, "fast_forwarded": False, "behind": 0, "warnings": []}
+    warnings: list[str] = info["warnings"]
+    remote = git_out(registry, "remote", "get-url", "origin")
+    if remote is None:
+        warnings.append("the registry has no remote called origin; built from the checkout.")
+        return info
+    ssh = to_ssh_url(remote)
+    if ssh:
+        warnings.append(
+            "the registry remote uses https. Use SSH: "
+            f"git -C {registry} remote set-url origin {ssh}"
+        )
+    if git_out(registry, "fetch", "--quiet", "origin", timeout=90) is None:
+        warnings.append(
+            "could not fetch the registry (no network or no access); built from the checkout."
+        )
+        return info
+    info["fetched"] = True
+    upstream = git_out(registry, "rev-parse", "--abbrev-ref", "@{u}")
+    if upstream is None:
+        warnings.append("the registry branch tracks no remote branch; built from the checkout.")
+        return info
+    counts = git_out(registry, "rev-list", "--left-right", "--count", f"HEAD...{upstream}")
+    try:
+        ahead, behind = (int(n) for n in (counts or "").split())
+    except ValueError:
+        return info
+    info["behind"] = behind
+    if behind == 0:
+        return info
+    clean = git_out(registry, "status", "--porcelain") == ""
+    if clean and ahead == 0:
+        if git_out(registry, "merge", "--ff-only", upstream) is not None:
+            info["fast_forwarded"] = True
+            info["behind"] = 0
+            return info
+        warnings.append("could not fast-forward the registry.")
+    reason = "has local changes" if not clean else "has diverged from its remote"
+    warnings.append(
+        f"the registry {reason} and was not changed: "
+        f"the index is {behind} commits behind the remote."
+    )
+    return info
+
+
+def changed_adrs(old: dict[str, Any], new: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Ids added in ``new``, and ids whose status moved, as ``ADR-1: Proposed -> Accepted``."""
+    before = {a.get("id"): a.get("status") for a in old.get("adrs", []) if isinstance(a, dict)}
+    added, moved = [], []
+    for item in new.get("adrs", []):
+        if item["id"] not in before:
+            added.append(item["id"])
+        elif before[item["id"]] != item["status"]:
+            moved.append(f"{item['id']}: {before[item['id']]} -> {item['status']}")
+    return added, moved
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Build a JSON index of an ADR registry.",
@@ -145,6 +261,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--registry", required=True, help="ADR registry checkout (read only).")
     parser.add_argument("--out", required=True, help="Index file to write.")
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Fetch the registry first and fast-forward it when clean and behind.",
+    )
     parser.add_argument("--verbose", action="store_true", help="Verbose diagnostics on stderr.")
     return parser
 
@@ -157,6 +278,19 @@ def main(argv: Optional[list[str]] = None) -> int:
         stream=sys.stderr,
     )
     registry = Path(args.registry).expanduser()
+    out = Path(args.out)
+    old_index = read_index(out)
+    refresh: Optional[dict[str, Any]] = None
+    if args.refresh:
+        refresh = refresh_registry(registry)
+        for warning in refresh["warnings"]:
+            LOG.warning("%s", warning)
+    elif (remote := git_out(registry, "remote", "get-url", "origin")) and to_ssh_url(remote):
+        LOG.warning(
+            "the registry remote uses https. Use SSH: git -C %s remote set-url origin %s",
+            registry, to_ssh_url(remote),
+        )  # fmt: skip
+
     manifest_path = registry / "adr-manifest.json"
     if not manifest_path.is_file():
         LOG.error(
@@ -219,24 +353,32 @@ def main(argv: Optional[list[str]] = None) -> int:
         "counts": counts,
         "adrs": adrs,
     }
-    out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_name(out.name + ".tmp")
     tmp.write_text(json.dumps(index, indent=2) + "\n", encoding="utf-8")
     tmp.replace(out)
-    sys.stdout.write(
-        json.dumps(
-            {
-                "ok": problems == 0,
-                "out": str(out),
-                "adrs": len(adrs),
-                "registry_commit": commit,
-                "counts": counts,
-            },
-            indent=2,
+    payload: dict[str, Any] = {
+        "ok": problems == 0,
+        "out": str(out),
+        "adrs": len(adrs),
+        "registry_commit": commit,
+        "counts": counts,
+    }
+    if refresh is not None:
+        added, moved = changed_adrs(old_index, index)
+        refresh.update(
+            old_registry_commit=old_index.get("registry_commit"),
+            new_registry_commit=commit,
+            added=added,
+            status_changed=moved,
         )
-        + "\n"
-    )
+        payload["refresh"] = refresh
+        sys.stderr.write(
+            f"registry_commit: {refresh['old_registry_commit']} -> {commit}\n"
+            f"added: {', '.join(added) or 'none'}\n"
+            f"status changed: {', '.join(moved) or 'none'}\n"
+        )
+    sys.stdout.write(json.dumps(payload, indent=2) + "\n")
     return EXIT_FINDINGS if problems else EXIT_OK
 
 

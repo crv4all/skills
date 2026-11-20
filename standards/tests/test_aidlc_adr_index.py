@@ -123,3 +123,116 @@ def test_listed_but_missing_file_is_a_finding(tmp_path: Path) -> None:
     done = run("--registry", str(registry), "--out", str(out))
     assert done.returncode == 1
     assert len(json.loads(out.read_text(encoding="utf-8"))["adrs"]) == 3
+
+
+# --- --refresh -------------------------------------------------------------------------
+
+GIT_ENV = {
+    "GIT_AUTHOR_NAME": "t",
+    "GIT_AUTHOR_EMAIL": "t@example.com",
+    "GIT_COMMITTER_NAME": "t",
+    "GIT_COMMITTER_EMAIL": "t@example.com",
+}
+
+
+def g(path: Path, *args: str) -> str:
+    import os
+
+    done = subprocess.run(
+        ["git", "-C", str(path), *args],
+        capture_output=True, text=True, env={**os.environ, **GIT_ENV}, check=True,
+    )  # fmt: skip
+    return done.stdout.strip()
+
+
+def remote_setup(tmp: Path) -> tuple[Path, Path]:
+    """(registry clone with an origin, a second clone used to push upstream changes)."""
+    seed = make_registry(tmp)
+    seed.rename(tmp / "seed")
+    seed = tmp / "seed"
+    g(seed, "branch", "-M", "main")
+    bare = tmp / "origin.git"
+    subprocess.run(["git", "clone", "-q", "--bare", str(seed), str(bare)], check=True)
+    for name in ("reg", "other"):
+        subprocess.run(["git", "clone", "-q", str(bare), str(tmp / name)], check=True)
+    return tmp / "reg", tmp / "other"
+
+
+def push_change(other: Path) -> None:
+    """Upstream accepts ADR-G002 and adds ADR-G004."""
+    folder = other / "architecture" / "adrs"
+    two = folder / "adr-g002-title.md"
+    two.write_text(two.read_text().replace("Proposed", "Accepted"), encoding="utf-8")
+    (folder / "adr-g004-title.md").write_text(adr("004", "Proposed"), encoding="utf-8")
+    manifest = other / "adr-manifest.json"
+    entries = json.loads(manifest.read_text())
+    entries.append({"path": "adr-g004-title.md", "title": "ADR-G004: Title", "status": "Proposed"})
+    manifest.write_text(json.dumps(entries), encoding="utf-8")
+    g(other, "add", ".")
+    g(other, "commit", "-q", "-m", "change")
+    g(other, "push", "-q", "origin", "main")
+
+
+def test_refresh_fast_forwards_a_clean_registry_and_reports_what_moved(tmp_path: Path) -> None:
+    reg, other = remote_setup(tmp_path)
+    out = tmp_path / "index.json"
+    assert run("--registry", str(reg), "--out", str(out)).returncode == 0
+    old = json.loads(out.read_text())["registry_commit"]
+    push_change(other)
+    done = run("--registry", str(reg), "--out", str(out), "--refresh")
+    refresh = json.loads(done.stdout)["refresh"]
+    new = g(reg, "rev-parse", "HEAD")
+    assert refresh["fast_forwarded"] and refresh["old_registry_commit"] == old
+    assert refresh["new_registry_commit"] == new == json.loads(out.read_text())["registry_commit"]
+    assert refresh["added"] == ["ADR-G004"]
+    assert refresh["status_changed"] == ["ADR-G002: Proposed -> Accepted"]
+    assert old in done.stderr and new in done.stderr and "ADR-G004" in done.stderr
+
+
+def test_refresh_leaves_a_dirty_registry_alone_and_says_how_far_behind(tmp_path: Path) -> None:
+    reg, other = remote_setup(tmp_path)
+    push_change(other)
+    (reg / "scratch.txt").write_text("mine", encoding="utf-8")
+    before = g(reg, "rev-parse", "HEAD")
+    done = run("--registry", str(reg), "--out", str(tmp_path / "i.json"), "--refresh")
+    refresh = json.loads(done.stdout)["refresh"]
+    assert g(reg, "rev-parse", "HEAD") == before and not refresh["fast_forwarded"]
+    assert refresh["behind"] == 1 and "1 commits behind" in done.stderr
+    assert (reg / "scratch.txt").read_text() == "mine"
+
+
+def test_refresh_does_not_touch_a_diverged_registry(tmp_path: Path) -> None:
+    reg, other = remote_setup(tmp_path)
+    push_change(other)
+    (reg / "local.md").write_text("local", encoding="utf-8")
+    g(reg, "add", ".")
+    g(reg, "commit", "-q", "-m", "local")
+    before = g(reg, "rev-parse", "HEAD")
+    done = run("--registry", str(reg), "--out", str(tmp_path / "i.json"), "--refresh")
+    assert g(reg, "rev-parse", "HEAD") == before
+    assert "diverged" in done.stderr and "commits behind" in done.stderr
+
+
+def test_refresh_on_a_registry_that_is_up_to_date_changes_nothing(tmp_path: Path) -> None:
+    reg, _other = remote_setup(tmp_path)
+    done = run("--registry", str(reg), "--out", str(tmp_path / "i.json"), "--refresh")
+    refresh = json.loads(done.stdout)["refresh"]
+    assert done.returncode == 0 and refresh["behind"] == 0 and not refresh["fast_forwarded"]
+    assert refresh["status_changed"] == []
+
+
+def test_without_refresh_the_output_is_unchanged_and_nothing_is_fetched(tmp_path: Path) -> None:
+    reg, other = remote_setup(tmp_path)
+    push_change(other)
+    before = g(reg, "rev-parse", "HEAD")
+    done = run("--registry", str(reg), "--out", str(tmp_path / "i.json"))
+    assert "refresh" not in json.loads(done.stdout) and g(reg, "rev-parse", "HEAD") == before
+
+
+def test_an_https_registry_remote_gets_the_set_url_fix(tmp_path: Path) -> None:
+    registry = make_registry(tmp_path)
+    url = "https://crv4all@dev.azure.com/crv4all/Cloudforce%20Team%20Data/_git/adr-registry"
+    g(registry, "remote", "add", "origin", url)
+    ssh = "git@ssh.dev.azure.com:v3/crv4all/Cloudforce%20Team%20Data/adr-registry"
+    done = run("--registry", str(registry), "--out", str(tmp_path / "i.json"))
+    assert f"remote set-url origin {ssh}" in done.stderr
