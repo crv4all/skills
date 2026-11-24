@@ -238,3 +238,22 @@ def test_configured_branch_must_be_the_current_one(repos: Repos) -> None:
     assert code == 1
     assert "git switch construction" in out["error"]
     assert not bolt_of(repos.a).exists()
+
+
+def test_log_names_the_git_user_and_the_local_file_is_never_committed(
+    repos: Repos, tmp_path: Path
+) -> None:
+    git(repos.a, "config", "user.name", "Ada Lovelace")
+    far = tmp_path / "elsewhere" / "svc"
+    far.mkdir(parents=True)
+    assert open_demo(repos.a, "--target", f"svc={far}")[0] == 0
+    bolt = bolt_of(repos.a)
+    assert script("park", "--bolt", str(bolt), "--note", "n")[0] == 0
+    fields = [line.split(" | ") for line in (bolt / "log.md").read_text().splitlines()]
+    assert {f[3] for f in fields} == {"agent:Ada Lovelace"}
+    assert (repos.a / ".aidlc-local.json").is_file()
+    assert git(repos.a, "ls-files", ".aidlc-local.json") == ""
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert open_demo(plain)[0] == 0
+    assert (bolt_of(plain) / "log.md").read_text().split(" | ")[3] == "agent"

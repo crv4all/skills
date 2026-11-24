@@ -42,7 +42,7 @@ EPILOG = """commands:
   inputs      files a stage reads        --bolt P --stage S [--unit U]
   decide      execute or skip a stage    --bolt P --stage S --decision D --reason R
   step        move a stage forward       --bolt P --stage S --to asked|analysed|produced
-  gate        approve or send back       --bolt P --stage S --approve --by NAME
+  gate        approve or send back       --bolt P --stage S --approve --by NAME [--channel C]
   units       load units and slices       --bolt P --set file.json
   decision-id reserve decision ids       --bolt P [--count n]
   codekb-status is the code knowledge fresh --bolt P
@@ -78,6 +78,10 @@ exit codes:
 """
 
 LOG = logging.getLogger("aidlc_state")
+
+FRAMEWORK = 2  # bumped when a change to state.json would break an older copy of the skills
+LOCAL_FILE = ".aidlc-local.json"  # per machine, never committed; sits at the planning root
+PATH_HINT = "set it in .aidlc-local.json or clone it next to the planning repo"
 
 STAGES_PATH = Path(__file__).resolve().parent.parent / "assets" / "stages.json"
 STEP_ORDER = ["todo", "asked", "analysed", "produced"]
@@ -196,6 +200,13 @@ def load_state(bolt: Path) -> dict[str, Any]:
         die(EXIT_MALFORMED, f"{path}: invalid JSON at line {exc.lineno}: {exc.msg}")
     if not isinstance(state, dict) or state.get("schema") != 1:
         die(EXIT_MALFORMED, f'{path}: expected an object with "schema": 1.')
+    written = state.get("framework")
+    if isinstance(written, int) and written > FRAMEWORK:
+        die(
+            EXIT_MALFORMED,
+            f"this Bolt was last written by newer skills (framework {written}, installed "
+            f"{FRAMEWORK}); update the skills and run the command again",
+        )
     return state
 
 
@@ -222,13 +233,156 @@ def backfill_stages(state: dict[str, Any], catalog: list[dict[str, Any]]) -> Non
         stages[item["id"]] = new_record(decision, reason)
 
 
+# --- per-machine paths -------------------------------------------------------
+
+
+def sibling(root: Path, name: str) -> Path:
+    """Where a repository is expected by default: next to the planning repository."""
+    return root.parent / name
+
+
+def read_local(root: Path) -> dict[str, Any]:
+    """The per-machine ``.aidlc-local.json``; a missing or empty file reads as empty."""
+    path = root / LOCAL_FILE
+    data: Any = {}
+    if path.is_file():
+        text = path.read_text(encoding="utf-8")
+        if text.strip():
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError as exc:
+                die(EXIT_MALFORMED, f"{path}: invalid JSON at line {exc.lineno}: {exc.msg}")
+    if not isinstance(data, dict):
+        die(EXIT_MALFORMED, f"{path}: expected an object.")
+    for key in ("paths", "extra"):
+        if not isinstance(data.get(key), dict):
+            data[key] = {}
+    return data
+
+
+def write_local(root: Path, data: dict[str, Any]) -> None:
+    """Write the local file atomically; nothing else ever stages or commits it."""
+    path = root / LOCAL_FILE
+    tmp = path.with_name(LOCAL_FILE + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def resolve_repo(root: Path, name: str, legacy: Optional[str] = None) -> Optional[Path]:
+    """The folder of repository ``name`` on this machine, or ``None``.
+
+    Order: the local file, a sibling of the planning root, then ``legacy``, the absolute
+    path an older state.json stored.
+    """
+    local = read_local(root)["paths"].get(name)
+    for candidate in (local, sibling(root, name), legacy):
+        if candidate and Path(str(candidate)).is_dir():
+            return Path(str(candidate)).resolve()
+    return None
+
+
+def repo_dir(root: Path, name: str, legacy: Optional[str] = None) -> Path:
+    """:func:`resolve_repo`, or the sibling folder it should be in, so a report can name it."""
+    return resolve_repo(root, name, legacy) or sibling(root, name)
+
+
+def note_path(local: dict[str, Any], root: Path, name: str, path: Path, keep: bool) -> bool:
+    """Record ``path`` in ``local`` unless the sibling rule already finds it; True if changed.
+
+    ``keep`` leaves an existing entry for ``name`` alone (an older state's path loses to it).
+    """
+    paths = local["paths"]
+    near = sibling(root, name)
+    if near.is_dir() and near.resolve() == path.resolve():
+        return not keep and paths.pop(name, None) is not None
+    if keep and name in paths:
+        return False
+    changed = paths.get(name) != str(path)
+    paths[name] = str(path)
+    return changed
+
+
+def remember_repo(root: Path, name: str, path: Path) -> None:
+    local = read_local(root)
+    if note_path(local, root, name, path, keep=False):
+        write_local(root, local)
+
+
+def drop_extra(state: dict[str, Any]) -> Any:
+    """Remove ``workspace.extra`` (an older state's copy) and return what it held."""
+    workspace = state.get("workspace")
+    if not isinstance(workspace, dict):
+        return None
+    held = workspace.pop("extra", None)
+    if not workspace:
+        state.pop("workspace", None)
+    return held
+
+
+def normalise_portable(bolt: Path, state: dict[str, Any]) -> bool:
+    """Move the machine paths an older state.json stored into the local file.
+
+    Called by :func:`write_state`, so it runs on the next change and only when there is
+    something to move. Returns True when it moved paths.
+    """
+    root = planning_root(bolt)
+    old_targets = [t for t in state.get("targets") or [] if "path" in t]
+    ref = state.get("architecture_ref")
+    old_ref = isinstance(ref, dict) and "path" in ref
+    held = drop_extra(state)
+    if not (old_targets or old_ref or held):
+        return False
+    local = read_local(root)
+    for target in old_targets:
+        path = target.pop("path")
+        if path:
+            note_path(local, root, target["repo"], Path(path), keep=True)
+    if isinstance(ref, dict) and old_ref:
+        path = ref.pop("path")
+        if path:
+            ref["repo"] = ref.get("repo") or Path(path).name
+            note_path(local, root, ref["repo"], Path(path), keep=True)
+        state["architecture_ref"] = {"repo": ref.get("repo"), "commit": ref.get("commit")}
+    if held:
+        mine = local["extra"].setdefault(str(state["id"]), [])
+        names = {item["name"] for item in mine}
+        mine.extend(item for item in held if item["name"] not in names)
+    write_local(root, local)
+    return True
+
+
 def write_state(bolt: Path, state: dict[str, Any]) -> None:
     """Write state.json atomically: a crash leaves the old file, never half a new one."""
     state["updated"] = now()
+    written = state.get("framework")
+    state["framework"] = max(written if isinstance(written, int) else 0, FRAMEWORK)
+    moved = normalise_portable(bolt, state)
     path = state_path(bolt)
     tmp = path.with_name(".state.json.tmp")
     tmp.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
     tmp.replace(path)
+    if moved:
+        log_event(bolt, "portable", "", "", "machine paths moved to .aidlc-local.json")
+
+
+_ACTORS: dict[str, str] = {}
+
+
+def actor(root: Path) -> str:
+    """Who is running the script: ``AIDLC_ACTOR``, else the git ``user.name`` of the
+    planning repository, else empty. Not switched off by ``--no-git`` or ``AIDLC_GIT=off``,
+    which only stop commits and pushes."""
+    if "AIDLC_ACTOR" in os.environ:
+        return " ".join(os.environ["AIDLC_ACTOR"].split())
+    key = str(root)
+    if key not in _ACTORS:
+        name = ""
+        if root.is_dir():
+            inside = run_git(root, "rev-parse", "--is-inside-work-tree")
+            if inside.returncode == 0 and inside.stdout.strip() == "true":
+                name = " ".join(run_git(root, "config", "user.name").stdout.split())
+        _ACTORS[key] = name
+    return _ACTORS[key]
 
 
 def log_event(bolt: Path, event: str, stage: str = "", by: str = "", note: str = "") -> None:
@@ -236,6 +390,9 @@ def log_event(bolt: Path, event: str, stage: str = "", by: str = "", note: str =
         text = " ".join(value.replace("|", "/").split())
         return text or "-"
 
+    if not by and not event.startswith("gate-"):
+        who = actor(planning_root(bolt))
+        by = f"agent:{who}" if who else ""
     line = " | ".join([now(), clean(event), clean(stage), clean(by or "agent"), clean(note)])
     with (bolt / "log.md").open("a", encoding="utf-8") as handle:
         handle.write(line + "\n")
@@ -256,6 +413,8 @@ def new_record(decision: str, reason: str, step: str = "todo") -> dict[str, Any]
         "step": step,
         "approved_at": None,
         "approved_by": None,
+        "recorded_by": None,
+        "channel": None,
     }
 
 
@@ -486,13 +645,16 @@ def existing_dir(raw: str, what: str) -> Path:
     return path
 
 
-def make_target(spec: str, flag: str) -> tuple[dict[str, Any], str]:
-    """A classified target record from ``name=path``, and the rule that matched."""
+def make_target(spec: str, flag: str) -> tuple[dict[str, Any], str, Path]:
+    """A classified target record from ``name=path``, the rule that matched and the path.
+
+    The record holds no path: where the repository lives is per machine.
+    """
     name, raw = parse_pair(spec, flag)
     path = existing_dir(raw, f"target for '{name}'")
     kind, rule = classify(path)
-    record = {"repo": name, "path": str(path), "kind": kind, "codekb_commit": None}
-    return record, f"{name}: {kind} ({rule})"
+    record = {"repo": name, "kind": kind, "codekb_commit": None}
+    return record, f"{name}: {kind} ({rule})", path
 
 
 def resolve_parent(root: Path, spec: str) -> dict[str, str]:
@@ -523,12 +685,15 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
         raise Fail(EXIT_FINDINGS, f"{bolt}: bolt already exists. Resume it with `status`.")
     parent = resolve_parent(root, args.parent) if args.parent else None
 
+    base = root.resolve()
     targets: list[dict[str, Any]] = []
     rules: list[str] = []
+    places: list[tuple[str, Path]] = []
     for spec in args.target or []:
-        record, rule = make_target(spec, "--target")
+        record, rule, path = make_target(spec, "--target")
         targets.append(record)
         rules.append(rule)
+        places.append((record["repo"], path))
 
     architecture: Optional[dict[str, Any]] = None
     if args.architecture_ref:
@@ -536,7 +701,8 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
         if not ref.is_dir():
             die(EXIT_INPUT, f"{ref}: --architecture-ref is not a directory.")
         sha = git(ref, "rev-parse", "HEAD")
-        architecture = {"path": str(ref), "commit": sha.strip() if sha else None}
+        architecture = {"repo": ref.name, "commit": sha.strip() if sha else None}
+        places.append((ref.name, ref))
         if sha is None:
             LOG.warning("%s: not a git checkout; the registry commit is recorded as null.", ref)
 
@@ -593,6 +759,8 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
     if parent is not None:
         state["parent"] = parent
 
+    for name, path in places:
+        remember_repo(base, name, path)
     folders = [
         "inputs",
         "knowledge/extracted",
@@ -627,8 +795,12 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
 # --- workspace and checkouts -------------------------------------------------
 
 
-def extras(state: dict[str, Any]) -> list[dict[str, str]]:
-    return list((state.get("workspace") or {}).get("extra") or [])
+def extras(bolt: Path, state: dict[str, Any]) -> list[dict[str, str]]:
+    """Extra folders of this bolt: the local file's, then any an older state still holds."""
+    mine = list(read_local(planning_root(bolt))["extra"].get(str(state["id"])) or [])
+    names = {item["name"] for item in mine}
+    held = (state.get("workspace") or {}).get("extra") or []
+    return mine + [item for item in held if item["name"] not in names]
 
 
 def workspace_folders(bolt: Path, state: dict[str, Any]) -> list[dict[str, str]]:
@@ -643,11 +815,15 @@ def workspace_folders(bolt: Path, state: dict[str, Any]) -> list[dict[str, str]]
         name = f"parent: {DATE_PREFIX.sub('', parent['id'])}"
         folders.append({"name": name, "path": str(root / parent["path"])})
     ref = state.get("architecture_ref") or {}
-    if ref.get("path"):
-        folders.append({"name": "adr registry", "path": str(ref["path"])})
+    ref_name = ref.get("repo") or (Path(ref["path"]).name if ref.get("path") else "")
+    if ref_name:
+        folders.append(
+            {"name": "adr registry", "path": str(repo_dir(root, ref_name, ref.get("path")))}
+        )
     for target in state["targets"]:
-        folders.append({"name": f"target: {target['repo']}", "path": str(target["path"])})
-    for extra in extras(state):
+        where = repo_dir(root, target["repo"], target.get("path"))
+        folders.append({"name": f"target: {target['repo']}", "path": str(where)})
+    for extra in extras(bolt, state):
         folders.append({"name": extra["name"], "path": extra["path"]})
     return folders
 
@@ -711,7 +887,7 @@ def inspect_checkout(name: str, role: str, raw: str, fetch: bool) -> dict[str, A
         "stale": False,
     }
     if not row["exists"]:
-        return {**row, "note": "the folder does not exist"}
+        return {**row, "note": f"the folder does not exist; {PATH_HINT}"}
     if (git(path, "rev-parse", "--is-inside-work-tree") or "").strip() != "true":
         return {**row, "note": "not a git repository"}
     row["is_git"] = True
@@ -757,8 +933,12 @@ def write_workspace(
     if not file.parent.is_dir():
         die(EXIT_INPUT, f"{file.parent}: folder for --out does not exist.")
     file.write_text(json.dumps({"folders": folders}, indent=2) + "\n", encoding="utf-8")
-    checkouts = [inspect_checkout(t["repo"], "target", t["path"], fetch) for t in state["targets"]]
-    for extra in extras(state):
+    root = planning_root(bolt)
+    checkouts = [
+        inspect_checkout(t["repo"], "target", str(repo_dir(root, t["repo"], t.get("path"))), fetch)
+        for t in state["targets"]
+    ]
+    for extra in extras(bolt, state):
         row = inspect_checkout(extra["name"], "extra", extra["path"], fetch)
         if row["is_git"]:
             checkouts.append(row)
@@ -774,7 +954,8 @@ def write_workspace(
 def cmd_workspace(bolt: Path, state: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
     if args.extra:
         require_open(state)
-        current = extras(state)
+        current = extras(bolt, state)
+        drop_extra(state)  # an older state's copy; the local file now holds the list
         changes: list[str] = []
         for spec in args.extra:
             name, raw = parse_pair(spec, "--extra", allow_empty=True)
@@ -792,7 +973,12 @@ def cmd_workspace(bolt: Path, state: dict[str, Any], args: argparse.Namespace) -
             else:
                 current.append(entry)
             changes.append(f"{name}={entry['path']}")
-        state.setdefault("workspace", {})["extra"] = current
+        local = read_local(planning_root(bolt))
+        if current:
+            local["extra"][str(state["id"])] = current
+        else:
+            local["extra"].pop(str(state["id"]), None)
+        write_local(planning_root(bolt), local)
         write_state(bolt, state)
         log_event(bolt, "workspace", "", "", "; ".join(changes))
     out = Path(args.out).expanduser() if args.out else None
@@ -822,15 +1008,17 @@ def cmd_target(
 ) -> dict[str, Any]:
     targets = list(state["targets"])
     before = any(t["kind"] == "brownfield" for t in targets)
+    root = planning_root(bolt)
     if args.add:
-        record, rule = make_target(args.add, "--add")
+        record, rule, path = make_target(args.add, "--add")
         old = next((t for t in targets if t["repo"] == record["repo"]), None)
         if old is not None:
-            if old["path"] == record["path"]:
+            if resolve_repo(root, old["repo"], old.get("path")) == path:
                 record["codekb_commit"] = old.get("codekb_commit")
             targets = [record if t["repo"] == record["repo"] else t for t in targets]
         else:
             targets.append(record)
+        remember_repo(root, record["repo"], path)
         note = f"add {rule}"
     else:
         names = [t["repo"] for t in targets]
@@ -849,7 +1037,7 @@ def cmd_target(
         "targets": targets,
         "change": note,
         "reverse_engineering": verdict,
-        "codekb": codekb_status(planning_root(bolt), targets),
+        "codekb": codekb_status(root, targets),
         "workspace": write_workspace(bolt, state, None, fetch=False),
         "next": nxt,
     }
@@ -1135,14 +1323,19 @@ def codekb_target(root: Path, target: dict[str, Any]) -> dict[str, Any]:
     if meta is None:
         return {**row, "status": "missing", "rescan": "full"}
     commit = str(meta.get("commit") or "")
-    path = Path(target["path"])
+    found = resolve_repo(root, repo, target.get("path"))
+    path = found or sibling(root, repo)
     head = (git(path, "rev-parse", "HEAD") or "").strip()
     row.update({"meta_commit": commit or None, "head": head or None})
     if head and commit == head:
         return {**row, "status": "fresh"}
     known = bool(commit) and git(path, "cat-file", "-e", f"{commit}^{{commit}}") is not None
     if not head or not known:
-        why = "target is not a git checkout" if not head else "meta commit is unknown to the repo"
+        why = "meta commit is unknown to the repo"
+        if not head:
+            why = "target is not a git checkout"
+            if found is None:
+                why = f"target repository not found; {PATH_HINT}"
         return {**row, "status": "stale", "rescan": "full", "note": why}
     changed = [
         line for line in (git(path, "diff", "--name-only", f"{commit}..HEAD") or "").splitlines()
@@ -1458,6 +1651,10 @@ def record_codekb_commits(bolt: Path, state: dict[str, Any]) -> None:
             target["codekb_commit"] = meta.get("commit")
 
 
+def same_person(left: str, right: str) -> bool:
+    return " ".join(left.split()).casefold() == " ".join(right.split()).casefold()
+
+
 def cmd_gate(
     bolt: Path,
     state: dict[str, Any],
@@ -1468,6 +1665,16 @@ def cmd_gate(
 ) -> dict[str, Any]:
     record = get_record(state, stage, unit)
     label = stage["id"]
+    who = actor(planning_root(bolt))
+    channel = (getattr(args, "channel", None) or "").strip() or None
+    if (args.by or "").strip() and who and channel is None and not same_person(args.by, who):
+        raise Fail(
+            EXIT_FINDINGS,
+            f"{who} is running this, but the decision is {args.by.strip()}'s: an approval "
+            "given by someone else must be recorded with --channel (for example "
+            "'email 2026-11-24').",
+        )
+    via = (f" recorded by {who} via {channel}" if who else f" via {channel}") if channel else ""
     if args.request_changes:
         if not (args.note or "").strip():
             die(EXIT_USAGE, "--request-changes needs --note.")
@@ -1476,8 +1683,10 @@ def cmd_gate(
         record["step"] = "changes-requested"
         record["approved_at"] = None
         record["approved_by"] = None
+        record["recorded_by"] = None
+        record["channel"] = None
         nxt = commit(bolt, state, catalog)
-        log_event(bolt, "gate-request-changes", label, args.by or "", args.note)
+        log_event(bolt, "gate-request-changes", label, args.by or "", args.note + via)
         return {"ok": True, "stage": label, "unit": unit, "step": record["step"], "next": nxt}
     if not (args.by or "").strip():
         die(EXIT_USAGE, "--approve needs --by NAME.")
@@ -1492,12 +1701,14 @@ def cmd_gate(
     record["step"] = "approved"
     record["approved_at"] = now()
     record["approved_by"] = args.by.strip()
+    record["recorded_by"] = who or None
+    record["channel"] = channel
     if stage["id"] == "reverse-engineering":
         record_codekb_commits(bolt, state)
     if not state.get("approver"):
         state["approver"] = args.by.strip()
     nxt = commit(bolt, state, catalog)
-    log_event(bolt, "gate-approve", label, args.by, unit or "")
+    log_event(bolt, "gate-approve", label, args.by, (unit or "") + via)
     suggestion = (
         "A fresh session for the next stage is cheapest but optional. "
         f"Next: {state['next_action']}."
@@ -2372,6 +2583,11 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--request-changes", action="store_true")
     sp.add_argument("--by", help="Approver name (required with --approve).")
     sp.add_argument("--note", help="What to change (required with --request-changes).")
+    sp.add_argument(
+        "--channel",
+        help="How someone else gave the decision, e.g. 'email 2026-11-24'; "
+        "required when --by is not the person running the script.",
+    )
 
     sp = add("units", "Load units and slices from a JSON file.")
     sp.add_argument(
@@ -2391,7 +2607,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--extra",
         action="append",
         metavar="name=path",
-        help="Extra folder, kept in state.json; repeatable. name= with no path removes it.",
+        help="Extra folder, kept in .aidlc-local.json; repeatable. name= with no path removes it.",
     )
     sp.add_argument(
         "--fetch",

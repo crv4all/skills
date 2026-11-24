@@ -12,6 +12,16 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A Bolt's `state.json` holds no machine paths, and records who did what.**
+  Targets, the ADR registry and extra folders were stored as absolute paths, so
+  a second engineer's checkout broke the Bolt. State now keeps the repository
+  name; the path lives in a per-machine `.aidlc-local.json` at the planning root
+  (never staged) and defaults to the folder of that name next to the planning
+  repo. An older state is moved over on its next change. The log's fourth field
+  becomes `agent:<git user.name>` when it is known, and an approval entered for
+  someone else needs `--channel` (for example `email 2026-11-24`), stored with
+  who recorded it. Each state also carries a framework number, and skills that
+  are older than the Bolt refuse it instead of misreading it.
 - **`aidlc_refs.py` makes every Bolt id resolvable without model tokens.**
   Ids such as `D10`, `A-Q3` and `L986` are forgotten, and recalling one meant
   re-reading whole files. `show` answers an agent in one line per id, `link`

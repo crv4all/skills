@@ -86,6 +86,11 @@ def log_lines(bolt: Path) -> list[str]:
     return (bolt / "log.md").read_text(encoding="utf-8").splitlines()
 
 
+def local_extras(root: Path) -> list[dict[str, str]]:
+    local = json.loads((root / ".aidlc-local.json").read_text(encoding="utf-8"))
+    return local["extra"].get("2026-01-05-demo", [])
+
+
 def checkout(data: dict[str, Any], name: str) -> dict[str, Any]:
     return next(row for row in data["checkouts"] if row["name"] == name)
 
@@ -149,13 +154,14 @@ def test_extras_are_kept_and_removed(world: dict[str, Path]) -> None:
     docs.mkdir()
     p = str(bolt)
     assert run("workspace", "--bolt", p, "--extra", f"docs={docs}")[0] == 0
-    assert state(bolt)["workspace"]["extra"] == [{"name": "docs", "path": str(docs.resolve())}]
+    assert "workspace" not in state(bolt)  # extras are per machine: the local file holds them
+    assert local_extras(world["root"]) == [{"name": "docs", "path": str(docs.resolve())}]
     assert "| workspace |" in log_lines(bolt)[-1]
     code, data = run("workspace", "--bolt", p)
     assert code == 0 and data["folders"][-1] == {"name": "docs", "path": str(docs.resolve())}
     assert data["checkouts"] == []  # an extra that is not a git repository is not a checkout
     assert run("workspace", "--bolt", p, "--extra", "docs=")[0] == 0
-    assert state(bolt)["workspace"]["extra"] == []
+    assert local_extras(world["root"]) == []
     assert run("workspace", "--bolt", p, "--extra", "docs=")[0] == 3
 
 
@@ -288,3 +294,57 @@ def test_target_refusals(world: dict[str, Path]) -> None:
     assert state(bolt) == before
     run("close", "--bolt", p, "--status", "archived")
     assert run("target", "--bolt", p, "--add", f"svc={world['svc']}")[0] == 1
+
+
+# --- per-machine paths -------------------------------------------------------
+
+
+def local_file(root: Path) -> dict[str, Any]:
+    return json.loads((root / ".aidlc-local.json").read_text(encoding="utf-8"))
+
+
+def test_target_outside_the_siblings_lives_in_the_local_file(world: dict[str, Path]) -> None:
+    _, far = origin_and_clone(world["base"] / "elsewhere", "lib")
+    bolt, _ = open_bolt(world["root"], "--target", f"lib={far}")
+    assert not any("path" in t for t in state(bolt)["targets"])
+    assert str(far.resolve()) not in (bolt / "state.json").read_text(encoding="utf-8")
+    assert local_file(world["root"])["paths"] == {"lib": str(far.resolve())}
+    meta = world["root"] / "codekb" / "lib"
+    meta.mkdir(parents=True)
+    head = git(far, "rev-parse", "HEAD")
+    (meta / "_meta.json").write_text(json.dumps({"commit": head}), encoding="utf-8")
+    code, data = run("codekb-status", "--bolt", str(bolt))
+    assert code == 0 and data["targets"][0]["status"] == "fresh"
+    far.rename(far.with_name("moved"))  # an unresolvable repository is data, not a crash
+    code, data = run("workspace", "--bolt", str(bolt))
+    assert code == 0 and ".aidlc-local.json" in checkout(data, "lib")["note"]
+
+
+def test_a_sibling_target_needs_no_local_file(world: dict[str, Path]) -> None:
+    bolt, _ = open_bolt(world["root"], "--target", f"svc={world['svc']}")
+    assert not (world["root"] / ".aidlc-local.json").exists()
+    assert state(bolt)["targets"] == [{"repo": "svc", "kind": "brownfield", "codekb_commit": None}]
+    assert checkout(run("workspace", "--bolt", str(bolt))[1], "svc")["exists"]
+
+
+def test_an_old_state_moves_its_paths_on_the_next_change(world: dict[str, Path]) -> None:
+    _, far = origin_and_clone(world["base"] / "elsewhere", "svc")
+    bolt, _ = open_bolt(world["root"])
+    old = state(bolt)
+    old["targets"] = [
+        {"repo": "svc", "path": str(far), "kind": "brownfield", "codekb_commit": None}
+    ]
+    old["architecture_ref"] = {"path": str(world["registry"]), "commit": None}
+    old["workspace"] = {"extra": [{"name": "docs", "path": str(world["base"] / "docs")}]}
+    (bolt / "state.json").write_text(json.dumps(old), encoding="utf-8")
+    code, data = run("workspace", "--bolt", str(bolt))
+    assert code == 0 and checkout(data, "svc")["exists"]  # the legacy path still resolves
+    assert run("park", "--bolt", str(bolt), "--note", "n")[0] == 0
+    new = state(bolt)
+    assert new["targets"] == [{"repo": "svc", "kind": "brownfield", "codekb_commit": None}]
+    assert new["architecture_ref"] == {"repo": "registry", "commit": None}
+    assert "workspace" not in new and new["framework"] == 2
+    local = local_file(world["root"])
+    assert local["paths"] == {"svc": str(far.resolve())}  # the registry is a sibling
+    assert local["extra"]["2026-01-05-demo"][0]["name"] == "docs"
+    assert sum("| portable |" in line for line in log_lines(bolt)) == 1

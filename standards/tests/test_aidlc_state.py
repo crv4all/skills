@@ -295,6 +295,8 @@ def test_decide_skip_needs_a_reason(bolt: Bolt) -> None:
         "step": "todo",
         "approved_at": None,
         "approved_by": None,
+        "recorded_by": None,
+        "channel": None,
     }
 
 
@@ -832,3 +834,37 @@ def test_inputs_lists_the_presets_file_when_it_exists_and_is_silent_when_not(
     code, data, _ = bolt.run("inputs", "--stage", "hla")
     row = next(r for r in data["inputs"] if r["path"].endswith("presets.md"))
     assert code == 0 and row["exists"] and row["mode"] == "full"
+
+
+# --- who did it, and the framework version -----------------------------------
+
+
+def test_an_approval_given_by_someone_else_needs_a_channel(
+    bolt: Bolt, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AIDLC_ACTOR", "Ada  Lovelace")
+    gate = ("gate", "--stage", "workspace-detection", "--approve")
+    stage = ("--stage", "workspace-detection")
+    assert (
+        bolt.run("gate", *stage, "--request-changes", "--by", "ADA lovelace", "--note", "x")[0] == 0
+    )
+    assert bolt.run("step", *stage, "--to", "produced")[0] == 0
+    code, data, _ = bolt.run(*gate, "--by", "Grace Hopper")
+    assert code == 1 and "--channel" in data["error"]
+    assert bolt.run(*gate, "--by", "Grace Hopper", "--channel", "email 2026-11-24")[0] == 0
+    record = bolt.state["stages"]["workspace-detection"]
+    assert (record["approved_by"], record["recorded_by"]) == ("Grace Hopper", "Ada Lovelace")
+    assert record["channel"] == "email 2026-11-24"
+    assert "recorded by Ada Lovelace via email 2026-11-24" in bolt.log_lines()[-1]
+
+
+def test_a_newer_framework_is_refused_and_a_missing_one_is_added(bolt: Bolt) -> None:
+    state = bolt.state
+    del state["framework"]
+    (bolt.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
+    assert bolt.run("status")[0] == 0
+    assert bolt.run("park", "--note", "n")[0] == 0 and bolt.state["framework"] == 2
+    state["framework"] = 3
+    (bolt.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
+    code, data, _ = bolt.run("status")
+    assert code == 4 and "framework 3, installed 2" in data["error"]
