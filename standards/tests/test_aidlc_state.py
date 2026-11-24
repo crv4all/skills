@@ -868,3 +868,124 @@ def test_a_newer_framework_is_refused_and_a_missing_one_is_added(bolt: Bolt) -> 
     (bolt.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
     code, data, _ = bolt.run("status")
     assert code == 4 and "framework 3, installed 2" in data["error"]
+
+
+# --- unit owners, waiting, changed context and the brief ---------------------
+
+
+def load_units(p: Bolt, units: list[dict[str, Any]]) -> tuple[int, dict[str, Any], str]:
+    spec = p.root / "units.json"
+    spec.write_text(json.dumps({"units": units}), encoding="utf-8")
+    return p.run("units", "--set", str(spec))
+
+
+def skip_unit_stages(p: Bolt, unit: str) -> None:
+    for stage in ("functional-design", "nfr-requirements", "nfr-design", "infrastructure-design"):
+        p.run("decide", "--stage", stage, "--unit", unit, "--decision", "skip", "--reason", "t")
+    p.run("decide", "--stage", "code-generation", "--unit", unit, "--decision", "skip", "--reason", "t")  # fmt: skip
+
+
+def skip_inception(p: Bolt) -> None:
+    assert p.run("gate", "--stage", "workspace-detection", "--approve", "--by", "B")[0] == 0
+    for stage in json.loads((SKILL / "assets" / "stages.json").read_text())["stages"]:
+        if not stage["per_unit"] and 2 <= stage["order"] <= 11:
+            p.run("decide", "--stage", stage["id"], "--decision", "skip", "--reason", "t")
+    assert p.run("jira", "--off", "--reason", "t")[0] == 0
+
+
+def test_units_refuse_a_cycle_and_an_unknown_repository(bolt: Bolt) -> None:
+    cycle = [{"id": "a", "depends_on": ["b"]}, {"id": "b", "depends_on": [{"unit": "a"}]}]
+    code, data, _ = load_units(bolt, cycle)
+    assert code == 4 and "a -> b -> a" in data["error"]
+    state = bolt.state
+    state["targets"] = [{"repo": "svc", "kind": "greenfield", "codekb_commit": None}]
+    (bolt.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
+    code, data, _ = load_units(bolt, [{"id": "a", "repo": "other"}])
+    assert code == 4 and "svc" in data["error"]
+    code, data, _ = load_units(bolt, [{"id": "a", "repo": "svc", "depends_on": ["z"]}])
+    assert code == 4 and "unknown unit" in data["error"]
+    assert load_units(bolt, [{"id": "a", "repo": "svc"}, {"id": "b", "depends_on": ["a"]}])[0] == 0
+    assert bolt.state["units"][1]["depends_on"] == [{"unit": "a", "on": "done"}]
+
+
+def test_next_unit_reports_what_it_waits_for(bolt: Bolt) -> None:
+    skip_inception(bolt)
+    deps = [{"unit": "u1", "on": "done"}, {"unit": "u1", "on": "contract"}]
+    assert load_units(bolt, [{"id": "u1"}, {"id": "u2", "depends_on": deps}])[0] == 0
+    code, data, _ = bolt.run("next", "--unit", "u2")
+    assert code == 0 and [w["on"] for w in data["blocked_by"]] == ["done"]  # contract is skipped
+    assert data["blocked"] == "waits for u1 (done)" and data["unit"] == "u2"
+    skip_unit_stages(bolt, "u1")
+    assert bolt.run("next", "--unit", "u2")[1]["blocked_by"] == []
+    assert bolt.run("next", "--unit", "nope")[0] == 2
+
+
+def test_next_unit_names_an_open_inception_stage(bolt: Bolt) -> None:
+    assert load_units(bolt, [{"id": "u1"}])[0] == 0
+    data = bolt.run("next", "--unit", "u1")[1]
+    assert data["blocked"].startswith("inception is not finished: ")
+    assert data["stage"] == data["blocked"].rsplit(": ", 1)[1]
+
+
+def test_next_mine_lists_only_the_actors_units(bolt: Bolt, monkeypatch: pytest.MonkeyPatch) -> None:
+    skip_inception(bolt)
+    load_units(bolt, [{"id": "u1", "owner": "Ada Lovelace"}, {"id": "u2", "owner": "Grace"}])
+    monkeypatch.setenv("AIDLC_ACTOR", "ada  lovelace")
+    data = bolt.run("next", "--mine")[1]
+    assert data["actor"] == "ada lovelace" and [u["unit"] for u in data["units"]] == ["u1"]
+    monkeypatch.setenv("AIDLC_ACTOR", "")
+    assert bolt.run("next", "--mine")[0] == 1
+
+
+def test_a_changed_input_blocks_the_gate_until_acknowledged(bolt: Bolt) -> None:
+    bolt.write("knowledge/_digest.md", digest())
+    reach_produced(bolt)
+    ra_files(bolt)
+    stage = "requirements-analysis"
+    assert list(bolt.state["stages"][stage]["relied_on"]) == ["knowledge/_digest.md"]
+    assert "context_changed" not in bolt.run("next")[1]
+    bolt.write("knowledge/_digest.md", digest(3))
+    assert bolt.run("next")[1]["context_changed"] == ["knowledge/_digest.md"]
+    assert bolt.run("status")[1]["stale"][0]["stage"] == stage
+    code, data, _ = bolt.run("gate", "--stage", stage, "--approve", "--by", "Ada")
+    assert code == 1 and data["findings"][0]["code"] == "context-changed"
+    code, _, _ = bolt.run("gate", "--stage", stage, "--approve", "--by", "Ada",
+                          "--ack-context", "read the new digest")  # fmt: skip
+    assert code == 0 and "context acknowledged: read the new digest" in bolt.log_lines()[-1]
+    assert bolt.run("status")[1]["stale"] == []
+
+
+def test_a_record_without_relied_on_is_never_flagged(bolt: Bolt) -> None:
+    bolt.write("knowledge/_digest.md", digest())
+    reach_produced(bolt)
+    ra_files(bolt)
+    state = bolt.state
+    del state["stages"]["requirements-analysis"]["relied_on"]
+    (bolt.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
+    bolt.write("knowledge/_digest.md", digest(3))
+    assert "context_changed" not in bolt.run("next")[1]
+    assert bolt.run("gate", "--stage", "requirements-analysis", "--approve", "--by", "Ada")[0] == 0
+
+
+def test_brief_has_five_sections_and_can_be_written(bolt: Bolt) -> None:
+    skip_inception(bolt)
+    load_units(bolt, [{"id": "u1", "name": "Billing", "owner": "Ada", "repo": "svc"}])
+    code, data, _ = bolt.run("brief", "--unit", "u1")
+    assert code == 0 and not (bolt.path / "docs/construction/u1/brief.md").exists()
+    headings = [line for line in data["markdown"].splitlines() if line.startswith("#")]
+    assert headings == ["# Unit u1: Billing", "## Waits for", "## Read first",
+                        "## Changed since you last produced", "## Next"]  # fmt: skip
+    assert "aidlc_refs.py show --bolt" in data["markdown"] and "| Owner | Ada |" in data["markdown"]
+    code, data, _ = bolt.run("brief", "--unit", "u1", "--write")
+    written = bolt.path / "docs" / "construction" / "u1" / "brief.md"
+    assert code == 0 and written.read_text(encoding="utf-8") == data["markdown"]
+
+
+def test_assign_changes_the_owner_and_logs_it(bolt: Bolt) -> None:
+    load_units(bolt, [{"id": "u1", "owner": "Ada"}])
+    assert bolt.run("assign", "--unit", "u1", "--owner", "Grace")[0] == 0
+    assert bolt.state["units"][0]["owner"] == "Grace"
+    last = bolt.log_lines()[-1]
+    assert "| assign |" in last and last.endswith("[u1] Ada -> Grace")
+    assert bolt.run("assign", "--unit", "zz", "--owner", "X")[0] == 2
+    assert load_units(bolt, [{"id": "u1"}])[0] == 0 and bolt.state["units"][0]["owner"] == "Grace"

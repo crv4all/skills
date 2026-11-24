@@ -12,6 +12,14 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Units have an owner, a repository and what they wait for, and a stage notices changed context.**
+  `units --set` takes `owner`, `repo` and `depends_on` (a unit id, or
+  `{"unit", "on": "done" | "contract"}`) and refuses a cycle or a repository
+  the Bolt does not target. `next --unit U` and `next --mine` route one
+  engineer's own units and say what each waits for, `assign` changes an owner,
+  and `brief --unit U --write` writes a starting page of pointers. A stage
+  records a hash of each input it relied on; when one changes later, `next` and
+  `status` show it and the gate asks for `--ack-context` before approving.
 - **A Bolt's `state.json` holds no machine paths, and records who did what.**
   Targets, the ADR registry and extra folders were stored as absolute paths, so
   a second engineer's checkout broke the Bolt. State now keeps the repository

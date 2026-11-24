@@ -55,7 +55,7 @@ Opening, resuming or closing a Bolt; "what is next"; and "am I ready to use AI-D
 
 ## Resume
 
-Run `aidlc_state.py status --bolt <p> --format text`, then `aidlc_state.py next --bolt <p>`. Say in at most 5 lines where the Bolt stands and what the next step is. Read nothing else from the Bolt. If `parked` has a note, show it first. Before a stage that reads code, run `workspace --bolt <p>` and name any `stale` checkout.
+Run `aidlc_state.py status --bolt <p> --format text`, then `aidlc_state.py next --bolt <p>`. Say in at most 5 lines where the Bolt stands and what the next step is. Read nothing else from the Bolt. If `parked` has a note, show it first. Before a stage that reads code, run `workspace --bolt <p>` and name any `stale` checkout. An engineer resumes their own work with `next --mine` or `next --unit <u>`, which also say what the unit waits for; `brief --unit <u> --write` gives its starting page. A stage whose inputs changed after it was produced shows `context_changed`, and its gate needs `--ack-context "<what you checked>"`.
 
 ## Route to the stage
 

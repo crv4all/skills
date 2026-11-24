@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import importlib.util
 import json
 import logging
@@ -44,6 +45,8 @@ EPILOG = """commands:
   step        move a stage forward       --bolt P --stage S --to asked|analysed|produced
   gate        approve or send back       --bolt P --stage S --approve --by NAME [--channel C]
   units       load units and slices       --bolt P --set file.json
+  assign      set a unit's owner         --bolt P --unit U --owner NAME
+  brief       a unit's starting page     --bolt P --unit U [--write]
   decision-id reserve decision ids       --bolt P [--count n]
   codekb-status is the code knowledge fresh --bolt P
   workspace   workspace file, checkouts  --bolt P [--extra name=path]... [--fetch] [--out F]
@@ -99,6 +102,7 @@ DEPTHS = ["minimal", "standard", "comprehensive"]
 DEFAULT_DEPTH = {"classic": "standard", "express": "standard", "bugfix": "minimal"}
 DEFAULT_UNIT_SCOPES = {"express", "bugfix"}
 UNIT_KINDS = ["service", "spec", "ui", "packaging", "library"]
+DEPENDENCY_ON = ["done", "contract"]
 ROOT_PREFIX = "root:"
 PARENT_PREFIX = "parent:"
 FOCUSED_RESCAN_MAX = 0.30
@@ -531,43 +535,205 @@ def story_missing(state: dict[str, Any], unit: str) -> bool:
     return not find_unit(state, unit).get("story")
 
 
+def slot_next(
+    state: dict[str, Any],
+    item: dict[str, Any],
+    unit: Optional[str],
+    record: Optional[dict[str, Any]],
+) -> dict[str, Any]:
+    """What to do for one not-done slot."""
+    base: dict[str, Any] = {
+        "done": False,
+        "stage": item["id"],
+        "unit": unit,
+        "skill": item["skill"],
+        "reference": item["reference"],
+        "tier": item.get("tier"),
+    }
+    if record is None:
+        return {
+            **base,
+            "step": None,
+            "action": "load-units",
+            "blocked": ("units are not loaded; run `units --set` before per-unit stages"),
+        }
+    base["step"] = record["step"]
+    if record["decision"] == "pending":
+        hint: dict[str, Any] = {"runs_when": item.get("runs_when", "")}
+        if unit:
+            hint["unit_kind"] = find_unit(state, unit).get("kind")
+        return {**base, "action": "decide", **hint}
+    action = ACTIONS[record["step"]]
+    if action == "ask" and not item["questions"]:
+        action = "produce"
+    result = {**base, "action": action}
+    if unit and is_construction_unit_stage(item) and story_missing(state, unit):
+        result["jira"] = (
+            f"unit {unit} has no Jira story: file it, then `jira --unit {unit} --story KEY`, "
+            "or `jira --off --reason`."
+        )
+    return result
+
+
 def compute_next(state: dict[str, Any], catalog: list[dict[str, Any]]) -> dict[str, Any]:
     for item, unit in slots(state, catalog):
         record = slot_record(state, item, unit)
-        if is_done(record):
-            continue
-        base: dict[str, Any] = {
-            "done": False,
-            "stage": item["id"],
-            "unit": unit,
-            "skill": item["skill"],
-            "reference": item["reference"],
-            "tier": item.get("tier"),
-        }
-        if record is None:
-            return {
-                **base,
-                "step": None,
-                "action": "load-units",
-                "blocked": ("units are not loaded; run `units --set` before per-unit stages"),
-            }
-        base["step"] = record["step"]
-        if record["decision"] == "pending":
-            hint: dict[str, Any] = {"runs_when": item.get("runs_when", "")}
-            if unit:
-                hint["unit_kind"] = find_unit(state, unit).get("kind")
-            return {**base, "action": "decide", **hint}
-        action = ACTIONS[record["step"]]
-        if action == "ask" and not item["questions"]:
-            action = "produce"
-        result = {**base, "action": action}
-        if unit and is_construction_unit_stage(item) and story_missing(state, unit):
-            result["jira"] = (
-                f"unit {unit} has no Jira story: file it, then `jira --unit {unit} --story KEY`, "
-                "or `jira --off --reason`."
-            )
-        return result
+        if not is_done(record):
+            return slot_next(state, item, unit, record)
     return {"done": True, "stage": None, "unit": None, "action": "close"}
+
+
+# --- units: owners, waiting and unit-scoped routing ----------------------------
+
+
+def blocked_by(
+    state: dict[str, Any], catalog: list[dict[str, Any]], unit_id: str
+) -> list[dict[str, Any]]:
+    """The dependencies of a unit that are not satisfied yet."""
+    waiting: list[dict[str, Any]] = []
+    known = {u["id"] for u in state["units"]}
+    for dep in find_unit(state, unit_id).get("depends_on") or []:
+        other, on = dep["unit"], dep.get("on", "done")
+        reason = ""
+        if on == "contract":
+            has_stage = any(i["id"] == "contract-design" for i in catalog)
+            if has_stage and not is_done(state["stages"].get("contract-design")):
+                reason = "contract-design is not done"
+        elif other not in known:
+            reason = f"unit {other} is not loaded"
+        else:
+            for item in catalog:
+                if item["per_unit"] and not is_done(slot_record(state, item, other)):
+                    reason = f"{other} has not finished {item['id']}"
+                    break
+        if reason:
+            waiting.append({"unit": other, "on": on, "reason": reason})
+    return waiting
+
+
+def waits_sentence(waiting: list[dict[str, Any]]) -> str:
+    return "waits for " + ", ".join(f"{w['unit']} ({w['on']})" for w in waiting)
+
+
+def unit_slot(
+    state: dict[str, Any], catalog: list[dict[str, Any]], unit_id: str
+) -> Optional[dict[str, Any]]:
+    """The first per-unit stage of ``unit_id`` that is not done."""
+    for item in catalog:
+        if item["per_unit"] and not is_done(slot_record(state, item, unit_id)):
+            return item
+    return None
+
+
+def next_for_unit(
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], unit_id: str
+) -> dict[str, Any]:
+    """``next`` for one unit: its own first open stage, with what it waits for."""
+    find_unit(state, unit_id)
+    waiting = blocked_by(state, catalog, unit_id)
+    first = min((i["order"] for i in catalog if i["per_unit"]), default=0)
+    for item in catalog:
+        record = state["stages"].get(item["id"])
+        if not item["per_unit"] and item["order"] < first and not is_done(record):
+            result = slot_next(state, item, None, record)
+            result.update({"unit": unit_id, "blocked_by": waiting})
+            result["blocked"] = f"inception is not finished: {item['id']}"
+            return with_context(bolt, state, catalog, result)
+    item = unit_slot(state, catalog, unit_id)
+    if item is None:
+        return {"done": True, "stage": None, "unit": unit_id, "action": "none", "blocked_by": []}
+    result = slot_next(state, item, unit_id, slot_record(state, item, unit_id))
+    result["blocked_by"] = waiting
+    if waiting:
+        result["blocked"] = waits_sentence(waiting)
+    return with_context(bolt, state, catalog, result)
+
+
+def cmd_next(
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], args: argparse.Namespace
+) -> dict[str, Any]:
+    if args.unit:
+        return {"ok": True, **next_for_unit(bolt, state, catalog, args.unit)}
+    if args.mine:
+        who = actor(planning_root(bolt))
+        if not who:
+            raise Fail(EXIT_FINDINGS, "the git user name is not set; run `git config user.name`.")
+        mine = [u["id"] for u in state["units"] if same_person(u.get("owner") or "", who)]
+        rows = [next_for_unit(bolt, state, catalog, uid) for uid in mine]
+        return {"ok": True, "actor": who, "units": rows}
+    return {"ok": True, **with_context(bolt, state, catalog, compute_next(state, catalog))}
+
+
+def cmd_brief(
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], args: argparse.Namespace
+) -> dict[str, Any]:
+    """A unit's starting page. It points at files; it never copies their text."""
+    uid = args.unit
+    unit = find_unit(state, uid)
+    nxt = next_for_unit(bolt, state, catalog, uid)
+    waiting = {(w["unit"], w["on"]) for w in nxt["blocked_by"]}
+    parent = (state.get("parent") or {}).get("id") or "-"
+    facts = [
+        ("Bolt", f"{state['id']}: {state['title']}"), ("Parent Bolt", parent),
+        ("Kind", unit.get("kind") or "-"), ("Owner", unit.get("owner") or "-"),
+        ("Repository", unit.get("repo") or "-"), ("Slice", unit.get("slice") or "-"),
+        ("Jira story", unit.get("story") or "-"),
+    ]  # fmt: skip
+    out = [f"# Unit {uid}: {unit['name']}", "", "| Fact | Value |", "| --- | --- |"]
+    out += [f"| {key} | {value} |" for key, value in facts]
+    out += ["", "## Waits for", ""]
+    deps = unit.get("depends_on") or []
+    out += [
+        f"- {d['unit']} ({d['on']}): "
+        + ("waiting" if (d["unit"], d["on"]) in waiting else "satisfied")
+        for d in deps
+    ] or ["nothing"]
+    item = unit_slot(state, catalog, uid)
+    rows = input_rows(bolt, state, catalog, item, uid)[0] if item else []
+    out += ["", "## Read first", ""]
+    out += [f"- `{row['path']}` ({row['mode']})" for row in rows] or ["nothing"]
+    out += ["", f"Resolve any id with `aidlc_refs.py show --bolt {bolt} <id>`", ""]
+    out += ["## Changed since you last produced", ""]
+    changed = [
+        f"- {sub['id']}: {', '.join(paths)}"
+        for sub in catalog
+        if sub["per_unit"] and (paths := context_changed(bolt, state, catalog, sub, uid))
+    ]
+    out += changed or ["nothing"]
+    out += ["", "## Next", ""]
+    if nxt["stage"]:
+        out += [
+            f"- Stage: {nxt['stage']}",
+            f"- Action: {nxt['action']}",
+            f"- Skill: {nxt['skill']}",
+        ]
+        if nxt.get("blocked"):
+            out.append(f"- Blocked: {nxt['blocked']}")
+    else:
+        out.append("Every stage of this unit is done.")
+    markdown = "\n".join(out) + "\n"
+    result: dict[str, Any] = {"ok": True, "unit": uid, "markdown": markdown}
+    if args.write:
+        file = bolt / "docs" / "construction" / uid / "brief.md"
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text(markdown, encoding="utf-8")
+        result["path"] = str(file)
+    return result
+
+
+def cmd_assign(
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], args: argparse.Namespace
+) -> dict[str, Any]:
+    owner = " ".join((args.owner or "").split())
+    if not owner:
+        die(EXIT_USAGE, "--owner must not be blank.")
+    unit = find_unit(state, args.unit)
+    old = unit.get("owner") or "-"
+    unit["owner"] = owner
+    nxt = commit(bolt, state, catalog)
+    log_event(bolt, "assign", "", "", f"[{args.unit}] {old} -> {owner}")
+    previous = None if old == "-" else old
+    return {"ok": True, "unit": args.unit, "owner": owner, "previous": previous, "next": nxt}
 
 
 def describe_next(nxt: dict[str, Any]) -> str:
@@ -1083,6 +1249,21 @@ def jira_line(state: dict[str, Any]) -> str:
     )
 
 
+def unit_detail(
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], unit_id: str
+) -> dict[str, Any]:
+    unit = find_unit(state, unit_id)
+    nxt = next_for_unit(bolt, state, catalog, unit_id)
+    return {
+        "id": unit_id,
+        "owner": unit.get("owner"),
+        "repo": unit.get("repo"),
+        "blocked_by": nxt["blocked_by"],
+        "stage": nxt["stage"],
+        "action": nxt["action"],
+    }
+
+
 def cmd_status(
     bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], fmt: str
 ) -> dict[str, Any]:
@@ -1106,6 +1287,10 @@ def cmd_status(
         "parked": state["parked"],
         "jira": jira_facts(state),
     }
+    details = [unit_detail(bolt, state, catalog, u["id"]) for u in state["units"]]
+    stale = stale_rows(bolt, state, catalog)
+    facts["unit_details"] = details
+    facts["stale"] = stale
     parent = state.get("parent")
     if parent:
         facts["parent"] = parent
@@ -1128,6 +1313,13 @@ def cmd_status(
         note = f", {entry['skipped']} skipped" if entry["skipped"] else ""
         lines.append(f"{phase.capitalize()}: {entry['done']}/{entry['total']} done{note}")
     lines.append(f"Units: {len(state['units'])} | Slices: {len(state['slices'])}")
+    for row in details:
+        step = f"{row['stage']} {row['action']}" if row["stage"] else "done"
+        waits = f" | {waits_sentence(row['blocked_by'])}" if row["blocked_by"] else ""
+        lines.append(f"  {row['id']} | {row['owner'] or '-'} | {step}{waits}")
+    for row in stale:
+        where = row["stage"] + (f" [{row['unit']}]" if row["unit"] else "")
+        lines.append(f"Context changed for {where}: {', '.join(row['changed'])}")
     lines.append(jira_line(state))
     if git_block is not None:
         lines.append(git_status_line(git_block))
@@ -1140,7 +1332,7 @@ def cmd_status(
     if state["parked"]:
         note = str(state["parked"].get("note", "")).replace("\n", " ")
         lines.append(f"Parked: {note[:300]}")
-    return {"text": "\n".join(lines[:20]) + "\n"}
+    return {"text": "\n".join(lines[: 20 + len(details) + len(stale)]) + "\n"}
 
 
 def planning_root(bolt: Path) -> Path:
@@ -1217,15 +1409,14 @@ def producer_of(catalog: list[dict[str, Any]], template: str) -> Optional[dict[s
     return None
 
 
-def cmd_inputs(
+def input_rows(
     bolt: Path,
     state: dict[str, Any],
     catalog: list[dict[str, Any]],
-    stage_id: str,
+    stage: dict[str, Any],
     unit: Optional[str],
-) -> dict[str, Any]:
-    stage = stage_def(catalog, stage_id)
-    get_record(state, stage, unit)
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The input rows of a stage (and unit) and the required ones that are missing."""
     repos = brownfield_repos(state)
     targets = [t["repo"] for t in state["targets"]]
     units = unit_ids(state, stage, unit)
@@ -1269,6 +1460,20 @@ def cmd_inputs(
             rows.append(row)
             if not exists and not skipped and not optional:
                 missing.append({"path": rel, "produced_by": row["produced_by"]})
+    return rows, missing
+
+
+def cmd_inputs(
+    bolt: Path,
+    state: dict[str, Any],
+    catalog: list[dict[str, Any]],
+    stage_id: str,
+    unit: Optional[str],
+) -> dict[str, Any]:
+    stage = stage_def(catalog, stage_id)
+    get_record(state, stage, unit)
+    rows, missing = input_rows(bolt, state, catalog, stage, unit)
+    folder = parent_dir(bolt, state)
     payload: dict[str, Any] = {
         "ok": not missing,
         "stage": stage_id,
@@ -1290,6 +1495,69 @@ def cmd_inputs(
             EXIT_INPUT, f"stage '{stage_id}' is missing required input: {names}", extra=payload
         )
     return payload
+
+
+# --- context a stage relied on ------------------------------------------------
+
+
+def fingerprint(row: dict[str, Any]) -> str:
+    """16 hex characters of a sha256: the file, or only its ``## Digest`` in digest mode."""
+    raw = Path(row["file"]).read_bytes()
+    if row["mode"] == "digest":
+        found = digest_section(raw.decode("utf-8", errors="replace"))
+        if found is not None:
+            raw = "\n".join(found).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:16]
+
+
+def relied_on(
+    bolt: Path,
+    state: dict[str, Any],
+    catalog: list[dict[str, Any]],
+    stage: dict[str, Any],
+    unit: Optional[str],
+) -> dict[str, str]:
+    rows, _ = input_rows(bolt, state, catalog, stage, unit)
+    return {row["path"]: fingerprint(row) for row in rows if row["exists"]}
+
+
+def context_changed(
+    bolt: Path,
+    state: dict[str, Any],
+    catalog: list[dict[str, Any]],
+    stage: dict[str, Any],
+    unit: Optional[str],
+) -> list[str]:
+    """Inputs that differ from, or vanished since, the record's ``relied_on``."""
+    record = slot_record(state, stage, unit)
+    stored = (record or {}).get("relied_on")
+    if not stored:
+        return []
+    now_hashes = relied_on(bolt, state, catalog, stage, unit)
+    return [path for path, digest in stored.items() if now_hashes.get(path) != digest]
+
+
+def with_context(
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], result: dict[str, Any]
+) -> dict[str, Any]:
+    """Add ``context_changed`` to a ``next`` result for its slot, when not empty."""
+    if result.get("stage"):
+        stage = stage_def(catalog, result["stage"])
+        changed = context_changed(bolt, state, catalog, stage, result.get("unit"))
+        if changed:
+            result["context_changed"] = changed
+    return result
+
+
+def stale_rows(
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for item, unit in slots(state, catalog):
+        changed = context_changed(bolt, state, catalog, item, unit)
+        if changed:
+            rows.append({"stage": item["id"], "unit": unit, "changed": changed})
+    return rows
 
 
 # --- code knowledge ----------------------------------------------------------
@@ -1438,19 +1706,25 @@ def load_lint_module() -> Any:
     return module
 
 
-def digest_lines(text: str) -> Optional[int]:
+def digest_section(text: str) -> Optional[list[str]]:
     """Non-blank lines under ``## Digest``, or ``None`` when the heading is absent."""
     lines = text.splitlines()
     for index, line in enumerate(lines):
         if re.match(r"^##\s+Digest\s*$", line):
-            count = 0
+            found: list[str] = []
             for follow in lines[index + 1 :]:
                 if re.match(r"^#{1,6}\s", follow):
                     break
                 if follow.strip():
-                    count += 1
-            return count
+                    found.append(follow)
+            return found
     return None
+
+
+def digest_lines(text: str) -> Optional[int]:
+    """The number of non-blank lines under ``## Digest``, or ``None`` without the heading."""
+    found = digest_section(text)
+    return None if found is None else len(found)
 
 
 def gate_findings(
@@ -1692,6 +1966,17 @@ def cmd_gate(
         die(EXIT_USAGE, "--approve needs --by NAME.")
     findings = gate_findings(bolt, state, stage, unit, record)
     findings.extend(traceability_findings(bolt, state, catalog, stage))
+    ack = (getattr(args, "ack_context", None) or "").strip()
+    if not ack:
+        for path in context_changed(bolt, state, catalog, stage, unit):
+            findings.append(
+                {
+                    "code": "context-changed",
+                    "path": path,
+                    "message": "changed after this stage was produced; re-check the artifact, "
+                    'then approve with --ack-context "<what you checked>"',
+                }
+            )
     if findings:
         raise Fail(
             EXIT_FINDINGS,
@@ -1703,12 +1988,19 @@ def cmd_gate(
     record["approved_by"] = args.by.strip()
     record["recorded_by"] = who or None
     record["channel"] = channel
+    record["relied_on"] = relied_on(bolt, state, catalog, stage, unit)
     if stage["id"] == "reverse-engineering":
         record_codekb_commits(bolt, state)
     if not state.get("approver"):
         state["approver"] = args.by.strip()
     nxt = commit(bolt, state, catalog)
-    log_event(bolt, "gate-approve", label, args.by, (unit or "") + via)
+    log_event(
+        bolt,
+        "gate-approve",
+        label,
+        args.by,
+        (unit or "") + via + (f" context acknowledged: {ack}" if ack else ""),
+    )
     suggestion = (
         "A fresh session for the next stage is cheapest but optional. "
         f"Next: {state['next_action']}."
@@ -1721,6 +2013,48 @@ def cmd_gate(
         "next": nxt,
         "suggestion": suggestion,
     }
+
+
+def normalise_deps(file: Path, uid: str, raw: Any, known: set[str]) -> list[dict[str, str]]:
+    """``depends_on`` as ``[{"unit", "on"}]``; a bare id means ``on: done``."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        die(EXIT_MALFORMED, f"{file}: unit {uid} depends_on must be a list.")
+    result: list[dict[str, str]] = []
+    for item in raw:
+        dep = {"unit": item, "on": "done"} if isinstance(item, str) else item
+        other = dep.get("unit") if isinstance(dep, dict) else None
+        on = dep.get("on", "done") if isinstance(dep, dict) else None
+        if not isinstance(other, str) or other not in known:
+            die(EXIT_MALFORMED, f"{file}: unit {uid} depends on unknown unit {other!r}.")
+        if other == uid:
+            die(EXIT_MALFORMED, f"{file}: unit {uid} depends on itself.")
+        if on not in DEPENDENCY_ON:
+            die(
+                EXIT_MALFORMED,
+                f"{file}: unit {uid} depends on {other} with on={on!r}; use done or contract.",
+            )
+        result.append({"unit": other, "on": on})
+    return result
+
+
+def check_cycles(file: Path, deps: dict[str, list[dict[str, str]]]) -> None:
+    """Refuse a dependency cycle and name its units in order."""
+    done: set[str] = set()
+
+    def visit(uid: str, path: list[str]) -> None:
+        if uid in path:
+            cycle = [*path[path.index(uid) :], uid]
+            die(EXIT_MALFORMED, f"{file}: dependency cycle {' -> '.join(cycle)}.")
+        if uid in done:
+            return
+        for dep in deps[uid]:
+            visit(dep["unit"], [*path, uid])
+        done.add(uid)
+
+    for uid in deps:
+        visit(uid, [])
 
 
 def cmd_units(
@@ -1746,6 +2080,9 @@ def cmd_units(
         if not isinstance(uid, str) or not ID_PATTERN.match(uid) or uid in seen:
             die(EXIT_MALFORMED, f"{file}: each unit needs a unique lower-case id; saw {uid!r}.")
         seen.add(uid)
+        for key in ("owner", "repo"):
+            if unit.get(key) is not None and not isinstance(unit[key], str):
+                die(EXIT_MALFORMED, f"{file}: unit {uid} {key} must be a string.")
         kind = unit.get("kind")
         if kind is not None and kind not in UNIT_KINDS:
             die(
@@ -1763,6 +2100,21 @@ def cmd_units(
                 die(EXIT_MALFORMED, f"{file}: slice {sid} names unknown unit {member!r}.")
         entry.setdefault("status", "todo")
     owner_of = {m: b["id"] for b in slices for m in b.get("units", [])}
+    known_repos = [t["repo"] for t in state["targets"]]
+    deps: dict[str, list[dict[str, str]]] = {}
+    for unit in units:
+        previous = old.get(unit["id"], {})
+        repo = unit.get("repo", previous.get("repo"))
+        if repo and known_repos and repo not in known_repos:
+            die(
+                EXIT_MALFORMED,
+                f"{file}: unit {unit['id']} has repo {repo!r}; "
+                f"this bolt's repositories are {', '.join(known_repos)}.",
+            )
+        deps[unit["id"]] = normalise_deps(
+            file, unit["id"], unit.get("depends_on", previous.get("depends_on")), seen
+        )
+    check_cycles(file, deps)
     result: list[dict[str, Any]] = []
     for unit in units:
         previous = old.get(unit["id"], {})
@@ -1771,6 +2123,9 @@ def cmd_units(
                 "id": unit["id"],
                 "name": unit.get("name", ""),
                 "kind": unit.get("kind", previous.get("kind")),
+                "owner": unit.get("owner", previous.get("owner")),
+                "repo": unit.get("repo", previous.get("repo")),
+                "depends_on": deps[unit["id"]],
                 "slice": owner_of.get(unit["id"], unit.get("slice")),
                 "stages": unit_stage_records(
                     catalog, state["scope"], previous.get("stages"), bolt_kind(state)
@@ -1788,6 +2143,8 @@ def cmd_units(
         "units": [u["id"] for u in result],
         "slices": [b["id"] for b in slices],
         "missing_kind": [u["id"] for u in result if not u["kind"]],
+        "missing_owner": [u["id"] for u in result if not u["owner"]],
+        "missing_repo": [u["id"] for u in result if not u["repo"]],
         "next": nxt,
     }
 
@@ -2417,6 +2774,10 @@ def git_event(args: argparse.Namespace, result: Optional[dict[str, Any]] = None)
         return f"reserve decision id {ids[0]}" if ids else "reserve decision ids"
     if cmd == "units":
         return "load the units"
+    if cmd == "assign":
+        return f"assign unit {args.unit} to {args.owner}"
+    if cmd == "brief":
+        return f"write the brief of unit {args.unit}"
     if cmd == "kind":
         return f"make the bolt a {args.set} bolt"
     if cmd == "park":
@@ -2437,9 +2798,11 @@ def git_event(args: argparse.Namespace, result: Optional[dict[str, Any]] = None)
 def changes_state(args: argparse.Namespace) -> bool:
     if args.command == "workspace":
         return bool(args.extra)
+    if args.command == "brief":
+        return bool(args.write)
     return args.command in {
         "open", "decide", "step", "gate", "units", "decision-id", "kind", "park", "unpark",
-        "jira", "target", "close",
+        "jira", "target", "close", "assign",
     }  # fmt: skip
 
 
@@ -2558,7 +2921,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp = add("status", "Show progress.")
     sp.add_argument("--format", choices=["json", "text"], default="json")
 
-    add("next", "Show the next stage and step.")
+    sp = add("next", "Show the next stage and step.")
+    group = sp.add_mutually_exclusive_group()
+    group.add_argument("--unit", help="Only this unit: its next stage and what it waits for.")
+    group.add_argument("--mine", action="store_true", help="Every unit you own, as --unit does.")
 
     sp = add("inputs", "List the files a stage reads.")
     sp.add_argument("--stage", required=True)
@@ -2583,11 +2949,20 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--request-changes", action="store_true")
     sp.add_argument("--by", help="Approver name (required with --approve).")
     sp.add_argument("--note", help="What to change (required with --request-changes).")
+    sp.add_argument("--ack-context", help="What you re-checked after an input changed.")
     sp.add_argument(
         "--channel",
         help="How someone else gave the decision, e.g. 'email 2026-11-24'; "
         "required when --by is not the person running the script.",
     )
+
+    sp = add("assign", "Set the owner of a unit.")
+    sp.add_argument("--unit", required=True)
+    sp.add_argument("--owner", required=True, help="A person's name, as in their git user.name.")
+
+    sp = add("brief", "A unit's starting page, from state only; --write saves it in the bolt.")
+    sp.add_argument("--unit", required=True)
+    sp.add_argument("--write", action="store_true", help="Write docs/construction/<unit>/brief.md.")
 
     sp = add("units", "Load units and slices from a JSON file.")
     sp.add_argument(
@@ -2702,7 +3077,9 @@ def run_command(args: argparse.Namespace) -> dict[str, Any]:
     if cmd == "status":
         return cmd_status(bolt, state, catalog, args.format)
     if cmd == "next":
-        return {"ok": True, **compute_next(state, catalog)}
+        return cmd_next(bolt, state, catalog, args)
+    if cmd == "brief":
+        return cmd_brief(bolt, state, catalog, args)
     if cmd == "inputs":
         return cmd_inputs(bolt, state, catalog, args.stage, args.unit)
     if cmd == "workspace":
@@ -2715,6 +3092,8 @@ def run_command(args: argparse.Namespace) -> dict[str, Any]:
         return cmd_jira(bolt, state, catalog, args)
     if cmd == "kind":
         return cmd_kind(bolt, state, catalog, args.set)
+    if cmd == "assign":
+        return cmd_assign(bolt, state, catalog, args)
     if cmd in {"decide", "step", "gate"}:
         stage = stage_def(catalog, args.stage)
         if cmd == "gate":
@@ -2726,6 +3105,9 @@ def run_command(args: argparse.Namespace) -> dict[str, Any]:
             event, note = "decide", f"{args.decision}: {args.reason}"
         else:
             cmd_step(state, stage, args.unit, args.to)
+            if args.to == "produced":
+                record = get_record(state, stage, args.unit)
+                record["relied_on"] = relied_on(bolt, state, catalog, stage, args.unit)
             event, note = "step", f"to {args.to}"
         nxt = commit(bolt, state, catalog)
         log_event(bolt, event, stage["id"], "", (f"[{args.unit}] " if args.unit else "") + note)

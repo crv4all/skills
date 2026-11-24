@@ -24,7 +24,7 @@ Cover all; scale to depth.
 - **Integration points**: where units meet. "Which unit owns the shared table?"
 - **Deployment model**: independent release or together. "Do these two ship in the same release?"
 - **Story grouping**: which stories stay together. "Should all stories of one persona land in one unit?"
-- **Team alignment and code organisation**: who owns each unit and where its code lives. "Which repository does each unit change?"
+- **Team alignment and code organisation**: who owns each unit and where its code lives. "Which repository does each unit change?" Also ask what each unit waits for: another unit being done, or only its contract being agreed (`on: contract`).
 
 ## Settles
 
@@ -37,7 +37,7 @@ The units and their kinds, the dependency graph, which unit delivers every story
 3. Assign each unit a kind: `service`, `spec`, `ui`, `packaging` or `library`. The kind decides which Construction artifacts it owes later, so ask when it is not obvious.
 4. Write units, graph and story map. The graph must have no cycles; break a cycle by moving the shared part into a unit of its own.
 5. Give no build order or critical path here; that is Delivery Planning's.
-6. After the gate, load the units: write `{"units": [{"id": "u-1", "name": ..., "kind": ...}]}` to a file (the id is the lower-case form of `U-n`; it names the unit's construction folder) and run `aidlc_state.py units --bolt <p> --set <file.json>`; a refusal lists the findings.
+6. After the gate, load the units: write `{"units": [{"id": "u-1", "name": ..., "kind": ..., "owner": ..., "repo": ..., "depends_on": ["u-2", {"unit": "u-3", "on": "contract"}]}]}` to a file (the id is the lower-case form of `U-n`; it names the unit's construction folder) and run `aidlc_state.py units --bolt <p> --set <file.json>`; a refusal lists the findings.
 
 ## Writes
 
