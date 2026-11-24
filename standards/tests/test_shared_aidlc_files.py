@@ -48,6 +48,8 @@ SHARED = (
     ),
     # The last Inception gate runs this check, so the skill that gates Inception carries it.
     ("scripts/check_traceability.py", "crv-aidlc", ("crv-aidlc-inception",)),
+    # Every stage resolves ids with it and runs `link` before marking an artifact produced.
+    ("scripts/aidlc_refs.py", "crv-aidlc", STAGE_SKILLS),
     ("scripts/validate_doc.py", "crv-aidlc-hla", ("crv-aidlc-tdd",)),
 )
 

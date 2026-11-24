@@ -12,6 +12,17 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`aidlc_refs.py` makes every paddock id resolvable without model tokens.**
+  Ids such as `D10`, `A-Q3` and `L986` are forgotten, and recalling one meant
+  re-reading whole files. `show` answers an agent in one line per id, `link`
+  turns each cited id into a Markdown link plus one generated block per file
+  (reversible with `--remove`), and `index` writes a page of every id. The
+  traceability check and the document validator now ignore the generated
+  block, so linking never changes their result. An optional `aidlc-refs.json`
+  in the paddock names the documents that line references cite and the words
+  that mark an id from another numbering. No core rule calls it: the shared
+  rules have no token room in the construction budget, so it runs when someone
+  asks for it.
 - **Paddock work is committed and pushed by the state script.** Every
   `aidlc_state.py` command that changes a paddock first brings in the team's
   work, then commits the paddock and pushes it to the shared branch named in

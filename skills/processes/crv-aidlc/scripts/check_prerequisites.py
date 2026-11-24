@@ -65,6 +65,7 @@ SHARED = (
     ("scripts/aidlc_state.py", "crv-aidlc", STAGE_SKILLS),
     ("assets/stages.json", "crv-aidlc", STAGE_SKILLS),
     ("scripts/lint_questions.py", "crv-aidlc", STAGE_SKILLS),
+    ("scripts/aidlc_refs.py", "crv-aidlc", STAGE_SKILLS),
     ("scripts/check_traceability.py", "crv-aidlc", ("crv-aidlc-inception",)),
     ("scripts/validate_doc.py", "crv-aidlc-hla", ("crv-aidlc-tdd",)),
 )

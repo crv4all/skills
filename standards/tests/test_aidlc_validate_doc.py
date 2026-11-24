@@ -646,3 +646,47 @@ def test_parent_ids_do_not_raise_the_floor_for_a_tdd(tmp_path: Path) -> None:
     )
     code, data = validate(tmp_path, build("tdd", ids="D6 D7"), "tdd")
     assert code == 0, data["findings"]
+
+
+# --- linked documents (aidlc_refs.py link) ---------------------------------------------
+
+REFS = REPO_ROOT / "skills" / "processes" / "crv-aidlc" / "scripts" / "aidlc_refs.py"
+
+
+def refs_link(folder: Path, *args: str) -> None:
+    done = subprocess.run(
+        [sys.executable, str(REFS), "link", "--paddock", str(folder), *args],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert done.returncode == 0, done.stderr
+
+
+@pytest.mark.parametrize("kind", ["hla", "tdd"])
+def test_linking_does_not_change_the_validator_result(tmp_path: Path, kind: str) -> None:
+    ids = "D2 D5" if kind == "hla" else "D6 D7"
+    if kind == "tdd":
+        accepted_hla(tmp_path)
+    prose = {
+        title: f"Settled content for {title.lower()}, from answer A-Q1. Follows D2 and D5."
+        for title in template_titles(HLA_SKILL if kind == "hla" else TDD_SKILL, kind)
+        if title.lower() not in ("design decisions", "conceptual design")
+    }
+    text = build(kind, sections=prose, ids=ids)
+    record = "| Id | Decision |\n|---|---|\n| D2 | Chose speed over cost here |\n| D5 | Chose a queue for orders |\n"
+    (tmp_path / "hla-decisions.md").write_text(record, encoding="utf-8")
+    (tmp_path / "hla-questions-a.md").write_text("## Q1 Which region?\n", encoding="utf-8")
+    extra = ("--adr-index", str(index_file(tmp_path)))
+    before = validate(tmp_path, text, kind, *extra)
+    assert before[0] == 0, before[1]["findings"]
+    path = tmp_path / f"{kind}.md"
+    for args in ((), ("--lines", "--titles")):
+        refs_link(tmp_path, *args)
+        linked = path.read_text(encoding="utf-8")
+        assert "[D2]" in linked and "aidlc-refs:begin" in linked
+        assert "| [D" not in linked.split("aidlc-refs:begin")[0].split("Design decisions")[-1]
+        assert validate(tmp_path, linked, kind, *extra) == before
+    refs_link(tmp_path, "--remove")
+    assert path.read_text(encoding="utf-8") == text + ("\n" if not text.endswith("\n") else "")
+    assert validate(tmp_path, path.read_text(encoding="utf-8"), kind, *extra) == before

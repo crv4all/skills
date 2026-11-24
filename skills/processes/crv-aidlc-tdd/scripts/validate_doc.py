@@ -368,8 +368,18 @@ def strip_comments(text: str) -> str:
     return re.sub(r"<!--.*?-->", lambda m: re.sub(r"[^\n]", " ", m.group(0)), text, flags=re.S)
 
 
+BLOCK = re.compile(r"^<!-- aidlc-refs:begin.*?^<!-- aidlc-refs:end -->[ \t]*$", re.M | re.S)
+TOOL_COMMENT = re.compile(r"<!--\s*aidlc-(?:refs|lines):.*?-->", re.S)
+
+
+def strip_block(text: str) -> str:
+    """Blank the block aidlc_refs.py generates (it is not document content), keeping lines."""
+    return BLOCK.sub(lambda m: re.sub(r"[^\n]", "", m.group(0)), text)
+
+
 class Doc:
     def __init__(self, raw: str) -> None:
+        raw = strip_block(raw)
         self.raw_lines = raw.splitlines()
         self.lines = strip_comments(raw).splitlines()
         self.fences: list[dict[str, Any]] = []
@@ -591,7 +601,7 @@ def check_placeholders(doc: Doc, report: Report) -> None:
         if markers:
             report.add("placeholder", index + 1, "left in the text: " + ", ".join(markers))
     for index, raw in enumerate(doc.raw_lines):
-        if "<!--" in raw and index not in doc.in_fence:
+        if "<!--" in TOOL_COMMENT.sub("", raw) and index not in doc.in_fence:
             report.warn("guidance-comment", index + 1, "template guidance comment left in")
             break
 
@@ -745,7 +755,7 @@ def check_hla_link(path: Path, header: dict[str, Any], report: Report) -> int:
     texts = ["\n".join(hla.lines)]
     record = target.parent / "hla-decisions.md"
     if record.is_file():
-        texts.append(record.read_text(encoding="utf-8", errors="replace"))
+        texts.append(strip_block(record.read_text(encoding="utf-8", errors="replace")))
     numbers = [int(n) for text in texts for n in OWN_DECISION_ID.findall(text)]
     return max(numbers, default=0)
 

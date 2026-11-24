@@ -98,7 +98,14 @@ def starting_id(text: str, offset: int = 0) -> Optional[tuple[str, int]]:
 def scan_text(text: str, file: str, graph: Graph) -> None:
     stack: list[tuple[int, str]] = []  # (heading level, id it declares)
     in_fence = False
+    in_block = False
     for line in text.splitlines():
+        # The block aidlc_refs.py link generates repeats ids; it is not a reference.
+        if line.startswith("<!-- aidlc-refs:begin"):
+            in_block = True
+        if in_block:
+            in_block = "aidlc-refs:end" not in line
+            continue
         if FENCE_RE.match(line):
             in_fence = not in_fence
             continue
