@@ -68,12 +68,6 @@
           "optional": true
         },
         {
-          "path": "parent:knowledge/repos/<target>.md",
-          "mode": "full",
-          "optional": true,
-          "if_exists": true
-        },
-        {
           "path": "root:docs/presets.md",
           "mode": "full",
           "optional": true
@@ -134,24 +128,6 @@
         {
           "path": "root:architecture-index.json",
           "mode": "full",
-          "optional": true
-        },
-        {
-          "path": "parent:architecture/hla-decisions.md",
-          "mode": "digest"
-        },
-        {
-          "path": "parent:architecture/hla.md",
-          "mode": "digest"
-        },
-        {
-          "path": "parent:architecture/briefs/<bolt>.md",
-          "mode": "full",
-          "optional": true
-        },
-        {
-          "path": "parent:knowledge/_digest.md",
-          "mode": "digest",
           "optional": true
         },
         {

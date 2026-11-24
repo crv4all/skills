@@ -863,11 +863,11 @@ def test_a_newer_framework_is_refused_and_a_missing_one_is_added(bolt: Bolt) -> 
     del state["framework"]
     (bolt.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
     assert bolt.run("status")[0] == 0
-    assert bolt.run("park", "--note", "n")[0] == 0 and bolt.state["framework"] == 3
-    state["framework"] = 4
+    assert bolt.run("park", "--note", "n")[0] == 0 and bolt.state["framework"] == 4
+    state["framework"] = 5
     (bolt.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
     code, data, _ = bolt.run("status")
-    assert code == 4 and "framework 4, installed 3" in data["error"]
+    assert code == 4 and "framework 5, installed 4" in data["error"]
 
 
 # --- unit owners, waiting, changed context and the brief ---------------------
@@ -1123,7 +1123,7 @@ def test_the_provisional_flag_is_gone(bolt: Bolt) -> None:
     assert "provisional" not in bolt.run("decision-id")[1]
 
 
-# --- overview, decision status and the brief for a child ----------------------
+# --- overview and decision status ----------------------
 
 
 def open_named(root: Path, slug: str, date: str, *args: str) -> Bolt:
@@ -1144,23 +1144,26 @@ def overview(root: Path, *args: str) -> tuple[int, dict[str, Any]]:
     return done.returncode, (json.loads(done.stdout) if done.stdout.startswith("{") else {})
 
 
-def test_overview_nests_a_child_and_reports_unit_problems(tmp_path: Path) -> None:
-    parent = open_named(tmp_path, "programme", "2026-01-05", "--kind", "frame")
-    child = open_named(tmp_path, "phase", "2026-01-06", "--parent", parent.state["id"], "--units", "split")  # fmt: skip
-    skip_inception(child)
-    load_units(child, [{"id": "u1"}, {"id": "u2", "owner": "Ada", "depends_on": ["u1"]}])
+def test_overview_is_flat_and_reports_unit_problems(tmp_path: Path) -> None:
+    open_named(tmp_path, "programme", "2026-01-05")
+    second = open_named(tmp_path, "phase", "2026-01-06", "--units", "split")
+    skip_inception(second)
+    load_units(second, [{"id": "u1"}, {"id": "u2", "owner": "Ada", "depends_on": ["u1"]}])
     code, data = overview(tmp_path)
     assert code == 0
     rows = {r["id"]: r for r in data["bolts"]}
     assert list(rows) == ["2026-01-05-programme", "2026-01-06-phase"]
-    assert rows["2026-01-05-programme"]["children"] == ["2026-01-06-phase"]
+    assert all({"parent", "children", "kind"}.isdisjoint(row) for row in rows.values())
     found = {(p["code"], p["where"]) for p in rows["2026-01-06-phase"]["problems"]}
     assert {("unowned-unit", "u1"), ("waiting-unit", "u2")} <= found
-    assert ("parent-not-accepted", parent.state["id"]) in found
+    assert not [c for c, _ in found if c.startswith("parent")]
     assert [u["id"] for u in rows["2026-01-06-phase"]["units"]] == ["u1", "u2"]
     text = subprocess.run([sys.executable, str(SCRIPT), "overview", "--root", str(tmp_path),
                            "--format", "text"], capture_output=True, text=True).stdout  # fmt: skip
-    assert "  2026-01-06-phase" in text and "unit u2 | Ada" in text
+    lines = text.splitlines()
+    assert "2026-01-05-programme [open] programme" in lines
+    assert "2026-01-06-phase [open] phase" in lines  # no indentation: nothing nests
+    assert "  unit u2 | Ada | " in text
 
 
 def test_overview_goes_on_past_an_unreadable_bolt_and_lists_the_last_log_lines(
@@ -1215,14 +1218,52 @@ def test_decision_status_words_are_checked_only_when_the_column_exists(tmp_path:
     assert [f["code"] for f in found] == ["decision-status-unknown"] and "D2" in found[0]["message"]
 
 
-def test_a_child_reads_its_brief_from_the_parent_when_there_is_one(tmp_path: Path) -> None:
-    parent = open_named(tmp_path, "programme", "2026-01-05", "--kind", "frame")
-    child = open_named(tmp_path, "phase", "2026-01-06", "--parent", parent.state["id"])
-    wanted = "parent:architecture/briefs/phase.md"
-    for brief in (False, True):
-        if brief:
-            parent.write("architecture/briefs/phase.md", "# Brief\n")
-        data = child.run("inputs", "--stage", "hla")[1]
-        row = next(r for r in data["inputs"] if r["path"] == wanted)
-        assert row["mode"] == "full" and row["exists"] is brief
-        assert wanted not in [m["path"] for m in data["missing"]]
+# --- one Bolt: no parent, no child, no frame kind -----------------------------
+
+
+def test_open_rejects_parent_and_kind_and_the_kind_command_is_gone(tmp_path: Path) -> None:
+    base = ["open", "--root", str(tmp_path), "--slug", "x", "--title", "X", "--intent", "Try"]
+    for extra in (["--parent", "2026-01-05-other"], ["--kind", "frame"]):
+        done = subprocess.run(
+            [sys.executable, str(SCRIPT), *base, *extra],
+            capture_output=True, text=True, timeout=60,
+        )  # fmt: skip
+        assert done.returncode == 2 and "unrecognized arguments" in done.stderr
+    assert not (tmp_path / "bolts").exists()
+    done = subprocess.run(
+        [sys.executable, str(SCRIPT), "kind", "--bolt", str(tmp_path), "--set", "frame"],
+        capture_output=True, text=True, timeout=60,
+    )  # fmt: skip
+    assert done.returncode == 2
+
+
+def test_a_new_bolt_carries_no_kind_and_no_parent_anywhere(tmp_path: Path) -> None:
+    bolt = open_named(tmp_path, "solo", "2026-01-05")
+    assert "kind" not in bolt.state and "parent" not in bolt.state
+    code, data, _ = bolt.run("status")
+    assert code == 0 and "kind" not in data and "parent" not in data
+    text = bolt.run("status", "--format", "text")[2]
+    assert "Kind:" not in text and "Parent" not in text
+    assert bolt.state["stages"]["requirements-analysis"]["decision"] == "execute"
+    stages = open_named(tmp_path, "fix", "2026-01-06", "--scope", "bugfix").state
+    assert {r["decision"] for r in stages["units"][0]["stages"].values()} != {"skip"}
+
+
+def test_an_old_state_with_a_frame_kind_and_a_parent_loads_and_loses_the_keys(
+    tmp_path: Path,
+) -> None:
+    bolt = open_named(tmp_path, "old", "2026-01-05")
+    state = bolt.state
+    state["kind"] = "frame"
+    state["parent"] = {"id": "2026-01-01-gone", "path": "bolts/2026-01-01-gone"}
+    (bolt.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
+    code, data, _ = bolt.run("status")
+    assert code == 0 and "kind" not in data
+    nxt = bolt.run("next")[1]
+    assert nxt["stage"] == "workspace-detection" and not nxt["done"]
+    data = bolt.run("inputs", "--stage", "hla")[1]  # exit 3: this Bolt has no knowledge yet
+    assert data["inputs"] and not [r for r in data["inputs"] if r["path"].startswith("parent:")]
+    assert "kind" in json.loads((bolt.path / "state.json").read_text(encoding="utf-8"))
+    assert bolt.run("park", "--note", "n")[0] == 0
+    assert "kind" not in bolt.state and "parent" not in bolt.state
+    assert bolt.state["stages"]["requirements-analysis"]["decision"] == "execute"

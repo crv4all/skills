@@ -555,6 +555,19 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   keeps the non-negotiable stops. This brought `SKILL.md` back inside its token
   budget.
 
+### Removed
+
+- **Parent and child Bolts, and the frame kind of Bolt, are gone.** A Bolt is one
+  initiative that holds its shared architecture, its Slices and its Units. Splitting
+  a large piece of work into a frame Bolt and child Bolts made a concern-sized
+  investigation cost a whole lifecycle. `aidlc_state.py` no longer has `open --parent`,
+  `open --kind` or the `kind` command, `status`, `inputs`, `overview` and the workspace
+  file no longer mention a parent or children, the five `parent:` inputs are gone from
+  `stages.json`, and `validate_doc.py` no longer knows a `parent:D<n>` citation. An older
+  `state.json` that still holds a `kind` or `parent` key loads as a normal Bolt and drops
+  the keys at its next write. The framework number goes from 3 to 4, so an older copy of
+  the skills refuses a Bolt written by this one.
+
 ## [0.1.0] — 2026-08-18
 
 First working repository. Not published, and not tagged for release: both

@@ -343,7 +343,7 @@ def test_an_old_state_moves_its_paths_on_the_next_change(world: dict[str, Path])
     new = state(bolt)
     assert new["targets"] == [{"repo": "svc", "kind": "brownfield", "codekb_commit": None}]
     assert new["architecture_ref"] == {"repo": "registry", "commit": None}
-    assert "workspace" not in new and new["framework"] == 3
+    assert "workspace" not in new and new["framework"] == 4
     local = local_file(world["root"])
     assert local["paths"] == {"svc": str(far.resolve())}  # the registry is a sibling
     assert local["extra"]["2026-01-05-demo"][0]["name"] == "docs"

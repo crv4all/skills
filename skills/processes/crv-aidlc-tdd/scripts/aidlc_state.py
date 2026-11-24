@@ -45,8 +45,7 @@ EXIT_INTERNAL = 5
 EXIT_GIT = 6
 
 EPILOG = """commands:
-  open        create a bolt           --root R --slug S --title T --intent I [--parent P]
-                                         [--kind frame|delivery]
+  open        create a bolt           --root R --slug S --title T --intent I
   status      show progress              --bolt P [--format text]
   overview    every Bolt at a glance     --root R [--format text] [--log N]
   next        the next stage and step    --bolt P
@@ -61,7 +60,6 @@ EPILOG = """commands:
   codekb-status is the code knowledge fresh --bolt P
   workspace   workspace file, checkouts  --bolt P [--extra name=path]... [--fetch] [--out F]
   target      add or drop a target       --bolt P --add name=path | --remove NAME
-  kind        frame or delivery bolt  --bolt P --set frame|delivery
   jira        record Jira keys           --bolt P --epic K | --unit U --story K | --unit U --done
                                          [--pr URL] | --off --reason R | --on
   park/unpark hand-over note             --bolt P --note N
@@ -107,7 +105,7 @@ exit codes:
 
 LOG = logging.getLogger("aidlc_state")
 
-FRAMEWORK = 3  # bumped when a change to state.json would break an older copy of the skills
+FRAMEWORK = 4  # bumped when a change to state.json would break an older copy of the skills
 LOCAL_FILE = ".aidlc-local.json"  # per machine, never committed; sits at the planning root
 LOCK_NAME = ".aidlc.lock"
 LOCK_WAIT = 60.0  # seconds a command waits for another session of the same checkout
@@ -132,16 +130,12 @@ NO_TRACEABILITY_SCOPES = {"bugfix", "express"}  # no stories or units to trace
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 JIRA_KEY = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 SCOPES = ["classic", "express", "bugfix"]
-KINDS = ["delivery", "frame"]
-FRAME_STOP = "hla"  # a frame bolt ends at this gate
-FRAME_REASON = "frame bolt: designs no component"
 DEPTHS = ["minimal", "standard", "comprehensive"]
 DEFAULT_DEPTH = {"classic": "standard", "express": "standard", "bugfix": "minimal"}
 DEFAULT_UNIT_SCOPES = {"express", "bugfix"}
 UNIT_KINDS = ["service", "spec", "ui", "packaging", "library"]
 DEPENDENCY_ON = ["done", "contract"]
 ROOT_PREFIX = "root:"
-PARENT_PREFIX = "parent:"
 FOCUSED_RESCAN_MAX = 0.30
 CHANGED_FILES_CAP = 50
 PHASES = ["discovery", "inception", "construction", "operation"]
@@ -279,7 +273,7 @@ def merge_units(bolt: Path, state: dict[str, Any]) -> None:
             unit.update(data)
         if "stages" not in unit:  # no unit file yet: a unit with no progress
             catalog = catalog or load_catalog()
-            unit["stages"] = unit_stage_records(catalog, state["scope"], kind=bolt_kind(state))
+            unit["stages"] = unit_stage_records(catalog, state["scope"])
             unit.setdefault("story", None)
             unit.setdefault("story_done", None)
 
@@ -296,14 +290,13 @@ def backfill_stages(state: dict[str, Any], catalog: list[dict[str, Any]]) -> Non
         unit.setdefault("story", None)
         unit.setdefault("story_done", None)
     brownfield = any(t.get("kind") == "brownfield" for t in state.get("targets", []))
-    after = frame_after(catalog, bolt_kind(state))
     for item in catalog:
         if item["per_unit"] or item["id"] in stages:
             continue
         if state.get("status") != "open":
             stages[item["id"]] = new_record("skip", "added after this bolt closed")
             continue
-        decision, reason = initial_decision(item, state.get("scope", "classic"), brownfield, after)
+        decision, reason = initial_decision(item, state.get("scope", "classic"), brownfield)
         stages[item["id"]] = new_record(decision, reason)
 
 
@@ -466,6 +459,8 @@ def write_split(bolt: Path, state: dict[str, Any]) -> None:
 def write_state(bolt: Path, state: dict[str, Any]) -> None:
     """Write state.json atomically: a crash leaves the old file, never half a new one."""
     state["updated"] = now()
+    for gone in ("kind", "parent"):  # keys of Bolts written before framework 4
+        state.pop(gone, None)
     written = state.get("framework")
     state["framework"] = max(written if isinstance(written, int) else 0, FRAMEWORK)
     moved = normalise_portable(bolt, state)
@@ -535,25 +530,10 @@ def new_record(decision: str, reason: str, step: str = "todo") -> dict[str, Any]
     }
 
 
-def bolt_kind(state: dict[str, Any]) -> str:
-    return str(state.get("kind") or "delivery")
-
-
-def frame_after(catalog: list[dict[str, Any]], kind: str) -> Optional[int]:
-    """The order after which a frame bolt skips every stage; ``None`` for delivery."""
-    if kind != "frame":
-        return None
-    return next(int(item["order"]) for item in catalog if item["id"] == FRAME_STOP)
-
-
-def initial_decision(
-    stage: dict[str, Any], scope: str, brownfield: bool, after: Optional[int] = None
-) -> tuple[str, str]:
-    """The decision ``open`` gives a stage; ``after`` is :func:`frame_after`."""
+def initial_decision(stage: dict[str, Any], scope: str, brownfield: bool) -> tuple[str, str]:
+    """The decision ``open`` gives a stage, from the scope and the targets only."""
     if stage["id"] == "workspace-detection":
         return "execute", ""
-    if after is not None and stage["order"] > after:
-        return "skip", FRAME_REASON
     if scope not in stage["scopes"]:
         return "skip", f"outside the {scope} scope"
     if stage["id"] == "reverse-engineering" and not brownfield:
@@ -568,13 +548,11 @@ def unit_stage_records(
     catalog: list[dict[str, Any]],
     scope: str,
     existing: Optional[dict[str, Any]] = None,
-    kind: str = "delivery",
 ) -> dict[str, Any]:
     records: dict[str, Any] = dict(existing or {})
-    after = frame_after(catalog, kind)
     for item in catalog:
         if item["per_unit"] and item["id"] not in records:
-            decision, reason = initial_decision(item, scope, True, after)
+            decision, reason = initial_decision(item, scope, True)
             records[item["id"]] = new_record(decision, reason)
     return records
 
@@ -616,8 +594,8 @@ def slots(state: dict[str, Any], catalog: list[dict[str, Any]]) -> list[Slot]:
             result.append((item, None))
         elif not expanded:
             expanded = True
-            if not state["units"] and bolt_kind(state) != "frame":
-                result.append((per_unit[0], None))  # a frame bolt never loads units
+            if not state["units"]:
+                result.append((per_unit[0], None))
             for unit in state["units"]:
                 for sub in per_unit:
                     result.append((sub, unit["id"]))
@@ -796,9 +774,8 @@ def cmd_brief(
     unit = find_unit(state, uid)
     nxt = next_for_unit(bolt, state, catalog, uid)
     waiting = {(w["unit"], w["on"]) for w in nxt["blocked_by"]}
-    parent = (state.get("parent") or {}).get("id") or "-"
     facts = [
-        ("Bolt", f"{state['id']}: {state['title']}"), ("Parent Bolt", parent),
+        ("Bolt", f"{state['id']}: {state['title']}"),
         ("Kind", unit.get("kind") or "-"), ("Owner", unit.get("owner") or "-"),
         ("Repository", unit.get("repo") or "-"), ("Slice", unit.get("slice") or "-"),
         ("Jira story", unit.get("story") or "-"),
@@ -976,19 +953,6 @@ def make_target(spec: str, flag: str) -> tuple[dict[str, Any], str, Path]:
     return record, f"{name}: {kind} ({rule})", path
 
 
-def resolve_parent(root: Path, spec: str) -> dict[str, str]:
-    """``{"id", "path"}`` of an existing bolt under ``root``; ``path`` is relative to it."""
-    given = Path(spec).expanduser()
-    candidates = [given] if given.is_absolute() else [given, root / "bolts" / spec]
-    found = next((c.resolve() for c in candidates if state_path(c).is_file()), None)
-    if found is None:
-        die(EXIT_INPUT, f"--parent '{spec}': no bolt with a state.json at {candidates[-1]}.")
-    if found.parent.name != "bolts" or found.parent.parent != root.resolve():
-        die(EXIT_USAGE, f"--parent '{spec}': {found} is not a bolt under {root.resolve()}.")
-    parent_state = load_state(found)
-    return {"id": str(parent_state["id"]), "path": found.relative_to(root.resolve()).as_posix()}
-
-
 def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[str, Any]:
     if not SLUG.match(args.slug):
         die(EXIT_USAGE, "--slug must be lower-case letters, digits and hyphens.")
@@ -1002,7 +966,6 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
     bolt = root / "bolts" / bolt_id
     if bolt.exists():
         raise Fail(EXIT_FINDINGS, f"{bolt}: bolt already exists. Resume it with `status`.")
-    parent = resolve_parent(root, args.parent) if args.parent else None
     mode = args.units or units_mode(root)
 
     base = root.resolve()
@@ -1027,12 +990,11 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
             LOG.warning("%s: not a git checkout; the registry commit is recorded as null.", ref)
 
     brownfield = any(t["kind"] == "brownfield" for t in targets)
-    after = frame_after(catalog, args.kind)
     stages: dict[str, Any] = {}
     for item in catalog:
         if item["per_unit"]:
             continue
-        decision, reason = initial_decision(item, args.scope, brownfield, after)
+        decision, reason = initial_decision(item, args.scope, brownfield)
         step = "produced" if item["id"] == "workspace-detection" else "todo"
         stages[item["id"]] = new_record(decision, reason, step)
 
@@ -1045,7 +1007,7 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
                 "name": args.title,
                 "kind": None,
                 "slice": "s1",
-                "stages": unit_stage_records(catalog, args.scope, kind=args.kind),
+                "stages": unit_stage_records(catalog, args.scope),
                 "story": None,
                 "story_done": None,
             }
@@ -1059,7 +1021,6 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
         "intent": args.intent,
         "status": "open",
         "scope": args.scope,
-        "kind": args.kind,
         "depth": args.depth or DEFAULT_DEPTH[args.scope],
         "owner": args.owner or "",
         "approver": args.approver or "",
@@ -1076,8 +1037,6 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
         "parked": None,
         "jira": {"mode": None, "reason": "", "epic": None},
     }
-    if parent is not None:
-        state["parent"] = parent
     if mode == "split":
         state["unit_state"] = "split"
 
@@ -1096,9 +1055,7 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
         (bolt / folder / ".gitkeep").touch()
     (bolt / "log.md").touch()
     nxt = commit(bolt, state, catalog)
-    log_event(bolt, "open", "", "", f"scope={args.scope} depth={state['depth']} kind={args.kind}")
-    if parent is not None:
-        log_event(bolt, "parent", "", "", f"{parent['id']} at {parent['path']}")
+    log_event(bolt, "open", "", "", f"scope={args.scope} depth={state['depth']}")
     for rule in rules:
         log_event(bolt, "classify", "workspace-detection", "", rule)
     return {
@@ -1107,7 +1064,6 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
         "id": bolt_id,
         "targets": targets,
         "architecture_ref": architecture,
-        "parent": parent,
         "codekb": codekb_status(root.resolve(), targets),
         "workspace": write_workspace(bolt, state, None, fetch=False),
         "next": nxt,
@@ -1132,10 +1088,6 @@ def workspace_folders(bolt: Path, state: dict[str, Any]) -> list[dict[str, str]]
         {"name": f"bolt: {DATE_PREFIX.sub('', state['id'])}", "path": str(bolt.resolve())},
         {"name": "planning repo", "path": str(root)},
     ]
-    parent = state.get("parent")
-    if parent:
-        name = f"parent: {DATE_PREFIX.sub('', parent['id'])}"
-        folders.append({"name": name, "path": str(root / parent["path"])})
     ref = state.get("architecture_ref") or {}
     ref_name = ref.get("repo") or (Path(ref["path"]).name if ref.get("path") else "")
     if ref_name:
@@ -1432,7 +1384,6 @@ def cmd_status(
         "status": state["status"],
         "scope": state["scope"],
         "depth": state["depth"],
-        "kind": bolt_kind(state),
         "phases": progress,
         "units": len(state["units"]),
         "slices": len(state["slices"]),
@@ -1447,10 +1398,6 @@ def cmd_status(
     stale = stale_rows(bolt, state, catalog)
     facts["unit_details"] = details
     facts["stale"] = stale
-    parent = state.get("parent")
-    if parent:
-        facts["parent"] = parent
-        facts["parent_hla_status"] = parent_hla_status(bolt, state)
     git_block = git_status_block(bolt)
     if git_block is not None:
         facts["git"] = git_block
@@ -1458,12 +1405,9 @@ def cmd_status(
         return facts
     lines = [
         f"{state['title'] or state['id']} ({state['id']})",
-        f"Status: {state['status']} | Scope: {state['scope']} | Depth: {state['depth']}"
-        f" | Kind: {bolt_kind(state)}",
+        f"Status: {state['status']} | Scope: {state['scope']} | Depth: {state['depth']}",
         f"Intent: {state['intent'][:160]}",
     ]
-    if parent:
-        lines.append(f"Parent: {parent['id']} (HLA {facts['parent_hla_status']})")
     for phase in PHASES:
         entry = progress[phase]
         note = f", {entry['skipped']} skipped" if entry["skipped"] else ""
@@ -1536,15 +1480,6 @@ def overview_row(bolt: Path, catalog: list[dict[str, Any]]) -> dict[str, Any]:
     )
     units: list[dict[str, Any]] = []
     problems: list[dict[str, str]] = []
-    parent = (state.get("parent") or {}).get("id")
-    if parent and parent_hla_status(bolt, state) != "accepted":
-        problems.append(
-            {
-                "code": "parent-not-accepted",
-                "where": parent,
-                "message": "the parent's HLA is not accepted",
-            }
-        )
     stale = stale_rows(bolt, state, catalog)
     for row in stale:
         where = row["stage"] + (f" [{row['unit']}]" if row["unit"] else "")
@@ -1581,13 +1516,10 @@ def overview_row(bolt: Path, catalog: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "id": state["id"],
         "title": state.get("title", ""),
-        "kind": bolt_kind(state),
         "status": state["status"],
         "scope": state.get("scope"),
         "owner": state.get("owner") or None,
-        "parent": parent,
         "next": describe_next(compute_next(state, catalog, bolt)),
-        "children": [],
         "units": units,
         "stale": stale,
         "last": last,
@@ -1596,30 +1528,19 @@ def overview_row(bolt: Path, catalog: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def overview_text(rows: list[dict[str, Any]]) -> str:
-    by_id = {r["id"]: r for r in rows}
     lines: list[str] = []
-
-    def show(row: dict[str, Any], depth: int) -> None:
-        pad = "  " * depth
+    for row in rows:
         if "error" in row:
-            lines.append(f"{pad}{row['id']}: unreadable: {row['error']}")
-            return
+            lines.append(f"{row['id']}: unreadable: {row['error']}")
+            continue
         owner = f", owner {row['owner']}" if row["owner"] else ""
-        lines.append(f"{pad}{row['id']} [{row['status']}] {row['title']}{owner}")
-        lines.append(f"{pad}  next: {row['next']}")
+        lines.append(f"{row['id']} [{row['status']}] {row['title']}{owner}")
+        lines.append(f"  next: {row['next']}")
         for unit in row["units"]:
             waits = f" | {waits_sentence(unit['blocked_by'])}" if unit["blocked_by"] else ""
-            lines.append(
-                f"{pad}  unit {unit['id']} | {unit['owner'] or '-'} | {unit['next']}{waits}"
-            )
+            lines.append(f"  unit {unit['id']} | {unit['owner'] or '-'} | {unit['next']}{waits}")
         for problem in row["problems"]:
-            lines.append(f"{pad}  ! {problem['code']} {problem['where']}: {problem['message']}")
-        for child in row["children"]:
-            show(by_id[child], depth + 1)
-
-    for row in rows:
-        if not row.get("parent") or row["parent"] not in by_id:
-            show(row, 0)
+            lines.append(f"  ! {problem['code']} {problem['where']}: {problem['message']}")
     return "\n".join(lines) + "\n"
 
 
@@ -1649,11 +1570,6 @@ def cmd_overview(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dic
         except Exception as exc:  # one unreadable Bolt must not hide the others
             rows.append({"id": bolt.name, "error": f"{type(exc).__name__}: {exc}"})
         logs.extend(log_rows(bolt))
-    known = {r["id"]: r for r in rows}
-    for row in rows:
-        parent = known.get(row.get("parent") or "")
-        if parent is not None and "children" in parent:
-            parent["children"].append(row["id"])
     result: dict[str, Any] = {"ok": True, "root": str(root.resolve()), "bolts": rows}
     result["unshared"] = unshared_commits(root)
     if args.log:
@@ -1674,29 +1590,11 @@ def planning_root(bolt: Path) -> Path:
     return bolt.resolve().parent.parent
 
 
-def parent_dir(bolt: Path, state: dict[str, Any]) -> Optional[Path]:
-    parent = state.get("parent")
-    return planning_root(bolt) / parent["path"] if parent else None
-
-
-def parent_hla_status(bolt: Path, state: dict[str, Any]) -> str:
-    """The ``status:`` of the parent's ``hla.md`` header, or ``missing`` without a file."""
-    folder = parent_dir(bolt, state)
-    hla = folder / "architecture" / "hla.md" if folder else None
-    if hla is None or not hla.is_file():
-        return "missing"
-    header = header_fields(hla.read_text(encoding="utf-8", errors="replace"))
-    return (header or {}).get("status") or "unknown"
-
-
-def locate(bolt: Path, rel: str, state: Optional[dict[str, Any]] = None) -> Path:
-    """Resolve a stages.json path: ``root:`` hangs off the planning root, ``parent:``
-    off the parent bolt; anything else off this bolt."""
+def locate(bolt: Path, rel: str) -> Path:
+    """Resolve a stages.json path: ``root:`` hangs off the planning root; anything else
+    off this bolt."""
     if rel.startswith(ROOT_PREFIX):
         return planning_root(bolt) / rel[len(ROOT_PREFIX) :]
-    folder = parent_dir(bolt, state) if state else None
-    if rel.startswith(PARENT_PREFIX) and folder is not None:
-        return folder / rel[len(PARENT_PREFIX) :]
     return bolt / rel
 
 
@@ -1754,35 +1652,24 @@ def input_rows(
     repos = brownfield_repos(state)
     targets = [t["repo"] for t in state["targets"]]
     units = unit_ids(state, stage, unit)
-    folder = parent_dir(bolt, state)
-    parent_state: Optional[dict[str, Any]] = None
-    if folder is not None and state_path(folder).is_file():
-        parent_state = load_state(folder)
     rows: list[dict[str, Any]] = []
     missing: list[dict[str, Any]] = []
     slug = DATE_PREFIX.sub("", str(state["id"]))
     for entry in stage["inputs"]:
         template = entry["path"].replace("<bolt>", slug)
-        from_parent = template.startswith(PARENT_PREFIX)
-        if from_parent and folder is None:
-            continue  # parent inputs exist only for a child bolt
-        own = template[len(PARENT_PREFIX) :] if from_parent else template
-        producer = producer_of(catalog, own)
+        producer = producer_of(catalog, template)
         optional = bool(entry.get("optional"))
         for rel, row_unit in expand_pairs(template, repos, units, targets):
             skipped = False
-            source = parent_state if from_parent else state
-            if producer is not None and source is not None:
+            if producer is not None:
                 producer_unit = row_unit if producer["per_unit"] else None
-                rec = slot_record(source, producer, producer_unit)
+                rec = slot_record(state, producer, producer_unit)
                 skipped = bool(rec and rec["decision"] == "skip")
-            file = locate(bolt, rel, state)
+            file = locate(bolt, rel)
             exists = file.is_file()
             if entry.get("if_exists") and not exists:
                 continue
             produced_by = producer["id"] if producer else None
-            if from_parent and produced_by:
-                produced_by = PARENT_PREFIX + produced_by
             row = {
                 "path": rel,
                 "file": str(file.resolve()),
@@ -1808,7 +1695,6 @@ def cmd_inputs(
     stage = stage_def(catalog, stage_id)
     get_record(state, stage, unit)
     rows, missing = input_rows(bolt, state, catalog, stage, unit)
-    folder = parent_dir(bolt, state)
     payload: dict[str, Any] = {
         "ok": not missing,
         "stage": stage_id,
@@ -1817,13 +1703,6 @@ def cmd_inputs(
         "inputs": rows,
         "missing": missing,
     }
-    if folder is not None:
-        status = parent_hla_status(bolt, state)
-        payload.update({"parent": state["parent"], "parent_hla_status": status, "warnings": []})
-        if status != "accepted":
-            message = f"the parent's hla.md is {status}, not accepted; its decisions may change"
-            payload["warnings"].append({"code": "parent-hla-not-accepted", "message": message})
-            LOG.warning("%s", message)
     if missing:
         names = ", ".join(f"{m['path']} (stage {m['produced_by'] or 'unknown'})" for m in missing)
         raise Fail(
@@ -2542,9 +2421,7 @@ def cmd_units(
                 "repo": unit.get("repo", previous.get("repo")),
                 "depends_on": deps[unit["id"]],
                 "slice": owner_of.get(unit["id"], unit.get("slice")),
-                "stages": unit_stage_records(
-                    catalog, state["scope"], previous.get("stages"), bolt_kind(state)
-                ),
+                "stages": unit_stage_records(catalog, state["scope"], previous.get("stages")),
                 "story": previous.get("story"),
                 "story_done": previous.get("story_done"),
             }
@@ -2560,63 +2437,6 @@ def cmd_units(
         "missing_kind": [u["id"] for u in result if not u["kind"]],
         "missing_owner": [u["id"] for u in result if not u["owner"]],
         "missing_repo": [u["id"] for u in result if not u["repo"]],
-        "next": nxt,
-    }
-
-
-def cmd_kind(
-    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], kind: str
-) -> dict[str, Any]:
-    """Re-decide every stage after the HLA as ``open`` would for ``kind``.
-
-    Refused once any of those stages has left ``todo``: work already done there
-    would be skipped, or skipped work would silently come back.
-    """
-    stop = frame_after(catalog, "frame")
-    late = [item for item in catalog if stop is not None and item["order"] > stop]
-    records: list[tuple[dict[str, Any], Optional[str], dict[str, Any]]] = []
-    for item in late:
-        if item["per_unit"]:
-            for unit in state["units"]:
-                rec = unit.setdefault("stages", {}).get(item["id"])
-                records.append((item, unit["id"], rec or new_record("pending", "")))
-        elif item["id"] in state["stages"]:
-            records.append((item, None, state["stages"][item["id"]]))
-    started = [
-        {
-            "code": "stage-started",
-            "stage": item["id"],
-            "unit": unit,
-            "message": f"step is {rec['step']}",
-        }
-        for item, unit, rec in records
-        if rec["step"] != "todo"
-    ]
-    if started:
-        raise Fail(
-            EXIT_FINDINGS,
-            f"cannot make this a {kind} bolt: {len(started)} stage(s) after "
-            f"{FRAME_STOP} have started.",
-            findings=started,
-        )
-    previous = bolt_kind(state)
-    brownfield = any(t["kind"] == "brownfield" for t in state["targets"])
-    after = frame_after(catalog, kind)
-    for item, unit, _ in records:
-        decision, reason = initial_decision(item, state["scope"], brownfield, after)
-        record = new_record(decision, reason)
-        if unit is None:
-            state["stages"][item["id"]] = record
-        else:
-            find_unit(state, unit)["stages"][item["id"]] = record
-    state["kind"] = kind
-    nxt = commit(bolt, state, catalog)
-    log_event(bolt, "kind", "", "", f"{previous} -> {kind}")
-    return {
-        "ok": True,
-        "kind": kind,
-        "previous": previous,
-        "redecided": sorted({item["id"] for item, _, _ in records}),
         "next": nxt,
     }
 
@@ -3358,8 +3178,6 @@ def git_event(args: argparse.Namespace, result: Optional[dict[str, Any]] = None)
         return f"assign unit {args.unit} to {args.owner}"
     if cmd == "brief":
         return f"write the brief of unit {args.unit}"
-    if cmd == "kind":
-        return f"make the bolt a {args.set} bolt"
     if cmd == "park":
         return "park the bolt"
     if cmd == "unpark":
@@ -3381,7 +3199,7 @@ def changes_state(args: argparse.Namespace) -> bool:
     if args.command == "brief":
         return bool(args.write)
     return args.command in {
-        "open", "decide", "step", "gate", "units", "decision-id", "kind", "park", "unpark",
+        "open", "decide", "step", "gate", "units", "decision-id", "park", "unpark",
         "jira", "target", "close", "assign",
     }  # fmt: skip
 
@@ -3495,12 +3313,6 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--title", required=True)
     sp.add_argument("--intent", required=True, help="One sentence.")
     sp.add_argument("--scope", choices=SCOPES, default="classic")
-    sp.add_argument(
-        "--kind",
-        choices=KINDS,
-        default="delivery",
-        help="frame: programme-level design that ends at the HLA gate; phases are child bolts.",
-    )
     sp.add_argument("--depth", choices=DEPTHS, help="Default: standard, or minimal for bugfix.")
     sp.add_argument(
         "--target", action="append", metavar="name=path", help="Target repository; repeatable."
@@ -3514,9 +3326,6 @@ def build_parser() -> argparse.ArgumentParser:
         choices=UNIT_MODES,
         help="split: one state file and log per unit, so engineers do not collide "
         '(default: "units" in aidlc.json, else inline).',
-    )
-    sp.add_argument(
-        "--parent", help="Parent bolt id or path under the same root; its HLA frames this one."
     )
 
     sp = add("overview", "Roll up every Bolt of a planning repository; writes nothing.", bolt=False)
@@ -3610,9 +3419,6 @@ def build_parser() -> argparse.ArgumentParser:
     group = sp.add_mutually_exclusive_group(required=True)
     group.add_argument("--add", metavar="name=path", help="Add or replace a target.")
     group.add_argument("--remove", metavar="NAME", help="Remove a target by name.")
-
-    sp = add("kind", "Make the bolt a frame or a delivery bolt before later stages start.")
-    sp.add_argument("--set", required=True, choices=KINDS)
 
     sp = add("park", "Leave a hand-over note.")
     sp.add_argument("--note", required=True)
@@ -3954,8 +3760,6 @@ def run_locked(args: argparse.Namespace) -> dict[str, Any]:
         return cmd_target(bolt, state, catalog, args)
     if cmd == "jira":
         return cmd_jira(bolt, state, catalog, args)
-    if cmd == "kind":
-        return cmd_kind(bolt, state, catalog, args.set)
     if cmd == "assign":
         return cmd_assign(bolt, state, catalog, args)
     if cmd in {"decide", "step", "gate"}:

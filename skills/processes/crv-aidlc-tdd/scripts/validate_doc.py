@@ -47,8 +47,6 @@ checks (each failure is a finding, exit 1):
   decisions   ids in the Design decisions table are unique and ascending; a TDD's
               ids come after every id in the HLA and its decision record
   adrs        cited ADR ids exist in --adr-index (non-accepted status is a warning)
-  parent ids  parent:D<n> citations exist in the parent bolt's hla-decisions.md,
-              found through the bolt's state.json (outside a bolt: a warning)
   diagrams    every mermaid fence is non-empty and followed by text
   hla link    (tdd) hla_link resolves to a document whose header status is accepted
 
@@ -71,8 +69,6 @@ PLACEHOLDER = re.compile(
 )
 ADR_ID = re.compile(r"\bADR-[A-Z]*\d+\b")
 DECISION_ID = re.compile(r"\bD(\d+)\b")
-OWN_DECISION_ID = re.compile(r"(?<!parent:)\bD(\d+)\b")
-PARENT_DECISION_ID = re.compile(r"\bparent:D(\d+)\b")
 RECORD_ROW_ID = re.compile(r"^\s*\|\s*D(\d+)\s*\|", re.MULTILINE)
 FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})\s*([\w-]*)")
 H2 = re.compile(r"^##\s+(.+?)\s*#*\s*$")
@@ -756,61 +752,8 @@ def check_hla_link(path: Path, header: dict[str, Any], report: Report) -> int:
     record = target.parent / "hla-decisions.md"
     if record.is_file():
         texts.append(strip_block(record.read_text(encoding="utf-8", errors="replace")))
-    numbers = [int(n) for text in texts for n in OWN_DECISION_ID.findall(text)]
+    numbers = [int(n) for text in texts for n in DECISION_ID.findall(text)]
     return max(numbers, default=0)
-
-
-def parent_record(path: Path) -> tuple[bool, Optional[Path]]:
-    """``(in_bolt, record)``: the parent's ``hla-decisions.md`` for a document in
-    ``<bolt>/architecture/``; ``record`` is ``None`` when the bolt has no parent."""
-    folder = path.resolve().parent
-    state_file = folder.parent / "state.json"
-    if folder.name != "architecture" or not state_file.is_file():
-        return False, None
-    try:
-        state = json.loads(state_file.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        die(EXIT_MALFORMED, f"{state_file}: not valid JSON: {exc}")
-    parent = state.get("parent") if isinstance(state, dict) else None
-    if not isinstance(parent, dict) or not parent.get("path"):
-        return True, None
-    root = folder.parent.parent.parent  # <root>/bolts/<id>/architecture
-    return True, root / str(parent["path"]) / "architecture" / "hla-decisions.md"
-
-
-def check_parent_ids(path: Path, doc: Doc, report: Report) -> list[str]:
-    """Every ``parent:D<n>`` must be a decision row in the parent bolt's record."""
-    cited: dict[int, int] = {}
-    for number, line in enumerate(doc.lines):
-        for match in PARENT_DECISION_ID.finditer(line):
-            cited.setdefault(int(match.group(1)), number + 1)
-    if not cited:
-        return []
-    in_bolt, record = parent_record(path)
-    ordered = sorted(cited.items(), key=lambda item: item[1])
-    if not in_bolt:
-        report.warn(
-            "parent-decision-unchecked",
-            ordered[0][1],
-            "parent:D<n> ids are cited but the document is not in a bolt's architecture/",
-        )
-    elif record is None:
-        for number, line in ordered:
-            message = f"parent:D{number} is cited but this bolt records no parent"
-            report.add("parent-decision-no-parent", line, message)
-    elif not record.is_file():
-        message = f"{record}: the parent's decision record does not exist"
-        report.add("parent-decision-unresolved", ordered[0][1], message)
-    else:
-        known = {int(n) for n in RECORD_ROW_ID.findall(record.read_text(encoding="utf-8"))}
-        for number, line in ordered:
-            if number not in known:
-                report.add(
-                    "parent-decision-unknown",
-                    line,
-                    f"parent:D{number} is not a row in the parent's hla-decisions.md",
-                )
-    return [f"parent:D{number}" for number in sorted(cited)]
 
 
 def kind_rules(doc: Doc, kind: str, header: dict[str, Any], report: Report) -> None:
@@ -853,7 +796,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     check_placeholders(doc, report)
     floor = check_hla_link(path, header, report) if args.kind == "tdd" else 0
     decisions = check_decisions(doc, report, floor)
-    parent_ids = check_parent_ids(path, doc, report)
     adrs = check_adrs(doc, header, index, report)
     check_diagrams(doc, report)
     kind_rules(doc, args.kind, header, report)
@@ -865,7 +807,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "findings": report.findings,
         "warnings": report.warnings,
         "decisions": decisions,
-        "parent_decisions": parent_ids,
         "adrs": adrs,
         "status": header.get("status"),
     }
