@@ -285,3 +285,22 @@ def test_without_an_upstream_nothing_is_said_about_unshared_work(tmp_path: Path)
     text = script("overview", "--root", str(tmp_path), "--format", "text")[2]
     assert "saved here" not in text
     assert script("overview", "--root", str(tmp_path))[1]["unshared"] is None
+
+
+def test_an_unconfirmed_decision_reservation_hands_out_no_ids(repos: Repos) -> None:
+    """Shared counter or a unit's own: when the sync fails, the caller gets no ids."""
+    bolt = base.split_demo(repos)
+    git(repos.a, "remote", "set-url", "origin", str(repos.a.parent / "gone.git"))
+    head = git(repos.a, "rev-parse", "HEAD")
+    code, out, _ = script("decision-id", "--bolt", str(bolt))  # shared: refused before it runs
+    assert code == 6 and "cannot confirm the shared decision counter" in out["error"]
+    assert "ids" not in out and git(repos.a, "rev-parse", "HEAD") == head
+    assert "--provisional" not in out["error"]
+    code, out, _ = script("decision-id", "--bolt", str(bolt), "--unit", "u1")  # a unit's own
+    assert code == 6 and "the ids were not reserved" in out["error"]
+    assert "ids" not in out and "cite_as" not in out
+    assert "ids" not in out["result"] and "cite_as" not in out["result"]
+    assert out["git"]["not_shared"] is True
+    git(repos.a, "remote", "set-url", "origin", str(repos.remote))
+    code, out, _ = script("decision-id", "--bolt", str(bolt), "--unit", "u1")
+    assert code == 0 and out["ids"] == ["D2"]  # the unconfirmed D1 was never handed out

@@ -12,6 +12,14 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Decision ids never repeat, and `--provisional` is gone.**
+  A Bolt whose decision record already holds D75 while its counter says 73 used
+  to hand out D74 again. `decision-id` now starts above both the stored counter
+  and the highest `D<n>` in the Bolt's `hla-decisions.md` and `tdd-decisions.md`,
+  and the counter follows. A reservation, shared or a unit's own, returns no ids
+  when it could not be shared with the team; the shared counter still refuses
+  outright when the remote cannot be reached. The `--provisional` flag, which
+  handed out ids that might clash, is removed.
 - **A state file is never merged: the command runs again on the team's newer state.**
   When two engineers changed the same Bolt's `state.json`, the rebase conflict
   said "take the team's version", which silently dropped one engineer's change

@@ -2306,6 +2306,18 @@ def decision_rows(text: str) -> list[dict[str, Any]]:
     return rows
 
 
+def highest_declared_decision(bolt: Path) -> int:
+    """The highest ``D<n>`` in the Bolt's decision records (0 when there are none)."""
+    highest = 0
+    for name in DECISION_FILES:
+        path = bolt / "architecture" / name
+        if not path.is_file():
+            continue
+        for row in decision_rows(path.read_text(encoding="utf-8", errors="replace")):
+            highest = max(highest, int(row["id"][1:]))
+    return highest
+
+
 def decision_status_findings(
     bolt: Path, state: dict[str, Any], stage: dict[str, Any], unit: Optional[str]
 ) -> list[dict[str, Any]]:
@@ -3577,11 +3589,6 @@ def build_parser() -> argparse.ArgumentParser:
     takeover(sp)
     sp.add_argument("--count", type=int, default=1)
     sp.add_argument("--unit", help="Number from this unit's own counter; cite as <unit>:D<n>.")
-    sp.add_argument(
-        "--provisional",
-        action="store_true",
-        help="Reserve even when the shared counter cannot be confirmed (the ids may clash).",
-    )
 
     add("codekb-status", "Is each target's shared code knowledge fresh, stale or missing.")
 
@@ -3663,18 +3670,18 @@ def run_changing(args: argparse.Namespace) -> dict[str, Any]:
         return run_locked(args)
     event = git_event(args)
     before = sync_git(ctx, rel, slug, f"save work before {event}")
-    shared_counter = args.command == "decision-id" and not args.unit
-    provisional = False
-    if shared_counter and any(w.startswith("push: failed") for w in before["warnings"]):
-        if not args.provisional:
-            raise Fail(
-                EXIT_GIT,
-                "cannot confirm the shared decision counter; fix the connection or pass "
-                "--provisional",
-                extra={"git": before},
-            )
-        provisional = True
-    not_reserved = "the ids were not reserved: resolve the conflict, then run decision-id again"
+    reserving = args.command == "decision-id"
+    if reserving and not args.unit and before["not_shared"]:
+        raise Fail(
+            EXIT_GIT,
+            "cannot confirm the shared decision counter with the remote; fix the connection, "
+            "then run decision-id again",
+            extra={"git": before},
+        )
+    not_reserved = (
+        "the ids were not reserved (they could not be shared with the team): fix the cause, "
+        "then run decision-id again"
+    )
     can_rerun = args.command not in NO_RERUN
     carry: dict[str, Any] = {"warnings": [], "rebuild_adr_index": False}
     reruns = 0
@@ -3686,8 +3693,6 @@ def run_changing(args: argparse.Namespace) -> dict[str, Any]:
                 restore_bolt_files(ctx, rel)
                 exc.message = f"{CHANGED_NOTE}: {exc.message}"
             raise
-        if provisional:
-            result["provisional"] = True
         if args.command == "open":
             _root, rel, slug = git_scope(Path(result["bolt"]))
         try:
@@ -3703,8 +3708,8 @@ def run_changing(args: argparse.Namespace) -> dict[str, Any]:
                 ) from None
             reruns += 1
         except Fail as exc:
-            if shared_counter:
-                result = {k: v for k, v in result.items() if k != "ids"}
+            if reserving:
+                result = {k: v for k, v in result.items() if k not in ("ids", "cite_as")}
                 exc.message = f"{not_reserved}. {exc.message}"
             exc.extra.setdefault("result", result)
             raise
@@ -3713,11 +3718,14 @@ def run_changing(args: argparse.Namespace) -> dict[str, Any]:
         after["warnings"].append(f"{CHANGED_NOTE}; the command ran again on the new state")
     if carry["rebuild_adr_index"]:
         after["rebuild_adr_index"] = True
-    if shared_counter and not provisional and after["not_shared"]:
+    if reserving and after["not_shared"]:
         raise Fail(
             EXIT_GIT,
             not_reserved,
-            extra={"git": after, "result": {k: v for k, v in result.items() if k != "ids"}},
+            extra={
+                "git": after,
+                "result": {k: v for k, v in result.items() if k not in ("ids", "cite_as")},
+            },
         )
     result["git"] = after
     if before["commit"] or before["rebuild_adr_index"] or before["warnings"]:
@@ -3979,6 +3987,8 @@ def run_locked(args: argparse.Namespace) -> dict[str, Any]:
         suffix = guard_owner(bolt, state, args.unit, args.takeover)
         holder = find_unit(state, args.unit) if args.unit else state
         start = int(holder.get("decision_seq") or 0)
+        if not args.unit:  # never hand out an id the Bolt's decision records already hold
+            start = max(start, highest_declared_decision(bolt))
         ids = [f"D{start + i}" for i in range(1, args.count + 1)]
         holder["decision_seq"] = start + args.count
         write_state(bolt, state)

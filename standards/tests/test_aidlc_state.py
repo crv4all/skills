@@ -1083,6 +1083,46 @@ def test_decision_ids_are_numbered_per_unit(bolt: Bolt) -> None:
     assert bolt.run("decision-id", "--unit", "zz")[0] == 2
 
 
+def decision_table(*ids: str) -> str:
+    rows = "\n".join(f"| {i} | Choice {i} | accepted |" for i in ids)
+    return f"# Decisions\n\n| ID | Decision | Status |\n|----|----------|--------|\n{rows}\n"
+
+
+def set_counter(bolt: Bolt, value: int) -> None:
+    state = bolt.state
+    state["decision_seq"] = value
+    (bolt.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
+
+
+def test_a_decision_id_starts_above_the_counter_and_the_records(bolt: Bolt) -> None:
+    """The record holds D75 but the counter says 73: D76 is next, and the counter follows."""
+    bolt.write("architecture/hla-decisions.md", decision_table("D1", "D74", "D75"))
+    set_counter(bolt, 73)
+    data = bolt.run("decision-id", "--count", "2")[1]
+    assert data["ids"] == ["D76", "D77"] and bolt.state["decision_seq"] == 77
+    assert bolt.run("decision-id")[1]["ids"] == ["D78"]
+
+
+def test_a_decision_id_counts_the_technical_design_record_too(bolt: Bolt) -> None:
+    bolt.write("architecture/hla-decisions.md", decision_table("D3"))
+    bolt.write("architecture/tdd-decisions.md", decision_table("D9", "D12"))
+    assert bolt.run("decision-id")[1]["ids"] == ["D13"]
+    set_counter(bolt, 40)  # a counter above every record still wins
+    assert bolt.run("decision-id")[1]["ids"] == ["D41"]
+
+
+def test_a_unit_counter_ignores_the_bolt_records(bolt: Bolt) -> None:
+    load_units(bolt, [{"id": "u1"}])
+    bolt.write("architecture/hla-decisions.md", decision_table("D75"))
+    assert bolt.run("decision-id", "--unit", "u1")[1]["ids"] == ["D1"]
+
+
+def test_the_provisional_flag_is_gone(bolt: Bolt) -> None:
+    code, _, _ = bolt.run("decision-id", "--provisional")
+    assert code == 2 and bolt.state["decision_seq"] == 0
+    assert "provisional" not in bolt.run("decision-id")[1]
+
+
 # --- overview, decision status and the brief for a child ----------------------
 
 
