@@ -12,6 +12,22 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A state file is never merged: the command runs again on the team's newer state.**
+  When two engineers changed the same Bolt's `state.json`, the rebase conflict
+  said "take the team's version", which silently dropped one engineer's change
+  while its log line stayed; and when both made the identical change (both took
+  decision id D1) git merged it cleanly and both held the same id. Now, if the
+  team's newer commits touch a state file the command also wrote, the command's
+  own commit is dropped (`git reset --keep`, never `--hard`), the clone is
+  brought up to date, and the command runs again on the new state (at most three
+  times, then it stops saying the change was not applied). A re-run that no
+  longer applies, for example because someone else closed the Bolt, fails
+  cleanly and leaves state and log equal to the team's. `open` and `close` are
+  not run twice automatically, and their conflict rule no longer tells anyone to
+  take one side. When a push did not happen, the result says `not_shared: true`
+  and `status` and `overview` show how many changes are saved here but not
+  shared yet.
+
 - **Leftovers and unresolved conflicts are never committed.**
   A state write that was killed halfway used to leave `.state.json.tmp`, which
   the next automatic commit picked up. Each write now uses a temp name of its

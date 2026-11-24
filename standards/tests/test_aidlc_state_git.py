@@ -306,7 +306,9 @@ def test_two_engineers_on_the_same_unit_get_the_unit_rule(repos: Repos) -> None:
     assert git(repos.b, "status", "--porcelain").count("UU") >= 1  # nothing was resolved for them
 
 
-def test_a_decision_counter_race_returns_no_ids(repos: Repos, tmp_path: Path) -> None:
+def test_a_decision_counter_race_is_rerun_on_the_rivals_counter(
+    repos: Repos, tmp_path: Path
+) -> None:
     assert open_demo(repos.a)[0] == 0
     git(repos.b, "pull", "-q")
     rival = tmp_path / "rival"
@@ -321,8 +323,10 @@ def test_a_decision_counter_race_returns_no_ids(repos: Repos, tmp_path: Path) ->
     )
     hook.chmod(0o755)
     code, out, _ = script("decision-id", "--bolt", str(bolt_of(repos.b)))
-    assert code == 6 and "the ids were not reserved" in out["error"]
-    assert "ids" not in out and "ids" not in out["result"]
+    assert code == 0, out  # the rival took the counter while we committed: we ran again
+    assert out["ids"] == ["D10"] and out["git"]["reruns"] == 1 and out["git"]["pushed"] is True
+    shown = git(repos.remote, "show", f"main:bolts/{BOLT_ID}/state.json")
+    assert json.loads(shown)["decision_seq"] == 10
 
 
 def test_a_change_to_an_approved_artifact_warns_once_and_is_logged(repos: Repos) -> None:

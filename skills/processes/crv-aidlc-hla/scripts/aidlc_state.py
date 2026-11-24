@@ -75,6 +75,14 @@ AIDLC_GIT=off or --no-git turns git writes off; a folder outside git is skipped.
 `*.tmp` file is never committed, and neither is a file that still holds git conflict markers
 (exit 6, the files are named).
 
+State is never merged: when the team pushed a change to a state.json that your command
+also changed, your command's commit is dropped (`git reset --keep`), your clone is brought
+up to date and the command runs again on the new state, up to 3 times (the result says
+`reruns`). `open` and `close` are not run twice on their own; a conflict on a Bolt's
+state file then tells you to drop your last commit, pull and run the command again. When
+a push did not happen the result has `not_shared: true`, and `status` and `overview` say
+how many changes are saved here but not shared yet.
+
 Lock: a command that changes a bolt (and `sync`) holds one lock per planning checkout for
 its whole run, git steps included, so two sessions in one checkout queue instead of
 colliding. It waits up to 60 s, then stops and names the lock file. The lock is freed by
@@ -1615,6 +1623,16 @@ def overview_text(rows: list[dict[str, Any]]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def unshared_commits(root: Path) -> Optional[int]:
+    """Local commits not yet on the upstream; ``None`` without git or an upstream."""
+    try:
+        ctx, _why = open_git(root.resolve())
+    except Fail:
+        return None
+    ref = upstream_ref(ctx) if ctx else None
+    return count_commits(ctx, f"{ref}..HEAD") if ctx and ref else None
+
+
 def cmd_overview(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[str, Any]:
     """Every Bolt of a planning repository in one read-only roll-up."""
     root = Path(args.root)
@@ -1637,10 +1655,13 @@ def cmd_overview(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dic
         if parent is not None and "children" in parent:
             parent["children"].append(row["id"])
     result: dict[str, Any] = {"ok": True, "root": str(root.resolve()), "bolts": rows}
+    result["unshared"] = unshared_commits(root)
     if args.log:
         result["log"] = sorted(logs, key=lambda r: r["time"])[-args.log :]
     if args.format == "text":
         text = overview_text(rows)
+        if unshared_line(result["unshared"]):
+            text = f"{unshared_line(result['unshared'])}\n" + text
         for entry in result.get("log", []):
             unit = f" [{entry['unit']}]" if entry["unit"] else ""
             text += f"{entry['time']} {entry['bolt']}{unit} {entry['event']} {entry['stage']}\n"
@@ -2732,6 +2753,10 @@ def cmd_close(
 
 GIT_TIMEOUT = 60
 PUSH_ROUNDS = 3
+CHANGED_NOTE = "the Bolt changed while you were working"
+RERUN_ROUNDS = 3  # times a command is run again on the team's newer state before it gives up
+NO_RERUN = {"open", "close"}  # create a Bolt or end one: never run twice on their own
+STATE_FILE = re.compile(r"(?:units/[^/]+/)?state\.json")
 REBASE_STEPS = 50
 UNCOMMITTED_CAP = 50
 SHARED_FILES = ("architecture-index.json", "aidlc.json")
@@ -2767,6 +2792,10 @@ class GitCtx:
 
 class SoftGitError(Exception):
     """A push-side problem that keeps the local commit and only warns."""
+
+
+class StateRace(Exception):
+    """The team changed a state file this command also changed: run the command again."""
 
 
 def run_git(
@@ -3087,8 +3116,9 @@ def conflict_rule(ctx: GitCtx, path: str) -> str:
         )
     if name == "state.json" and rel.startswith("bolts/"):
         return (
-            "take the team's version (`git checkout --ours -- <file>`, then `git add <file>`), "
-            "finish the rebase with `git rebase --continue`, then run your command again."
+            "a Bolt's state file is never merged and never settled by taking one side. Abort the "
+            "rebase (`git rebase --abort`), drop your last local commit with "
+            "`git reset --keep HEAD~1`, pull (`git pull --rebase`), and run your command again."
         )
     if name == "log.md" and rel.startswith("bolts/"):
         return (
@@ -3106,9 +3136,9 @@ def conflict_rule(ctx: GitCtx, path: str) -> str:
 def conflict_stop(ctx: GitCtx, files: list[str], result: dict[str, Any], why: str) -> Fail:
     return Fail(
         EXIT_GIT,
-        f"{why} {len(files)} file(s) conflict. This is not a question for the user: resolve "
-        "each one by its rule, `git add` it, run `git rebase --continue`, then run `sync` "
-        f"again. {SIDES}",
+        f"{why} {len(files)} file(s) conflict. This is not a question for the user: follow the "
+        "rule given for each file; where it says to resolve one, `git add` it and run "
+        f"`git rebase --continue`, then run `sync` again. {SIDES}",
         findings=[{"code": "conflict", "path": f, "message": conflict_rule(ctx, f)} for f in files],
         extra={"git": result, "sides": SIDES},
     )
@@ -3155,7 +3185,35 @@ def count_commits(ctx: GitCtx, spec: str) -> Optional[int]:
     return int(done.stdout.strip()) if done.returncode == 0 else None
 
 
-def push_branch(ctx: GitCtx, branch: Optional[str], result: dict[str, Any]) -> None:
+def state_race(ctx: GitCtx, ref: str, bolt_rel: str, result: dict[str, Any]) -> list[str]:
+    """The ``state.json`` paths of this Bolt that the tip (command) commit and the upstream
+    both changed since they diverged; a state file is never merged, so any hit means rerun."""
+    subject = run_git(ctx.top, "log", "-1", "--format=%s").stdout.strip()
+    if not result.get("commit") or subject != result.get("message"):
+        return []  # the tip is not this command's commit
+    mine = run_git(
+        ctx.top, "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "-z", "HEAD"
+    )
+    base = f"{ctx.prefix}{bolt_rel}/"
+    names = [
+        p
+        for p in mine.stdout.split("\0")
+        if p.startswith(base) and STATE_FILE.fullmatch(p[len(base) :])
+    ]
+    if not names:
+        return []
+    theirs = run_git(
+        ctx.top, "diff", "--name-only", "-z", "--no-renames", f"HEAD...{ref}", "--", *names
+    )
+    return [p for p in theirs.stdout.split("\0") if p in names]
+
+
+def push_branch(
+    ctx: GitCtx, branch: Optional[str], result: dict[str, Any], race_bolt: Optional[str] = None
+) -> None:
+    """Fetch, rebase onto the team's work and push; ``race_bolt`` names the Bolt whose
+    state a just-committed command changed, so the command can be run again instead of
+    rebasing its state file (raises ``StateRace``)."""
     warnings: list[str] = result["warnings"]
     if branch is None:
         warnings.append("push: skipped, HEAD is detached")
@@ -3167,7 +3225,12 @@ def push_branch(ctx: GitCtx, branch: Optional[str], result: dict[str, Any]) -> N
     if run_git(ctx.top, "rev-parse", "--verify", "-q", "HEAD").returncode != 0:
         return  # nothing committed yet
     ref = f"refs/remotes/{ctx.remote}/{branch}"
-    failed = "push: failed, retried at the next event"
+    failed = "push: failed, retried at the next event (saved in this clone, not shared yet)"
+
+    def give_up() -> None:
+        result["not_shared"] = True
+        warnings.append(failed)
+
     try:
         for _round in range(PUSH_ROUNDS):
             fetch = run_git(
@@ -3175,10 +3238,12 @@ def push_branch(ctx: GitCtx, branch: Optional[str], result: dict[str, Any]) -> N
             )
             remote_has = fetch.returncode == 0
             if not remote_has and "find remote ref" not in fetch.stderr:
-                warnings.append(failed)
+                give_up()
                 return
             if remote_has:
                 if (count_commits(ctx, f"HEAD..{ref}") or 0) > 0:
+                    if race_bolt is not None and state_race(ctx, ref, race_bolt, result):
+                        raise StateRace
                     rebase_onto(ctx, ref, result)
                 if count_commits(ctx, f"{ref}..HEAD") == 0:
                     return  # nothing to push
@@ -3191,20 +3256,26 @@ def push_branch(ctx: GitCtx, branch: Optional[str], result: dict[str, Any]) -> N
                 return
             lost = any(w in pushed.stderr for w in ("rejected", "fetch first", "non-fast-forward"))
             if not lost:
-                warnings.append(failed)
+                give_up()
                 return
-        warnings.append(failed)
+        give_up()
     except SoftGitError:
-        warnings.append(failed)
+        give_up()
 
 
-def sync_git(ctx: GitCtx, bolt_rel: Optional[str], slug: str, event: str) -> dict[str, Any]:
-    """Bring in the team's work, commit this bolt's changes and push them."""
+def sync_git(
+    ctx: GitCtx, bolt_rel: Optional[str], slug: str, event: str, rerunnable: bool = False
+) -> dict[str, Any]:
+    """Bring in the team's work, commit this bolt's changes and push them.
+
+    With ``rerunnable`` the commit is a command's own: if the team changed a state file
+    of the Bolt meanwhile, ``StateRace`` is raised before anything is rebased or pushed."""
     result: dict[str, Any] = {
         "enabled": True,
         "branch": None,
         "commit": None,
         "pushed": False,
+        "not_shared": False,
         "warnings": [],
         "uncommitted": [],
         "uncommitted_count": 0,
@@ -3238,7 +3309,7 @@ def sync_git(ctx: GitCtx, bolt_rel: Optional[str], slug: str, event: str) -> dic
     if ctx.commit:
         commit_scope(ctx, bolt_rel, message, result)
     if ctx.push:
-        push_branch(ctx, ctx.branch or current, result)
+        push_branch(ctx, ctx.branch or current, result, bolt_rel if rerunnable else None)
     for text in result["warnings"]:
         LOG.warning("%s", text)
     return result
@@ -3322,6 +3393,20 @@ def cmd_sync(args: argparse.Namespace) -> dict[str, Any]:
     return {"ok": True, "git": sync_git(ctx, bolt_rel, slug, args.message)}
 
 
+def upstream_ref(ctx: GitCtx) -> Optional[str]:
+    """The fetched remote branch this checkout publishes to, or ``None`` when there is none."""
+    target = ctx.branch or current_branch(ctx)
+    if not target:
+        return None
+    ref = f"refs/remotes/{ctx.remote}/{target}"
+    return ref if run_git(ctx.top, "rev-parse", "--verify", "-q", ref).returncode == 0 else None
+
+
+def unshared_line(count: Optional[int]) -> str:
+    """One line for the local commits the team does not have yet; empty when there is none."""
+    return f"{count} change(s) saved here, not shared yet" if count else ""
+
+
 def git_status_block(bolt: Path) -> Optional[dict[str, Any]]:
     """Branch, ahead and behind, and uncommitted paths. Reads only; never fetches."""
     root, rel, _ = git_scope(bolt)
@@ -3339,12 +3424,11 @@ def git_status_block(bolt: Path) -> Optional[dict[str, Any]]:
         "ahead": None,
         "behind": None,
     }
-    target = ctx.branch or branch
-    if target:
-        ref = f"refs/remotes/{ctx.remote}/{target}"
-        if run_git(ctx.top, "rev-parse", "--verify", "-q", ref).returncode == 0:
-            block["ahead"] = count_commits(ctx, f"{ref}..HEAD")
-            block["behind"] = count_commits(ctx, f"HEAD..{ref}")
+    ref = upstream_ref(ctx)
+    if ref:
+        block["ahead"] = count_commits(ctx, f"{ref}..HEAD")
+        block["behind"] = count_commits(ctx, f"HEAD..{ref}")
+    block["unshared"] = block["ahead"]
     mine = ctx.prefix + rel + "/"
     block["uncommitted"] = sum(1 for p in changed_paths(ctx) if p.startswith(mine))
     if block["uncommitted"]:
@@ -3364,6 +3448,8 @@ def git_status_line(block: dict[str, Any]) -> str:
     line = f"Git: {where}, {sync}, {block['uncommitted']} uncommitted in this bolt"
     if block["uncommitted"]:
         line += '; commit them now with `sync --bolt <p> -m "<what changed>"`'
+    if unshared_line(block.get("unshared")):
+        line += f"\n{unshared_line(block['unshared'])}"
     return line
 
 
@@ -3588,25 +3674,46 @@ def run_changing(args: argparse.Namespace) -> dict[str, Any]:
                 extra={"git": before},
             )
         provisional = True
-    result = run_locked(args)
-    if provisional:
-        result["provisional"] = True
-    if args.command == "open":
-        _root, rel, slug = git_scope(Path(result["bolt"]))
     not_reserved = "the ids were not reserved: resolve the conflict, then run decision-id again"
-    try:
-        after = sync_git(ctx, rel, slug, git_event(args, result))
-    except Fail as exc:
-        if shared_counter:
-            result = {k: v for k, v in result.items() if k != "ids"}
-            exc.message = f"{not_reserved}. {exc.message}"
-        exc.extra.setdefault("result", result)
-        raise
-    if (
-        shared_counter
-        and not provisional
-        and any(w.startswith("push: failed") for w in after["warnings"])
-    ):
+    can_rerun = args.command not in NO_RERUN
+    carry: dict[str, Any] = {"warnings": [], "rebuild_adr_index": False}
+    reruns = 0
+    while True:
+        try:
+            result = run_locked(args)
+        except Fail as exc:
+            if reruns:  # its precondition changed under it: leave nothing half-applied
+                restore_bolt_files(ctx, rel)
+                exc.message = f"{CHANGED_NOTE}: {exc.message}"
+            raise
+        if provisional:
+            result["provisional"] = True
+        if args.command == "open":
+            _root, rel, slug = git_scope(Path(result["bolt"]))
+        try:
+            after = sync_git(ctx, rel, slug, git_event(args, result), rerunnable=can_rerun)
+            break
+        except StateRace:
+            drop_and_catch_up(ctx, carry)
+            if reruns >= RERUN_ROUNDS:
+                raise Fail(
+                    EXIT_GIT,
+                    f"the team changed this Bolt {RERUN_ROUNDS + 1} times while the command "
+                    "was running. Your change was NOT applied; run the command again.",
+                ) from None
+            reruns += 1
+        except Fail as exc:
+            if shared_counter:
+                result = {k: v for k, v in result.items() if k != "ids"}
+                exc.message = f"{not_reserved}. {exc.message}"
+            exc.extra.setdefault("result", result)
+            raise
+    if reruns:
+        after["reruns"] = reruns
+        after["warnings"].append(f"{CHANGED_NOTE}; the command ran again on the new state")
+    if carry["rebuild_adr_index"]:
+        after["rebuild_adr_index"] = True
+    if shared_counter and not provisional and after["not_shared"]:
         raise Fail(
             EXIT_GIT,
             not_reserved,
@@ -3616,6 +3723,58 @@ def run_changing(args: argparse.Namespace) -> dict[str, Any]:
     if before["commit"] or before["rebuild_adr_index"] or before["warnings"]:
         result["git_before"] = before
     return result
+
+
+def restore_bolt_files(ctx: GitCtx, bolt_rel: Optional[str]) -> None:
+    """Put the Bolt's state and log files back as committed, after a command that failed on
+    a re-run. Only tracked files change; ``git checkout`` of paths, never ``reset --hard``."""
+    if bolt_rel is None:
+        return
+    done = run_git(ctx.top, "diff", "--name-only", "-z", "--no-renames", "HEAD")
+    base = f"{ctx.prefix}{bolt_rel}/"
+    names = [
+        p
+        for p in done.stdout.split("\0")
+        if p.startswith(base) and p.rsplit("/", 1)[-1] in ("state.json", "log.md")
+    ]
+    if names:
+        git_paths(ctx, "checkout", "-q", "HEAD", paths=names)
+
+
+def drop_and_catch_up(ctx: GitCtx, carry: dict[str, Any]) -> None:
+    """Drop the command's commit (the tip) and bring the clone up to the team's work.
+
+    ``git reset --keep`` moves only that commit away and refuses, rather than overwrite,
+    a file with local edits. Any other unpushed commit is rebased in the normal way."""
+    stuck = (
+        "The team changed the same state file while your command ran, and your last local "
+        "commit could not be dropped"
+    )
+    dropped = run_git(ctx.top, "reset", "--keep", "HEAD~1")
+    if dropped.returncode != 0:
+        raise Fail(
+            EXIT_GIT,
+            f"{stuck} ({(dropped.stderr or dropped.stdout).strip()[:200]}). Nothing was shared. "
+            "Save or commit the files git names, run `git reset --keep HEAD~1`, then "
+            "`git pull --rebase`, and run the command again.",
+        )
+    branch = ctx.branch or current_branch(ctx)
+    ref = f"refs/remotes/{ctx.remote}/{branch}"
+    try:
+        if branch and (count_commits(ctx, f"HEAD..{ref}") or 0) > 0:
+            rebase_onto(ctx, ref, carry)
+    except SoftGitError as exc:
+        raise Fail(
+            EXIT_GIT,
+            f"Your change was NOT applied (the team's work clashed with it and it was dropped); "
+            f"the clone could not be brought up to date: {exc}. Run `git pull --rebase`, then "
+            "run the command again.",
+        ) from None
+    except Fail as exc:
+        exc.message = (
+            f"Your change was NOT applied; run the command again once this is done. {exc.message}"
+        )
+        raise
 
 
 def lock_wait() -> float:
