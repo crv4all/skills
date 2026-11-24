@@ -47,8 +47,8 @@ checks (each failure is a finding, exit 1):
   decisions   ids in the Design decisions table are unique and ascending; a TDD's
               ids come after every id in the HLA and its decision record
   adrs        cited ADR ids exist in --adr-index (non-accepted status is a warning)
-  parent ids  parent:D<n> citations exist in the parent paddock's hla-decisions.md,
-              found through the paddock's state.json (outside a paddock: a warning)
+  parent ids  parent:D<n> citations exist in the parent bolt's hla-decisions.md,
+              found through the bolt's state.json (outside a bolt: a warning)
   diagrams    every mermaid fence is non-empty and followed by text
   hla link    (tdd) hla_link resolves to a document whose header status is accepted
 
@@ -761,8 +761,8 @@ def check_hla_link(path: Path, header: dict[str, Any], report: Report) -> int:
 
 
 def parent_record(path: Path) -> tuple[bool, Optional[Path]]:
-    """``(in_paddock, record)``: the parent's ``hla-decisions.md`` for a document in
-    ``<paddock>/architecture/``; ``record`` is ``None`` when the paddock has no parent."""
+    """``(in_bolt, record)``: the parent's ``hla-decisions.md`` for a document in
+    ``<bolt>/architecture/``; ``record`` is ``None`` when the bolt has no parent."""
     folder = path.resolve().parent
     state_file = folder.parent / "state.json"
     if folder.name != "architecture" or not state_file.is_file():
@@ -774,29 +774,29 @@ def parent_record(path: Path) -> tuple[bool, Optional[Path]]:
     parent = state.get("parent") if isinstance(state, dict) else None
     if not isinstance(parent, dict) or not parent.get("path"):
         return True, None
-    root = folder.parent.parent.parent  # <root>/paddocks/<id>/architecture
+    root = folder.parent.parent.parent  # <root>/bolts/<id>/architecture
     return True, root / str(parent["path"]) / "architecture" / "hla-decisions.md"
 
 
 def check_parent_ids(path: Path, doc: Doc, report: Report) -> list[str]:
-    """Every ``parent:D<n>`` must be a decision row in the parent paddock's record."""
+    """Every ``parent:D<n>`` must be a decision row in the parent bolt's record."""
     cited: dict[int, int] = {}
     for number, line in enumerate(doc.lines):
         for match in PARENT_DECISION_ID.finditer(line):
             cited.setdefault(int(match.group(1)), number + 1)
     if not cited:
         return []
-    in_paddock, record = parent_record(path)
+    in_bolt, record = parent_record(path)
     ordered = sorted(cited.items(), key=lambda item: item[1])
-    if not in_paddock:
+    if not in_bolt:
         report.warn(
             "parent-decision-unchecked",
             ordered[0][1],
-            "parent:D<n> ids are cited but the document is not in a paddock's architecture/",
+            "parent:D<n> ids are cited but the document is not in a bolt's architecture/",
         )
     elif record is None:
         for number, line in ordered:
-            message = f"parent:D{number} is cited but this paddock records no parent"
+            message = f"parent:D{number} is cited but this bolt records no parent"
             report.add("parent-decision-no-parent", line, message)
     elif not record.is_file():
         message = f"{record}: the parent's decision record does not exist"

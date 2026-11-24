@@ -12,20 +12,20 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **`aidlc_refs.py` makes every paddock id resolvable without model tokens.**
+- **`aidlc_refs.py` makes every Bolt id resolvable without model tokens.**
   Ids such as `D10`, `A-Q3` and `L986` are forgotten, and recalling one meant
   re-reading whole files. `show` answers an agent in one line per id, `link`
   turns each cited id into a Markdown link plus one generated block per file
   (reversible with `--remove`), and `index` writes a page of every id. The
   traceability check and the document validator now ignore the generated
   block, so linking never changes their result. An optional `aidlc-refs.json`
-  in the paddock names the documents that line references cite and the words
+  in the Bolt names the documents that line references cite and the words
   that mark an id from another numbering. No core rule calls it: the shared
   rules have no token room in the construction budget, so it runs when someone
   asks for it.
-- **Paddock work is committed and pushed by the state script.** Every
-  `aidlc_state.py` command that changes a paddock first brings in the team's
-  work, then commits the paddock and pushes it to the shared branch named in
+- **Bolt work is committed and pushed by the state script.** Every
+  `aidlc_state.py` command that changes a Bolt first brings in the team's
+  work, then commits the Bolt and pushes it to the shared branch named in
   `aidlc.json`; a new `sync` command does the same for work that changes files
   but no state. A conflict stops with exit 6 and a rule per file, so the agent
   resolves it without asking the person. A likely secret in the commit also
@@ -43,7 +43,7 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   clean checkout and reports which ADRs were added or changed in status. The
   architecture skill runs it before shortlisting ADRs.
 - **A staged delivery process starts with its entry skill.** `crv-aidlc` opens,
-  resumes and closes a "paddock" (the folder for one piece of work), says which
+  resumes and closes a "Bolt" (the folder for one piece of work), says which
   stage skill is next, and refuses to approve a stage whose artifact is missing,
   has no digest, or whose questions are unanswered. Progress lives in one
   `state.json` changed only by a script, and the checks that have one right
@@ -72,7 +72,7 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Code research happens once per repository, not once per piece of work.**
   `crv-aidlc-reverse-engineering` keeps one code-knowledge store per target
   repository and checks it against the repository's current commit, so a second
-  paddock on the same code reuses it and a stale store is rescanned only where
+  Bolt on the same code reuses it and a stale store is rescanned only where
   files changed. A script inventories the repository first, so the model spends
   its tokens on understanding the code instead of discovering the layout.
 
@@ -95,23 +95,23 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   each step with the evidence a named person gives; anything that changes an
   environment stays a human task, because a wrong command there cannot be taken
   back. It reuses each repository's existing release mechanism instead of
-  designing a pipeline. Paddocks opened before the two stages existed keep
+  designing a pipeline. Bolts opened before the two stages existed keep
   working and are asked to decide them.
 
 - **Units of work are tied to Jira tickets, and the tie is checked.** Nothing
   in the process said what becomes a ticket, so work started on units nobody
-  had filed and finished work stayed open in Jira. One Epic per paddock and one
+  had filed and finished work stayed open in Jira. One Epic per Bolt and one
   Story per unit are now recorded through the state script; Construction of a
   unit is refused until its Story key is recorded (or Jira is turned off with a
-  reason), and a paddock cannot close as complete while a filed Story is not
+  reason), and a Bolt cannot close as complete while a filed Story is not
   recorded as done. User stories stay planning detail and are never filed.
-  Older paddocks work unchanged.
+  Older Bolts work unchanged.
 
 - **The organisation answers its policy questions once.** A programme of seven
-  paddocks asked the same questions about story format, acceptance-criteria
+  Bolts asked the same questions about story format, acceptance-criteria
   style and unit granularity seven times. `docs/presets.md` in the planning
   repo now holds default answers written by people; a stage does not ask what
-  a preset answers, and a paddock can override one, for itself only, with the
+  a preset answers, and a Bolt can override one, for itself only, with the
   approver's reason. `lint_questions.py --presets` checks the file and the
   preset ids a question file cites. The template ships empty, because a
   default invented by a tool is not the organisation's answer.
@@ -123,16 +123,16 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   after each, requires a quiet period before anything is removed, runs the
   neighbours' checks after every change, and records a support window.
 
-- **A new person can tell whether they are ready before the first paddock.**
+- **A new person can tell whether they are ready before the first Bolt.**
   A partial install (a skill added to the repository but not on the machine)
   made a stage fail in a way that looked like a process bug.
   `check_prerequisites.py` names what is missing or out of date, with the fix
-  command, and `crv-aidlc` runs it before opening a paddock. It only reads; a
+  command, and `crv-aidlc` runs it before opening a Bolt. It only reads; a
   pass is remembered until an installed shared file changes. A getting-started
   guide in the planning repo covers the rest.
 
 - **Smaller work takes a shorter path through the same process.** The
-  `express` and `bugfix` scopes skip stories, units and Bolt planning; `bugfix`
+  `express` and `bugfix` scopes skip stories, units and Slice planning; `bugfix`
   requires a regression test that fails before the fix and passes after.
 
 - **Design documents are checked by a script before anyone reads them.**
@@ -149,8 +149,8 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   its document's header to accepted before approval. The `hla` and `tdd`
   entries of the stage list are final; the rest stay provisional.
 
-- **Every folder of a paddock opens at once, and an old checkout is caught
-  before it is read.** A paddock spans the planning repo, the ADR registry and
+- **Every folder of a Bolt opens at once, and an old checkout is caught
+  before it is read.** A Bolt spans the planning repo, the ADR registry and
   several target repositories, which people opened by hand, and a checkout
   behind its origin was scanned without anyone noticing. `aidlc_state.py
   workspace` writes a multi-root workspace file and a terminal command that adds
@@ -160,8 +160,8 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   on a stale checkout unless the approver says to scan as is. Targets added
   after `open` go through `target --add`, which classifies them as `open` does.
 
-- **A programme can be designed once and delivered in phases.** A paddock opened
-  with `--parent` is a child of a frame paddock: its HLA stage reads the
+- **A programme can be designed once and delivered in phases.** A Bolt opened
+  with `--parent` is a child of a frame Bolt: its HLA stage reads the
   parent's decision record and HLA digest first, opens round A with what the
   parent already settled, and never asks it again. A child decision that
   departs from a parent decision is flagged like a departure from an accepted
@@ -169,11 +169,11 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `validate_doc.py` checks every `parent:D<n>` citation against the parent's
   record, so a cited parent decision cannot quietly not exist.
 
-- **A frame paddock closes at its HLA.** A programme-level paddock designs no
+- **A frame Bolt closes at its HLA.** A programme-level Bolt designs no
   component, yet closing it as complete was refused until someone decided the
   TDD, Inception and Construction stages by hand. `open --kind frame` skips
-  every stage after the HLA with that reason, so the paddock is done once the
-  HLA gate is approved. `kind --set` converts an existing paddock, and is
+  every stage after the HLA with that reason, so the Bolt is done once the
+  HLA gate is approved. `kind --set` converts an existing Bolt, and is
   refused once any of those later stages has started.
 
 - **Answer lines are written as `Answer:`.** Followed by text, the old
@@ -303,6 +303,16 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The work folder is a Bolt and the Construction slice is a Slice.** A Bolt
+  is a bounded, outcome-driven engineering initiative: its shared requirements,
+  architecture decisions, units of work and audit trail, held in one folder
+  under `bolts/` and addressed with `--bolt`. What AWS AI-DLC calls a Bolt, the
+  planned Construction slice over dependency-linked units, is a Slice here:
+  `slices` and `slice` in `state.json`, default id `s1`, and `slice-plan.md`.
+  Stages, gates, exit codes and file formats are otherwise unchanged. A
+  `state.json` written earlier needs its top-level `bolts` key renamed to
+  `slices`, each unit's `bolt` key renamed to `slice`, and its folder moved
+  under `bolts/`. Every script takes `--bolt`.
 - **A justified model tier no longer warns.** The validator asked for a
   higher tier to be justified in the Execution section but warned whether or
   not it was, so `--strict` failed every skill that genuinely needed one. It now

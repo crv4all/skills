@@ -6,7 +6,7 @@
 """Check that Inception ids trace from requirements to stories to units.
 
 A requirement nobody builds and a story nobody can test both look finished in a
-review and fail in delivery. This reads the Inception documents of a paddock
+review and fail in delivery. This reads the Inception documents of a bolt
 and lists the gaps, so the last Inception gate can refuse while they exist.
 
 An id is declared where it starts a Markdown heading or the first cell of a
@@ -33,7 +33,7 @@ EXIT_MALFORMED = 4
 EXIT_INTERNAL = 5
 
 EPILOG = """examples:
-  python3 check_traceability.py --paddock paddocks/2026-01-05-billing
+  python3 check_traceability.py --bolt bolts/2026-01-05-billing
 
 findings (exit 1): requirement-uncovered (an FR or NFR no story or unit references),
   story-no-unit, unit-orphan (no story or requirement), story-no-ac,
@@ -46,7 +46,7 @@ exit codes:
   0  no gaps
   1  gaps found (JSON findings on stdout)
   2  usage error
-  3  the paddock or its docs/inception folder is missing
+  3  the bolt or its docs/inception folder is missing
   4  a document is not valid UTF-8 text
   5  internal error
 """
@@ -133,8 +133,8 @@ def scan_text(text: str, file: str, graph: Graph) -> None:
                 graph.refer(found.group(1), subject, file)
 
 
-def scan(paddock: Path) -> Graph:
-    base = paddock / "docs" / "inception"
+def scan(bolt: Path) -> Graph:
+    base = bolt / "docs" / "inception"
     graph = Graph()
     for path in sorted(base.rglob("*.md")):
         if not is_scanned(path):
@@ -143,7 +143,7 @@ def scan(paddock: Path) -> Graph:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError as exc:
             raise ValueError(f"{path}: not valid UTF-8 text ({exc.reason})") from exc
-        scan_text(text, str(path.relative_to(paddock)), graph)
+        scan_text(text, str(path.relative_to(bolt)), graph)
     return graph
 
 
@@ -191,16 +191,16 @@ def findings_for(graph: Graph) -> list[dict[str, Any]]:
     return out
 
 
-def check(paddock: Path) -> dict[str, Any]:
-    """Scan ``paddock/docs/inception`` and return ``{ok, declared, findings}``."""
-    graph = scan(paddock)
+def check(bolt: Path) -> dict[str, Any]:
+    """Scan ``bolt/docs/inception`` and return ``{ok, declared, findings}``."""
+    graph = scan(bolt)
     findings = findings_for(graph)
     counts: dict[str, int] = {}
     for ident in graph.declared:
         counts[kind(ident)] = counts.get(kind(ident), 0) + 1
     return {
         "ok": not findings,
-        "paddock": str(paddock),
+        "bolt": str(bolt),
         "declared": dict(sorted(counts.items())),
         "findings": findings,
     }
@@ -212,7 +212,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--paddock", required=True, help="Paddock folder.")
+    parser.add_argument("--bolt", required=True, help="Bolt folder.")
     parser.add_argument("--verbose", action="store_true", help="Verbose diagnostics on stderr.")
     return parser
 
@@ -224,12 +224,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         format="%(levelname)s: %(message)s",
         stream=sys.stderr,
     )
-    paddock = Path(args.paddock)
-    if not (paddock / "docs" / "inception").is_dir():
-        LOG.error("%s: docs/inception not found.", paddock)
+    bolt = Path(args.bolt)
+    if not (bolt / "docs" / "inception").is_dir():
+        LOG.error("%s: docs/inception not found.", bolt)
         return EXIT_INPUT
     try:
-        result = check(paddock)
+        result = check(bolt)
     except ValueError as exc:
         LOG.error("%s", exc)
         return EXIT_MALFORMED

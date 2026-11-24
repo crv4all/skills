@@ -16,7 +16,7 @@
 ## Part 2: execution
 
 1. Take the first unticked step.
-2. Edit existing files in the target repo, in place; never `_new` copies. No code in the paddock.
+2. Edit existing files in the target repo, in place; never `_new` copies. No code in the Bolt.
 3. Tick the step in the same turn.
 4. If the plan is wrong, stop and change it first.
 

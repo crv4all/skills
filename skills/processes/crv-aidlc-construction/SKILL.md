@@ -1,7 +1,7 @@
 ---
 name: crv-aidlc-construction
 description: >-
-  Builds a paddock's Units in code: per-Unit design stages when they apply, an approved checkbox code plan, code in the target repositories, then Build and Test. Use when someone wants to build or implement a Unit or Bolt of a paddock, write its code plan, or run its build and test. Not for ordinary code edits outside a paddock, nor for routing, inception, HLA, TDD or repo scans (crv-aidlc, -inception, -hla, -tdd, -reverse-engineering).
+  Builds a Bolt's Units in code: per-Unit design stages when they apply, an approved checkbox code plan, code in the target repositories, then Build and Test. Use when someone wants to build or implement a Unit or Slice of a Bolt, write its code plan, or run its build and test. Not for ordinary code edits outside a Bolt, nor for routing, inception, HLA, TDD or repo scans (crv-aidlc, -inception, -hla, -tdd, -reverse-engineering).
 license: Apache-2.0
 metadata:
   owner: cloudforce-team-data
@@ -13,7 +13,7 @@ metadata:
 
 # Construction
 
-One Unit at a time, then Build and Test. Code lives in the target repo; plans and records in the paddock.
+One Unit at a time, then Build and Test. Code lives in the target repo; plans and records in the Bolt.
 
 ## Execution
 
@@ -25,7 +25,7 @@ Read `references/core-rules.md` once per session, then ONLY the reference of the
 
 ## Start of a Unit
 
-For each design stage, decide from the Unit's `kind` and the stage's run condition whether it runs: `aidlc_state.py decide --paddock <p> --stage <id> --unit <u> --decision execute|skip --reason "..."`. The approver can override. Cite what the HLA, TDD or an accepted ADR fixed (`D<n>`, ADR id); never re-ask it. Code Generation always runs.
+For each design stage, decide from the Unit's `kind` and the stage's run condition whether it runs: `aidlc_state.py decide --bolt <p> --stage <id> --unit <u> --decision execute|skip --reason "..."`. The approver can override. Cite what the HLA, TDD or an accepted ADR fixed (`D<n>`, ADR id); never re-ask it. Code Generation always runs.
 
 | Kind | Design stages that normally run |
 | --- | --- |
@@ -49,12 +49,12 @@ In `docs/construction/<unit>/<stage>/`.
 
 ## Runs
 
-Start with `aidlc_state.py inputs --paddock <p> --stage <id> --unit <u>`; exit 3: name the missing file, stop.
+Start with `aidlc_state.py inputs --bolt <p> --stage <id> --unit <u>`; exit 3: name the missing file, stop.
 
 - **Ask:** write the questions, `lint_questions.py --file <f> --allow-open`, `step --stage <id> --unit <u> --to asked`, stop.
 - **Analyse, produce:** `lint_questions.py --file <f>`, then `step ... --to analysed` and `--to produced`.
 - **Code generation:** `step --to produced` after the plan, stop for approval; then build.
-- **Gate:** `gate --paddock <p> --stage <id> --unit <u> ...`, per Unit and stage.
+- **Gate:** `gate --bolt <p> --stage <id> --unit <u> ...`, per Unit and stage.
 
 ## When a step fails
 

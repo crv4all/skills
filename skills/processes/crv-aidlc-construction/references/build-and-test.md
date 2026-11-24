@@ -1,6 +1,6 @@
 # Build and test
 
-**Runs** once after the Units of a Bolt (or of the paddock). Never skipped. It runs the commands; writing instructions alone is not enough. It never deploys. Unit tests belong to Code Generation: this stage covers integration between Units and what the requirements or NFRs demand.
+**Runs** once after the Units of a Slice (or of the Bolt). Never skipped. It runs the commands; writing instructions alone is not enough. It never deploys. Unit tests belong to Code Generation: this stage covers integration between Units and what the requirements or NFRs demand.
 
 **Reads** as listed by `aidlc_state.py inputs --stage build-and-test`: every `code-generation/` folder (manifests, test commands), the `nfr-requirements/` and `nfr-design/` targets, and the recorded test baseline.
 

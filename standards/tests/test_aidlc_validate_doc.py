@@ -580,18 +580,18 @@ def test_unknown_kind_exits_2(tmp_path: Path) -> None:
     assert done.returncode == 2
 
 
-# --- parent paddock citations ------------------------------------------------
+# --- parent bolt citations ------------------------------------------------
 
 
-def child_paddock(tmp_path: Path, parent: bool = True, record: bool = True) -> str:
-    """A child paddock under ``tmp_path``; returns the HLA's name relative to it."""
-    child = tmp_path / "paddocks" / "2026-01-06-phase"
+def child_bolt(tmp_path: Path, parent: bool = True, record: bool = True) -> str:
+    """A child bolt under ``tmp_path``; returns the HLA's name relative to it."""
+    child = tmp_path / "bolts" / "2026-01-06-phase"
     (child / "architecture").mkdir(parents=True)
     state: dict[str, Any] = {"schema": 1, "id": "2026-01-06-phase"}
     if parent:
-        state["parent"] = {"id": "2026-01-05-frame", "path": "paddocks/2026-01-05-frame"}
+        state["parent"] = {"id": "2026-01-05-frame", "path": "bolts/2026-01-05-frame"}
     (child / "state.json").write_text(json.dumps(state), encoding="utf-8")
-    frame = tmp_path / "paddocks" / "2026-01-05-frame" / "architecture"
+    frame = tmp_path / "bolts" / "2026-01-05-frame" / "architecture"
     frame.mkdir(parents=True)
     if record:
         (frame / "hla-decisions.md").write_text(
@@ -600,7 +600,7 @@ def child_paddock(tmp_path: Path, parent: bool = True, record: bool = True) -> s
             "| D3 | 4 | c | d | A-Q2 | - |\n",
             encoding="utf-8",
         )
-    return "paddocks/2026-01-06-phase/architecture/hla.md"
+    return "bolts/2026-01-06-phase/architecture/hla.md"
 
 
 def citing(*ids: str) -> str:
@@ -609,7 +609,7 @@ def citing(*ids: str) -> str:
 
 
 def test_a_known_parent_decision_is_accepted(tmp_path: Path) -> None:
-    name = child_paddock(tmp_path)
+    name = child_bolt(tmp_path)
     code, data = validate(tmp_path, citing("D1", "D3"), "hla", name=name)
     assert code == 0, data["findings"]
     assert data["parent_decisions"] == ["parent:D1", "parent:D3"]
@@ -617,24 +617,24 @@ def test_a_known_parent_decision_is_accepted(tmp_path: Path) -> None:
 
 
 def test_an_unknown_parent_decision_is_a_finding(tmp_path: Path) -> None:
-    name = child_paddock(tmp_path)
+    name = child_bolt(tmp_path)
     code, data = validate(tmp_path, citing("D2"), "hla", name=name)
     assert code == 1 and codes(data) == ["parent-decision-unknown"]
 
 
 def test_parent_citations_without_a_parent_are_a_finding(tmp_path: Path) -> None:
-    name = child_paddock(tmp_path, parent=False)
+    name = child_bolt(tmp_path, parent=False)
     code, data = validate(tmp_path, citing("D1"), "hla", name=name)
     assert code == 1 and codes(data) == ["parent-decision-no-parent"]
 
 
 def test_a_missing_parent_record_is_a_finding(tmp_path: Path) -> None:
-    name = child_paddock(tmp_path, record=False)
+    name = child_bolt(tmp_path, record=False)
     code, data = validate(tmp_path, citing("D1"), "hla", name=name)
     assert code == 1 and codes(data) == ["parent-decision-unresolved"]
 
 
-def test_parent_citations_outside_a_paddock_only_warn(tmp_path: Path) -> None:
+def test_parent_citations_outside_a_bolt_only_warn(tmp_path: Path) -> None:
     code, data = validate(tmp_path, citing("D1"), "hla")
     assert code == 0 and codes(data, "warnings") == ["parent-decision-unchecked"]
 
@@ -655,7 +655,7 @@ REFS = REPO_ROOT / "skills" / "processes" / "crv-aidlc" / "scripts" / "aidlc_ref
 
 def refs_link(folder: Path, *args: str) -> None:
     done = subprocess.run(
-        [sys.executable, str(REFS), "link", "--paddock", str(folder), *args],
+        [sys.executable, str(REFS), "link", "--bolt", str(folder), *args],
         capture_output=True,
         text=True,
         timeout=60,

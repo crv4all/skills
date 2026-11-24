@@ -1,8 +1,8 @@
 # Presets
 
-A preset is the organisation's default answer to a question that every paddock would otherwise be asked again, such as story format, acceptance-criteria style, unit granularity or who signs what. A stage does not ask a question a preset answers; it lists the preset under `## Already answered`.
+A preset is the organisation's default answer to a question that every Bolt would otherwise be asked again, such as story format, acceptance-criteria style, unit granularity or who signs what. A stage does not ask a question a preset answers; it lists the preset under `## Already answered`.
 
-Only people add presets, in this file, by pull request. A skill never writes or edits one. A paddock may override a preset for that paddock only, with a reason the approver gives; the override never changes this file.
+Only people add presets, in this file, by pull request. A skill never writes or edits one. A Bolt may override a preset for that Bolt only, with a reason the approver gives; the override never changes this file.
 
 Check the file with `lint_questions.py --presets docs/presets.md`.
 

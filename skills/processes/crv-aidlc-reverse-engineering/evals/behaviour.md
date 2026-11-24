@@ -11,7 +11,7 @@ B4 and B6 guard them.
 
 ## B1 — First full run
 
-**Setup:** A paddock with one brownfield target repo (a git checkout), no `codekb/` folder. `codekb-status` reports `missing`.
+**Setup:** A Bolt with one brownfield target repo (a git checkout), no `codekb/` folder. `codekb-status` reports `missing`.
 **Prompt:** "Reverse-engineer the target repo."
 
 - [ ] `aidlc_state.py status` and `inputs --stage reverse-engineering` run before anything is written.
@@ -33,7 +33,7 @@ B4 and B6 guard them.
 ## B3 — Fresh store is reused
 
 **Setup:** `codekb-status` returns `fresh` for the target.
-**Prompt:** "Research the target repo for this paddock."
+**Prompt:** "Research the target repo for this Bolt."
 
 - [ ] The agent confirms reuse in one line and runs no scan or workers.
 - [ ] No file under `codekb/<repo>/` changes.
@@ -85,7 +85,7 @@ B4 and B6 guard them.
 **Setup:** A brownfield target whose checkout is on a feature branch and two commits behind `origin/main`.
 **Prompt:** "Scan the target."
 
-- [ ] `aidlc_state.py workspace --paddock <p> --fetch` runs before `codekb-status` or `scan_repo.py`.
+- [ ] `aidlc_state.py workspace --bolt <p> --fetch` runs before `codekb-status` or `scan_repo.py`.
 - [ ] The agent lists the target with its branch and `behind` count and stops; no scan runs.
 - [ ] Told to scan as is, it scans, and `_meta.json` records the commit that was read.
 - [ ] A `fetch_error` is reported to the user, not treated as fresh.

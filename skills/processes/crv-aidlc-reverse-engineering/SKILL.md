@@ -1,7 +1,7 @@
 ---
 name: crv-aidlc-reverse-engineering
 description: >-
-  Builds or refreshes the code knowledge for each existing (brownfield) target repository of a paddock before the architecture is written: a deterministic repository inventory, one economy-tier worker per area, and a single synthesis into nine sourced artifacts in a store shared across paddocks (codekb/<repo>/), with a freshness check, focused rescans of what changed, and a list of later artifacts to update when findings arrive late. Use when someone wants to research, understand, reverse-engineer or map an existing codebase for a paddock, refresh code knowledge, or asks whether the code knowledge is stale or can be reused. Not for opening, resuming or routing a paddock (crv-aidlc), the architecture document (crv-aidlc-hla), requirements, stories or units (crv-aidlc-inception), building the units (crv-aidlc-construction), or documenting a repository inside itself for onboarding (crv-codebase-onboarding).
+  Builds or refreshes the code knowledge for each existing (brownfield) target repository of a Bolt before the architecture is written: a deterministic repository inventory, one economy-tier worker per area, and a single synthesis into nine sourced artifacts in a store shared across Bolts (codekb/<repo>/), with a freshness check, focused rescans of what changed, and a list of later artifacts to update when findings arrive late. Use when someone wants to research, understand, reverse-engineer or map an existing codebase for a Bolt, refresh code knowledge, or asks whether the code knowledge is stale or can be reused. Not for opening, resuming or routing a Bolt (crv-aidlc), the architecture document (crv-aidlc-hla), requirements, stories or units (crv-aidlc-inception), building the units (crv-aidlc-construction), or documenting a repository inside itself for onboarding (crv-codebase-onboarding).
 license: Apache-2.0
 metadata:
   owner: cloudforce-team-data
@@ -29,18 +29,18 @@ Read `references/core-rules.md` once per session. Then read only the files the s
 
 ## What this produces
 
-Per target repository, in `codekb/<repo>/` at the planning repo root (shared by every paddock):
+Per target repository, in `codekb/<repo>/` at the planning repo root (shared by every Bolt):
 
 - `overview.md`: a `## Digest` of at most 10 lines for the whole repository, then one line per artifact saying what it holds. Later stages read only this file unless they need more.
 - Nine artifacts: `business-overview.md`, `architecture.md`, `code-structure.md`, `api-documentation.md`, `component-inventory.md`, `technology-stack.md`, `dependencies.md`, `code-quality-assessment.md`, `reverse-engineering-timestamp.md`. Each starts with a `## Digest`; every claim has a `path:line` source or is marked `unverified`.
 - `_meta.json`: `{repo, path, commit, built, artifacts}`; freshness is judged from it.
-- In the paddock, only when needed: `docs/inception/reverse-engineering/reverse-engineering-questions.md` (something only a person can settle) and `propagation.md` (late findings).
+- In the Bolt, only when needed: `docs/inception/reverse-engineering/reverse-engineering-questions.md` (something only a person can settle) and `propagation.md` (late findings).
 
 Greenfield target: nothing to do. Say so in one line and stop.
 
 ## When not to use this
 
-- Opening, resuming or routing a paddock: `crv-aidlc`.
+- Opening, resuming or routing a Bolt: `crv-aidlc`.
 - The architecture document: `crv-aidlc-hla`. It reads this stage's digests.
 - Requirements, stories, domain design or units: `crv-aidlc-inception`.
 - Changing the code: `crv-aidlc-construction`.
@@ -48,7 +48,7 @@ Greenfield target: nothing to do. Say so in one line and stop.
 
 ## Steps
 
-Each row is one run; stop after it. Find the step from `aidlc_state.py next --paddock <p>` and the freshness verdict.
+Each row is one run; stop after it. Find the step from `aidlc_state.py next --bolt <p>` and the freshness verdict.
 
 | Step | Read besides core rules | Writes | Ends with |
 | --- | --- | --- | --- |
@@ -61,9 +61,9 @@ Each row is one run; stop after it. Find the step from `aidlc_state.py next --pa
 
 ### Check freshness and scan
 
-1. `aidlc_state.py status --paddock <p> --format text`, then `inputs --paddock <p> --stage reverse-engineering`. A greenfield target ends here.
-2. `aidlc_state.py workspace --paddock <p> --fetch`. If any target checkout is `stale` (behind origin, or not on its default branch), list each with branch and `behind`, and stop unless the approver says to scan as is. A `fetch_error` is reported, not ignored. The commit you read is the one `_meta.json` records.
-3. `aidlc_state.py codekb-status --paddock <p>`. Per target it returns `missing`, `fresh` or `stale`, with the changed files and `rescan: focused|full`.
+1. `aidlc_state.py status --bolt <p> --format text`, then `inputs --bolt <p> --stage reverse-engineering`. A greenfield target ends here.
+2. `aidlc_state.py workspace --bolt <p> --fetch`. If any target checkout is `stale` (behind origin, or not on its default branch), list each with branch and `behind`, and stop unless the approver says to scan as is. A `fetch_error` is reported, not ignored. The commit you read is the one `_meta.json` records.
+3. `aidlc_state.py codekb-status --bolt <p>`. Per target it returns `missing`, `fresh` or `stale`, with the changed files and `rescan: focused|full`.
    - `fresh`: reuse. Confirm in one line, do nothing else for that repository.
    - `stale` with `rescan: focused`: use the Focused rescan row.
    - `missing`, or `rescan: full`: the full pipeline below.
@@ -80,7 +80,7 @@ One balanced pass writes the nine artifacts and `_meta.json` from the inventory 
 
 ### Gate
 
-Summarise per repository in at most 8 lines: reused, rescanned or rebuilt, coverage, and anything `unverified`. The approver confirms the brownfield or greenfield classification and the artifacts. End as the core rules say, and record the choice with `aidlc_state.py gate --paddock <p> --stage reverse-engineering`. Run `lint_questions.py` first when a question file exists.
+Summarise per repository in at most 8 lines: reused, rescanned or rebuilt, coverage, and anything `unverified`. The approver confirms the brownfield or greenfield classification and the artifacts. End as the core rules say, and record the choice with `aidlc_state.py gate --bolt <p> --stage reverse-engineering`. Run `lint_questions.py` first when a question file exists.
 
 ### Focused rescan
 
@@ -93,7 +93,7 @@ When HLA, requirements, stories or units already exist and findings are new or c
 ## When a step fails
 
 - `scan_repo.py`: exit 1 means the repository has no tracked files, so check the path and report; 2 a wrong flag; 3 a missing path, not a git repository, or git absent (ask the person for the right path); 4 git could not list files (report it); 5 internal error (report it, do not work around it).
-- `aidlc_state.py`: exit 1 is a refusal (read the findings), 2 a wrong flag, 3 a missing file or paddock, 4 a malformed `state.json` (report it; never edit it by hand).
+- `aidlc_state.py`: exit 1 is a refusal (read the findings), 2 a wrong flag, 3 a missing file or Bolt, 4 a malformed `state.json` (report it; never edit it by hand).
 - `lint_questions.py`: exit 1 lists questions to fix or answers still open.
 - A worker returns nothing, or an area is too large to read: split the area, never guess. Record what stayed unread in the scope of analysis.
 - The checkout is not at the commit the store records and the person says it should be: report both commits and ask which to use.

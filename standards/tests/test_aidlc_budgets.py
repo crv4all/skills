@@ -53,9 +53,9 @@ def test_resume_digest_is_within_budget(tmp_path: Path) -> None:
         [sys.executable, str(STATE), "open", *args], capture_output=True, text=True, timeout=60
     )
     assert done.returncode == 0, done.stderr
-    paddock = json.loads(done.stdout)["paddock"]
+    bolt = json.loads(done.stdout)["bolt"]
     shown = subprocess.run(
-        [sys.executable, str(STATE), "status", "--paddock", paddock, "--format", "text"],
+        [sys.executable, str(STATE), "status", "--bolt", bolt, "--format", "text"],
         capture_output=True,
         text=True,
         timeout=60,

@@ -95,7 +95,7 @@ context available to a colleague and to CI agents.
 
 A skill added to the repository is not on the machine until `install.sh` runs
 again, and a stage then fails in a way that looks like a process bug. Before a
-first paddock, run the check from the installed `crv-aidlc` skill:
+first Bolt, run the check from the installed `crv-aidlc` skill:
 
 ```bash
 python3 <install dir>/crv-aidlc/scripts/check_prerequisites.py --root <planning repo>
@@ -105,7 +105,7 @@ It reports Python, git and its identity, the seven `crv-aidlc*` skills, whether
 their shared files agree, and the planning repository. With `--jira`, `--architecture-ref`
 or a `docs/presets.md` it checks those too. A failing line carries its fix,
 usually `./install.sh --all` from your clone. `crv-aidlc` runs the check itself
-before it opens a paddock and remembers a pass until an installed file changes.
+before it opens a Bolt and remembers a pass until an installed file changes.
 
 ## Verifying an install
 

@@ -2,7 +2,7 @@
 
 **Runs when** people must release or cut over the change: a data migration, a cut-over, a switch of write master, a retirement, or a release across several repositories. **Skipped, with the reason, when** each target repository's own pipeline releases on merge and nothing else has to happen. This stage plans; it designs no pipeline and runs nothing.
 
-**Reads** as listed by `aidlc_state.py inputs --stage deployment-pipeline`: the Build and Test summary (what is verified), the Bolt plan and dependency graph (order), the HLA and TDD when they exist (tolerances, decision ids), and `technology-stack.md` per repo (how it releases today).
+**Reads** as listed by `aidlc_state.py inputs --stage deployment-pipeline`: the Build and Test summary (what is verified), the Slice plan and dependency graph (order), the HLA and TDD when they exist (tolerances, decision ids), and `technology-stack.md` per repo (how it releases today).
 
 **Questions** (answer from the inputs first; ask only what is open):
 - environments and their order;

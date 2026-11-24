@@ -18,7 +18,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "skills" / "processes" / "crv-aidlc" / "scripts" / "aidlc_state.py"
-PADDOCK_ID = "2026-01-05-demo"
+BOLT_ID = "2026-01-05-demo"
 
 pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
 
@@ -55,8 +55,8 @@ def open_demo(root: Path, *extra: str) -> tuple[int, dict[str, Any], str]:
     )  # fmt: skip
 
 
-def paddock_of(root: Path) -> Path:
-    return root / "paddocks" / PADDOCK_ID
+def bolt_of(root: Path) -> Path:
+    return root / "bolts" / BOLT_ID
 
 
 def write(path: Path, text: str) -> None:
@@ -91,13 +91,13 @@ def test_state_change_commits_and_pushes(repos: Repos) -> None:
     code, out, _ = open_demo(repos.a)
     assert code == 0, out
     assert out["git"]["pushed"] is True and out["git"]["commit"]
-    assert git(repos.a, "log", "-1", "--format=%s") == "docs(demo): open the paddock"
+    assert git(repos.a, "log", "-1", "--format=%s") == "docs(demo): open the bolt"
     assert git(repos.a, "log", "-1", "--format=%b") == ""
-    assert repos.remote_log()[0] == "docs(demo): open the paddock"
+    assert repos.remote_log()[0] == "docs(demo): open the bolt"
     assert git(repos.a, "status", "--porcelain") == ""
 
     code, out, _ = script(
-        "decide", "--paddock", str(paddock_of(repos.a)), "--stage", "hla",
+        "decide", "--bolt", str(bolt_of(repos.a)), "--stage", "hla",
         "--decision", "skip", "--reason", "not needed",
     )  # fmt: skip
     assert code == 0
@@ -112,7 +112,7 @@ def test_team_work_is_rebased_under_the_local_commit(repos: Repos) -> None:
     git(repos.b, "commit", "-q", "-m", "team work")
     git(repos.b, "push", "-q")
 
-    code, out, _ = script("decision-id", "--paddock", str(paddock_of(repos.a)), "--count", "3")
+    code, out, _ = script("decision-id", "--bolt", str(bolt_of(repos.a)), "--count", "3")
     assert code == 0 and out["git"]["pushed"] is True
     log = repos.remote_log()
     assert log[0] == "docs(demo): reserve decision ids D1-D3"
@@ -124,14 +124,14 @@ def test_team_work_is_rebased_under_the_local_commit(repos: Repos) -> None:
 def test_conflicting_artifact_stops_with_exit_6(repos: Repos) -> None:
     assert open_demo(repos.a)[0] == 0
     git(repos.b, "pull", "-q")
-    rel = f"paddocks/{PADDOCK_ID}/architecture/hla.md"
+    rel = f"bolts/{BOLT_ID}/architecture/hla.md"
     write(repos.b / rel, "their version\n")
     git(repos.b, "add", "-A")
     git(repos.b, "commit", "-q", "-m", "team hla")
     git(repos.b, "push", "-q")
 
     write(repos.a / rel, "my version\n")
-    code, out, text = script("sync", "--paddock", str(paddock_of(repos.a)), "-m", "write the hla")
+    code, out, text = script("sync", "--bolt", str(bolt_of(repos.a)), "-m", "write the hla")
     assert code == 6
     assert (repos.a / ".git" / "rebase-merge").exists()
     finding = out["findings"][0]
@@ -139,9 +139,9 @@ def test_conflicting_artifact_stops_with_exit_6(repos: Repos) -> None:
     assert "'ours' is the team's version" in text
 
     # while the rebase is open, every changing command stops and changes nothing
-    code, _, _ = script("park", "--paddock", str(paddock_of(repos.a)), "--note", "x")
+    code, _, _ = script("park", "--bolt", str(bolt_of(repos.a)), "--note", "x")
     assert code == 6
-    assert json.loads((paddock_of(repos.a) / "state.json").read_text())["parked"] is None
+    assert json.loads((bolt_of(repos.a) / "state.json").read_text())["parked"] is None
 
 
 def test_index_conflict_resolves_itself(repos: Repos) -> None:
@@ -167,15 +167,15 @@ def test_no_remote_keeps_the_commit_and_warns(tmp_path: Path) -> None:
     assert code == 0
     assert out["git"]["commit"] and out["git"]["pushed"] is False
     assert any("push: skipped" in w for w in out["git"]["warnings"])
-    assert git(tmp_path, "log", "-1", "--format=%s") == "docs(demo): open the paddock"
+    assert git(tmp_path, "log", "-1", "--format=%s") == "docs(demo): open the bolt"
 
 
 def test_planted_secret_stops_without_a_commit(repos: Repos) -> None:
     assert open_demo(repos.a)[0] == 0
     head = git(repos.a, "rev-parse", "HEAD")
-    rel = f"paddocks/{PADDOCK_ID}/inputs/notes.md"
+    rel = f"bolts/{BOLT_ID}/inputs/notes.md"
     write(repos.a / rel, "intro\npassword=hunter2hunter2\n")
-    code, out, text = script("sync", "--paddock", str(paddock_of(repos.a)))
+    code, out, text = script("sync", "--bolt", str(bolt_of(repos.a)))
     assert code == 6
     assert out["findings"][0]["path"] == f"{rel}:2"
     assert "hunter2" not in text
@@ -186,9 +186,9 @@ def test_planted_secret_stops_without_a_commit(repos: Repos) -> None:
 def test_path_outside_the_scope_is_left_uncommitted(repos: Repos) -> None:
     assert open_demo(repos.a)[0] == 0
     write(repos.a / "notes.txt", "private\n")
-    write(paddock_of(repos.a) / "inputs" / "a.md", "a\n")
+    write(bolt_of(repos.a) / "inputs" / "a.md", "a\n")
     write(repos.a / "codekb" / "x.md", "x\n")
-    code, out, _ = script("sync", "--paddock", str(paddock_of(repos.a)))
+    code, out, _ = script("sync", "--bolt", str(bolt_of(repos.a)))
     assert code == 0
     assert out["git"]["uncommitted"] == ["notes.txt"]
     files = git(repos.a, "show", "--name-only", "--format=", "HEAD").splitlines()
@@ -204,7 +204,7 @@ def test_git_off_and_non_git_folder_do_nothing(
     code, out, _ = open_demo(repos.a)
     assert code == 0 and "git" not in out
     assert git(repos.a, "log", "-1", "--format=%s") == "start"
-    code, out, _ = script("sync", "--paddock", str(paddock_of(repos.a)))
+    code, out, _ = script("sync", "--bolt", str(bolt_of(repos.a)))
     assert code == 0 and out["git"]["enabled"] is False
     monkeypatch.delenv("AIDLC_GIT")
 
@@ -212,7 +212,7 @@ def test_git_off_and_non_git_folder_do_nothing(
     plain.mkdir()
     code, out, _ = open_demo(plain)
     assert code == 0 and "git" not in out
-    code, out, _ = script("sync", "--paddock", str(paddock_of(plain)))
+    code, out, _ = script("sync", "--bolt", str(bolt_of(plain)))
     assert code == 0 and out["git"]["enabled"] is False
 
     code, out, _ = open_demo(repos.b, "--no-git")
@@ -221,15 +221,15 @@ def test_git_off_and_non_git_folder_do_nothing(
 
 def test_status_shows_the_git_block(repos: Repos) -> None:
     assert open_demo(repos.a)[0] == 0
-    p = str(paddock_of(repos.a))
-    write(paddock_of(repos.a) / "inputs" / "a.md", "a\n")
-    code, out, _ = script("status", "--paddock", p)
+    p = str(bolt_of(repos.a))
+    write(bolt_of(repos.a) / "inputs" / "a.md", "a\n")
+    code, out, _ = script("status", "--bolt", p)
     assert code == 0
     assert out["git"]["branch"] == "main" and out["git"]["uncommitted"] == 1
     assert out["git"]["ahead"] == 0 and out["git"]["behind"] == 0
-    code, _, text = script("status", "--paddock", p, "--format", "text")
+    code, _, text = script("status", "--bolt", p, "--format", "text")
     assert "Git: main, ahead 0, behind 0, 1 uncommitted" in text
-    assert git(repos.a, "log", "-1", "--format=%s") == "docs(demo): open the paddock"
+    assert git(repos.a, "log", "-1", "--format=%s") == "docs(demo): open the bolt"
 
 
 def test_configured_branch_must_be_the_current_one(repos: Repos) -> None:
@@ -237,4 +237,4 @@ def test_configured_branch_must_be_the_current_one(repos: Repos) -> None:
     code, out, _ = open_demo(repos.a)
     assert code == 1
     assert "git switch construction" in out["error"]
-    assert not paddock_of(repos.a).exists()
+    assert not bolt_of(repos.a).exists()

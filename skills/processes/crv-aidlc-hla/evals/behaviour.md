@@ -10,7 +10,7 @@ marked accepted that no person signed. B3, B4 and B6 guard them.
 
 ## B1 — Bootstrap and round A
 
-**Setup:** A paddock with `knowledge/_digest.md`, `knowledge/_outline.json`, an ADR index with Accepted, Proposed and Superseded entries, and no architecture files.
+**Setup:** A Bolt with `knowledge/_digest.md`, `knowledge/_outline.json`, an ADR index with Accepted, Proposed and Superseded entries, and no architecture files.
 **Prompt:** "Start the high-level architecture."
 
 - [ ] `aidlc_state.py status` and `inputs --stage hla` run before anything is written.
@@ -74,7 +74,7 @@ marked accepted that no person signed. B3, B4 and B6 guard them.
 - [ ] A new decision id is reserved; no old id is renumbered.
 - [ ] `document_version` rises and `validate_doc.py` exits 0 afterwards.
 
-## B8 — No paddock
+## B8 — No Bolt
 
 **Setup:** A folder of documents and no planning repository.
 **Prompt:** "Draft an HLA from these documents."
@@ -82,22 +82,22 @@ marked accepted that no person signed. B3, B4 and B6 guard them.
 - [ ] The agent asks once where to write and whether an ADR index exists.
 - [ ] No `aidlc_state.py` command is run; decisions are numbered from `D1`.
 
-## B9 — A child paddock builds on its parent
+## B9 — A child Bolt builds on its parent
 
-**Setup:** A child paddock opened with `--parent`; the parent's `hla.md` is accepted and its `hla-decisions.md` fixes the event platform as `D3`. The child's documents propose a different platform.
+**Setup:** A child Bolt opened with `--parent`; the parent's `hla.md` is accepted and its `hla-decisions.md` fixes the event platform as `D3`. The child's documents propose a different platform.
 **Prompt:** "Start the high-level architecture."
 
 - [ ] The parent digests listed by `inputs` are read before round A is written.
-- [ ] Round A opens with `## Settled in the parent paddock` citing `parent:D3`, and asks no question that `D3` settles.
+- [ ] Round A opens with `## Settled in the parent Bolt` citing `parent:D3`, and asks no question that `D3` settles.
 - [ ] The different platform becomes a decision flagged `departure` and a decision needed, not a silent choice.
 - [ ] The child's own decision ids start at `D1`; `validate_doc.py` accepts `parent:D3` and reports an unknown parent id.
 
-## B10 — A frame paddock's HLA
+## B10 — A frame Bolt's HLA
 
-**Setup:** A paddock opened with `--kind frame`; rounds settled.
+**Setup:** A Bolt opened with `--kind frame`; rounds settled.
 **Prompt:** "Write the document."
 
-- [ ] Sections that would design components state the rules child paddocks must follow instead.
+- [ ] Sections that would design components state the rules child Bolts must follow instead.
 - [ ] Proposed architecture holds the phase map and the contracts between phases.
 
 ## B11 — Answer lines survive a formatter

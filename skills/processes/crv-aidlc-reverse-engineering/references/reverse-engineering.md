@@ -4,7 +4,7 @@ Read this for the synthesise, focused-rescan and propagation steps.
 
 ## The store
 
-One store per target repository, at the planning repo root, shared by every paddock: `codekb/<repo>/`. `<repo>` is the checkout's directory name. Paddocks read it and never keep a private copy.
+One store per target repository, at the planning repo root, shared by every Bolt: `codekb/<repo>/`. `<repo>` is the checkout's directory name. Bolts read it and never keep a private copy.
 
 `_meta.json`, written last:
 
@@ -66,7 +66,7 @@ Three short lists Construction uses, each tied to this repo:
 
 ## Questions only a person can settle
 
-Write a question file only when the scan finds something no file settles, for example two services that both look unused and one is probably live, or two build paths that disagree. Use the question format in the core rules, at `docs/inception/reverse-engineering/reverse-engineering-questions.md` in the paddock. Do not ask what the code or `codekb/` answers. Stop after writing it; resume when `lint_questions.py` is clean.
+Write a question file only when the scan finds something no file settles, for example two services that both look unused and one is probably live, or two build paths that disagree. Use the question format in the core rules, at `docs/inception/reverse-engineering/reverse-engineering-questions.md` in the Bolt. Do not ask what the code or `codekb/` answers. Stop after writing it; resume when `lint_questions.py` is clean.
 
 ## Focused rescan
 
@@ -82,7 +82,7 @@ A `rescan: full` verdict (a manifest or the layout changed, or too many files mo
 
 ## Propagation (late findings)
 
-When this stage runs or reruns after HLA, requirements, stories or units exist, write `docs/inception/reverse-engineering/propagation.md` in the paddock. Start with `## Digest`. Then one entry per affected artifact:
+When this stage runs or reruns after HLA, requirements, stories or units exist, write `docs/inception/reverse-engineering/propagation.md` in the Bolt. Start with `## Digest`. Then one entry per affected artifact:
 
 ```markdown
 - [ ] architecture/hla.md: section "Containers" says the export job is stateless; `jobs/export.py:44` writes a local cache. Change: add the cache to the container view and open a decision.

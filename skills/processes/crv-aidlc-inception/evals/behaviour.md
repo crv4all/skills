@@ -10,7 +10,7 @@ them.
 
 ## B1 — Requirements reconcile the HLA
 
-**Setup:** A paddock with an accepted HLA (`hla-decisions.md` fixes the queue and the database), a digest that states a latency target, and no inception files.
+**Setup:** A Bolt with an accepted HLA (`hla-decisions.md` fixes the queue and the database), a digest that states a latency target, and no inception files.
 **Prompt:** "Start the requirements."
 
 - [ ] `status` and `inputs --stage requirements-analysis` run before anything is written.
@@ -36,13 +36,13 @@ them.
 
 ## B4 — Bugfix scope stays minimal
 
-**Setup:** A `bugfix` paddock.
+**Setup:** A `bugfix` Bolt.
 **Prompt:** "Start the requirements."
 
 - [ ] Questions cover only reproduction, expected versus actual, impact and the regression test that must fail first.
-- [ ] No stories, units or Bolt plan are proposed.
+- [ ] No stories, units or Slice plan are proposed.
 
-## B5 — Domain design uses the paddock sequence
+## B5 — Domain design uses the Bolt sequence
 
 **Setup:** Requirements and stories approved; a technology fixed by an accepted ADR.
 **Prompt:** "Do the domain design."
@@ -60,12 +60,12 @@ them.
 - [ ] The agent runs `check_traceability.py` before the gate of the last stage and reports both gaps.
 - [ ] It does not run `gate --approve` while the script reports gaps.
 
-## B7 — Delivery planning plans Bolts only
+## B7 — Delivery planning plans Slices only
 
 **Setup:** Units approved with a dependency graph.
 **Prompt:** "Plan the delivery."
 
-- [ ] "Bolt" is glossed in the first question; each Bolt lists units, definition of done, owner and confidence.
+- [ ] "Slice" is glossed in the first question; each Slice lists units, definition of done, owner and confidence.
 - [ ] No Construction stage is marked execute or skip.
 - [ ] The verification command is shown for explicit approval before the gate.
 

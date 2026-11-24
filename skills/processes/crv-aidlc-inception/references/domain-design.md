@@ -48,7 +48,7 @@ In `docs/inception/domain-design/`:
 
 - `domain-design-questions.md` (and clarifications).
 - `components.md`, starting with `## Digest`, then a fenced `yaml` catalogue (per component: `name`, `summary`, `behaviour`, `responsibilities`, `depends_on` with kind sync/async/event, `dependents`, `external_dependencies`, `entities` with identifier, attributes and references), then `## Component diagram` (Mermaid and text), `## Component summary`, `## Entity ownership`, `## External dependencies`, `## Rationale` with alternatives rejected. Each component also covers the requirements it serves (`FR-n`).
-- `decisions.md`: a `## Digest`, then `### D<n> <title>` per decision with Context, Decision, Consequences, Alternatives rejected. Use the paddock `D<n>` sequence; never `ADR-NNN`, which belongs to the ADR registry.
+- `decisions.md`: a `## Digest`, then `### D<n> <title>` per decision with Context, Decision, Consequences, Alternatives rejected. Use the Bolt `D<n>` sequence; never `ADR-NNN`, which belongs to the ADR registry.
 
 ## Good
 

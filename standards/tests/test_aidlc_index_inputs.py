@@ -1,4 +1,4 @@
-"""``index_inputs.py`` outlines the documents handed into a paddock."""
+"""``index_inputs.py`` outlines the documents handed into a bolt."""
 
 from __future__ import annotations
 
@@ -22,15 +22,15 @@ R = 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationship
 
 
 @pytest.fixture
-def paddock(tmp_path: Path) -> Path:
-    root = tmp_path / "paddock"
+def bolt(tmp_path: Path) -> Path:
+    root = tmp_path / "bolt"
     (root / "inputs").mkdir(parents=True)
     return root
 
 
-def run(paddock: Path) -> tuple[int, dict]:
+def run(bolt: Path) -> tuple[int, dict]:
     done = subprocess.run(
-        [sys.executable, str(SCRIPT), "--paddock", str(paddock)],
+        [sys.executable, str(SCRIPT), "--bolt", str(bolt)],
         capture_output=True,
         text=True,
         timeout=60,
@@ -38,8 +38,8 @@ def run(paddock: Path) -> tuple[int, dict]:
     return done.returncode, json.loads(done.stdout) if done.stdout else {}
 
 
-def outline(paddock: Path) -> dict[str, dict]:
-    data = json.loads((paddock / "knowledge" / "_outline.json").read_text(encoding="utf-8"))
+def outline(bolt: Path) -> dict[str, dict]:
+    data = json.loads((bolt / "knowledge" / "_outline.json").read_text(encoding="utf-8"))
     return {item["path"]: item for item in data["files"]}
 
 
@@ -49,12 +49,12 @@ def write_zip(path: Path, members: dict[str, str]) -> None:
             archive.writestr(name, content)
 
 
-def test_markdown_outline_has_line_ranges_and_sizes(paddock: Path) -> None:
+def test_markdown_outline_has_line_ranges_and_sizes(bolt: Path) -> None:
     text = "intro line\n# One\nbody\n```\n# not a heading\n```\n## Two\nmore\nmore\n"
-    (paddock / "inputs" / "spec.md").write_text(text, encoding="utf-8")
-    code, _ = run(paddock)
+    (bolt / "inputs" / "spec.md").write_text(text, encoding="utf-8")
+    code, _ = run(bolt)
     assert code == 0
-    sections = outline(paddock)["inputs/spec.md"]["outline"]
+    sections = outline(bolt)["inputs/spec.md"]["outline"]
     assert [(s["title"], s["start_line"], s["end_line"]) for s in sections] == [
         ("(preamble)", 1, 1),
         ("One", 2, 6),
@@ -63,14 +63,14 @@ def test_markdown_outline_has_line_ranges_and_sizes(paddock: Path) -> None:
     assert all(s["bytes"] > 0 for s in sections)
 
 
-def test_text_without_headings_is_one_section(paddock: Path) -> None:
-    (paddock / "inputs" / "notes.txt").write_text("a\nb\n", encoding="utf-8")
-    run(paddock)
-    sections = outline(paddock)["inputs/notes.txt"]["outline"]
+def test_text_without_headings_is_one_section(bolt: Path) -> None:
+    (bolt / "inputs" / "notes.txt").write_text("a\nb\n", encoding="utf-8")
+    run(bolt)
+    sections = outline(bolt)["inputs/notes.txt"]["outline"]
     assert sections[0]["title"] == "(whole file)" and sections[0]["end_line"] == 2
 
 
-def test_docx_headings_come_from_styles(paddock: Path) -> None:
+def test_docx_headings_come_from_styles(bolt: Path) -> None:
     body = (
         f"<w:document {W}><w:body>"
         '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Scope</w:t></w:r></w:p>'
@@ -80,17 +80,17 @@ def test_docx_headings_come_from_styles(paddock: Path) -> None:
         "<w:tc><w:p><w:r><w:t>v</w:t></w:r></w:p></w:tc></w:tr></w:tbl>"
         "</w:body></w:document>"
     )
-    write_zip(paddock / "inputs" / "brief.docx", {"word/document.xml": body})
-    code, _ = run(paddock)
+    write_zip(bolt / "inputs" / "brief.docx", {"word/document.xml": body})
+    code, _ = run(bolt)
     assert code == 0
-    entry = outline(paddock)["inputs/brief.docx"]
+    entry = outline(bolt)["inputs/brief.docx"]
     assert entry["status"] == "extracted"
-    extracted = (paddock / entry["extracted"]).read_text(encoding="utf-8")
+    extracted = (bolt / entry["extracted"]).read_text(encoding="utf-8")
     assert "# Scope" in extracted and "## Detail" in extracted and "| k | v |" in extracted
     assert [s["title"] for s in entry["outline"]] == ["Scope", "Detail"]
 
 
-def test_pptx_has_one_section_per_slide(paddock: Path) -> None:
+def test_pptx_has_one_section_per_slide(bolt: Path) -> None:
     def slide(title: str, bullet: str) -> str:
         return (
             f"<p:sld {P} {A}><p:cSld><p:spTree>"
@@ -102,19 +102,19 @@ def test_pptx_has_one_section_per_slide(paddock: Path) -> None:
         )
 
     write_zip(
-        paddock / "inputs" / "deck.pptx",
+        bolt / "inputs" / "deck.pptx",
         {
             "ppt/slides/slide2.xml": slide("Second", "two"),
             "ppt/slides/slide1.xml": slide("First", "one"),
         },
     )
-    run(paddock)
-    entry = outline(paddock)["inputs/deck.pptx"]
+    run(bolt)
+    entry = outline(bolt)["inputs/deck.pptx"]
     assert [s["title"] for s in entry["outline"]] == ["Slide 1: First", "Slide 2: Second"]
-    assert "- one" in (paddock / entry["extracted"]).read_text(encoding="utf-8")
+    assert "- one" in (bolt / entry["extracted"]).read_text(encoding="utf-8")
 
 
-def test_xlsx_has_one_section_per_sheet(paddock: Path) -> None:
+def test_xlsx_has_one_section_per_sheet(bolt: Path) -> None:
     members = {
         "xl/workbook.xml": f'<workbook {S} {R}><sheets><sheet name="Costs" sheetId="1" r:id="rId1"/></sheets></workbook>',
         "xl/_rels/workbook.xml.rels": (
@@ -129,20 +129,20 @@ def test_xlsx_has_one_section_per_sheet(paddock: Path) -> None:
             "</sheetData></worksheet>"
         ),
     }
-    write_zip(paddock / "inputs" / "costs.xlsx", members)
-    run(paddock)
-    entry = outline(paddock)["inputs/costs.xlsx"]
+    write_zip(bolt / "inputs" / "costs.xlsx", members)
+    run(bolt)
+    entry = outline(bolt)["inputs/costs.xlsx"]
     assert [s["title"] for s in entry["outline"]] == ["Costs"]
-    text = (paddock / entry["extracted"]).read_text(encoding="utf-8")
+    text = (bolt / entry["extracted"]).read_text(encoding="utf-8")
     assert "| Item |  | Price |" in text and "| pen |  | 3 |" in text
 
 
-def test_data_and_large_files_are_listed_and_skipped(paddock: Path) -> None:
-    (paddock / "inputs" / "rows.csv").write_text("a,b\n1,2\n", encoding="utf-8")
-    (paddock / "inputs" / "blob.bin").write_bytes(b"\0" * 1_100_000)
-    (paddock / "inputs" / "small.bin").write_bytes(b"\0" * 10)
-    run(paddock)
-    data = outline(paddock)
+def test_data_and_large_files_are_listed_and_skipped(bolt: Path) -> None:
+    (bolt / "inputs" / "rows.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+    (bolt / "inputs" / "blob.bin").write_bytes(b"\0" * 1_100_000)
+    (bolt / "inputs" / "small.bin").write_bytes(b"\0" * 10)
+    run(bolt)
+    data = outline(bolt)
     assert (
         data["inputs/rows.csv"]["status"] == "skipped"
         and data["inputs/rows.csv"]["reason"] == "data file"
@@ -151,32 +151,31 @@ def test_data_and_large_files_are_listed_and_skipped(paddock: Path) -> None:
     assert data["inputs/small.bin"]["status"] == "skipped"
 
 
-def test_corrupt_document_is_reported_and_exit_is_1(paddock: Path) -> None:
-    (paddock / "inputs" / "bad.docx").write_bytes(b"not a zip")
-    (paddock / "inputs" / "ok.md").write_text("# fine\n", encoding="utf-8")
-    code, summary = run(paddock)
+def test_corrupt_document_is_reported_and_exit_is_1(bolt: Path) -> None:
+    (bolt / "inputs" / "bad.docx").write_bytes(b"not a zip")
+    (bolt / "inputs" / "ok.md").write_text("# fine\n", encoding="utf-8")
+    code, summary = run(bolt)
     assert code == 1 and summary["counts"]["failed"] == 1
-    assert outline(paddock)["inputs/ok.md"]["status"] == "outlined"
+    assert outline(bolt)["inputs/ok.md"]["status"] == "outlined"
 
 
-def test_inputs_are_never_modified(paddock: Path) -> None:
-    (paddock / "inputs" / "a.md").write_text("# A\n", encoding="utf-8")
+def test_inputs_are_never_modified(bolt: Path) -> None:
+    (bolt / "inputs" / "a.md").write_text("# A\n", encoding="utf-8")
     write_zip(
-        paddock / "inputs" / "b.docx",
+        bolt / "inputs" / "b.docx",
         {"word/document.xml": f"<w:document {W}><w:body/></w:document>"},
     )
 
     def digest() -> dict[str, str]:
         return {
-            p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in (paddock / "inputs").iterdir()
+            p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in (bolt / "inputs").iterdir()
         }
 
     before = digest()
-    run(paddock)
-    run(paddock)
+    run(bolt)
+    run(bolt)
     assert digest() == before
-    assert sorted(p.name for p in (paddock / "inputs").iterdir()) == ["a.md", "b.docx"]
+    assert sorted(p.name for p in (bolt / "inputs").iterdir()) == ["a.md", "b.docx"]
 
 
 def test_missing_inputs_folder_exits_3(tmp_path: Path) -> None:

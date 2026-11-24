@@ -3,7 +3,7 @@
 # requires-python = ">=3.9"
 # dependencies = []
 # ///
-"""Check what must be in place before a first paddock.
+"""Check what must be in place before a first bolt.
 
 A skill added to the repository is not on the machine until ``install.sh`` runs
 again, and a stage then fails in a way that looks like a process bug. This script
@@ -76,8 +76,8 @@ MAX_AGE_SECONDS = 24 * 60 * 60
 STAMP_NAME = ".crv-install"
 #: Same list as ``MANUAL_ITEMS`` in onboard.py: things only a person can arrange.
 MANUAL_ITEMS = (
-    "Access to the target repositories of your paddock (ask the repository owner).",
-    "The Jira and Confluence connector, when your paddock uses Jira.",
+    "Access to the target repositories of your bolt (ask the repository owner).",
+    "The Jira and Confluence connector, when your bolt uses Jira.",
     "Databricks access, when a stage reads data.",
     "az login, only if you list repositories.",
 )
@@ -185,7 +185,7 @@ def find_root(explicit: Optional[str]) -> Optional[Path]:
         return Path(explicit).expanduser().resolve()
     here = Path.cwd().resolve()
     for folder in [here, *here.parents]:
-        if (folder / "paddocks").is_dir() and (folder / "docs" / "process.md").is_file():
+        if (folder / "bolts").is_dir() and (folder / "docs" / "process.md").is_file():
             return folder
     return None
 
@@ -258,7 +258,7 @@ def r5_planning(root: Optional[Path]) -> dict[str, str]:
             "R5", name, "required", "missing", "none found above the current directory",
             "pass --root <planning repo>, or ask the process owner where the planning repo lives",
         )  # fmt: skip
-    absent = [p for p in ("paddocks", "codekb", "docs/process.md") if not (root / p).exists()]
+    absent = [p for p in ("bolts", "codekb", "docs/process.md") if not (root / p).exists()]
     if not (root / ".git").exists():
         absent.insert(0, "a git repository")
     if absent:
@@ -586,7 +586,7 @@ def render(checks: list[dict[str, str]], verdict: str, notes: list[str]) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Check the prerequisites for a first paddock.",
+        description="Check the prerequisites for a first bolt.",
         epilog=EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

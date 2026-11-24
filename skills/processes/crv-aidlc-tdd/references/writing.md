@@ -44,7 +44,7 @@ When the question round chose a split: `tdd.md` keeps the header, overview, shar
 ## Validate
 
 ```bash
-python3 scripts/validate_doc.py --file <paddock>/architecture/tdd.md --kind tdd \
+python3 scripts/validate_doc.py --file <bolt>/architecture/tdd.md --kind tdd \
   --adr-index <planning repo>/architecture-index.json
 ```
 

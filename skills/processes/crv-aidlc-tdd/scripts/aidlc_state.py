@@ -3,9 +3,9 @@
 # requires-python = ">=3.9"
 # dependencies = []
 # ///
-"""Open, advance, gate and close a paddock, the folder for one piece of work.
+"""Open, advance, gate and close a bolt, the folder for one piece of work.
 
-Progress lives in one ``state.json`` per paddock and changes only through this
+Progress lives in one ``state.json`` per bolt and changes only through this
 script. A model that edits progress by hand will, sooner or later, mark a stage
 approved that nobody approved; a script that checks the artifacts first cannot.
 Everything here is deterministic, so it costs no model tokens.
@@ -35,43 +35,43 @@ EXIT_INTERNAL = 5
 EXIT_GIT = 6
 
 EPILOG = """commands:
-  open        create a paddock           --root R --slug S --title T --intent I [--parent P]
+  open        create a bolt           --root R --slug S --title T --intent I [--parent P]
                                          [--kind frame|delivery]
-  status      show progress              --paddock P [--format text]
-  next        the next stage and step    --paddock P
-  inputs      files a stage reads        --paddock P --stage S [--unit U]
-  decide      execute or skip a stage    --paddock P --stage S --decision D --reason R
-  step        move a stage forward       --paddock P --stage S --to asked|analysed|produced
-  gate        approve or send back       --paddock P --stage S --approve --by NAME
-  units       load units and bolts       --paddock P --set file.json
-  decision-id reserve decision ids       --paddock P [--count n]
-  codekb-status is the code knowledge fresh --paddock P
-  workspace   workspace file, checkouts  --paddock P [--extra name=path]... [--fetch] [--out F]
-  target      add or drop a target       --paddock P --add name=path | --remove NAME
-  kind        frame or delivery paddock  --paddock P --set frame|delivery
-  jira        record Jira keys           --paddock P --epic K | --unit U --story K | --unit U --done
+  status      show progress              --bolt P [--format text]
+  next        the next stage and step    --bolt P
+  inputs      files a stage reads        --bolt P --stage S [--unit U]
+  decide      execute or skip a stage    --bolt P --stage S --decision D --reason R
+  step        move a stage forward       --bolt P --stage S --to asked|analysed|produced
+  gate        approve or send back       --bolt P --stage S --approve --by NAME
+  units       load units and slices       --bolt P --set file.json
+  decision-id reserve decision ids       --bolt P [--count n]
+  codekb-status is the code knowledge fresh --bolt P
+  workspace   workspace file, checkouts  --bolt P [--extra name=path]... [--fetch] [--out F]
+  target      add or drop a target       --bolt P --add name=path | --remove NAME
+  kind        frame or delivery bolt  --bolt P --set frame|delivery
+  jira        record Jira keys           --bolt P --epic K | --unit U --story K | --unit U --done
                                          [--pr URL] | --off --reason R | --on
-  park/unpark hand-over note             --paddock P --note N
-  close       close the paddock          --paddock P --status complete|superseded|archived
-  sync        commit and push your work  --paddock P [-m "what changed"] | --root R
+  park/unpark hand-over note             --bolt P --note N
+  close       close the bolt          --bolt P --status complete|superseded|archived
+  sync        commit and push your work  --bolt P [-m "what changed"] | --root R
 
-Git: a command that changes a paddock first brings in the team's work, then commits the
-paddock and pushes it. `aidlc.json` at the planning root may hold
+Git: a command that changes a bolt first brings in the team's work, then commits the
+bolt and pushes it. `aidlc.json` at the planning root may hold
 {"git": {"branch": "..", "remote": "origin", "commit": true, "push": true}}.
 AIDLC_GIT=off or --no-git turns git writes off; a folder outside git is skipped.
 
 examples:
   python3 aidlc_state.py open --root . --slug billing --title "Billing" --intent "Move billing"
-  python3 aidlc_state.py next --paddock paddocks/2026-01-05-billing
-  python3 aidlc_state.py workspace --paddock paddocks/2026-01-05-billing --fetch
-  python3 aidlc_state.py gate --paddock paddocks/2026-01-05-billing --stage requirements-analysis \\
+  python3 aidlc_state.py next --bolt bolts/2026-01-05-billing
+  python3 aidlc_state.py workspace --bolt bolts/2026-01-05-billing --fetch
+  python3 aidlc_state.py gate --bolt bolts/2026-01-05-billing --stage requirements-analysis \\
       --approve --by "A. Approver"
 
 exit codes:
   0  ok
-  1  findings: a gate or close was refused, or the paddock already exists
+  1  findings: a gate or close was refused, or the bolt already exists
   2  usage error
-  3  missing input: no paddock, no state.json, a stage input, a folder or a named target is absent
+  3  missing input: no bolt, no state.json, a stage input, a folder or a named target is absent
   4  malformed input: state.json, stages.json or a units file cannot be parsed
   5  internal error
   6  git needs you: a rebase or merge conflict, or a possible secret in the commit
@@ -89,8 +89,8 @@ ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 JIRA_KEY = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 SCOPES = ["classic", "express", "bugfix"]
 KINDS = ["delivery", "frame"]
-FRAME_STOP = "hla"  # a frame paddock ends at this gate
-FRAME_REASON = "frame paddock: designs no component"
+FRAME_STOP = "hla"  # a frame bolt ends at this gate
+FRAME_REASON = "frame bolt: designs no component"
 DEPTHS = ["minimal", "standard", "comprehensive"]
 DEFAULT_DEPTH = {"classic": "standard", "express": "standard", "bugfix": "minimal"}
 DEFAULT_UNIT_SCOPES = {"express", "bugfix"}
@@ -177,17 +177,17 @@ def stage_def(catalog: list[dict[str, Any]], stage: str) -> dict[str, Any]:
     die(EXIT_USAGE, f"unknown stage '{stage}'. Valid stages: {ids}")
 
 
-# --- paddock files -----------------------------------------------------------
+# --- bolt files -----------------------------------------------------------
 
 
-def state_path(paddock: Path) -> Path:
-    return paddock / "state.json"
+def state_path(bolt: Path) -> Path:
+    return bolt / "state.json"
 
 
-def load_state(paddock: Path) -> dict[str, Any]:
-    path = state_path(paddock)
-    if not paddock.is_dir():
-        die(EXIT_INPUT, f"{paddock}: paddock folder not found. Open one with `open`.")
+def load_state(bolt: Path) -> dict[str, Any]:
+    path = state_path(bolt)
+    if not bolt.is_dir():
+        die(EXIT_INPUT, f"{bolt}: bolt folder not found. Open one with `open`.")
     if not path.is_file():
         die(EXIT_INPUT, f"{path}: state.json not found.")
     try:
@@ -200,10 +200,10 @@ def load_state(paddock: Path) -> dict[str, Any]:
 
 
 def backfill_stages(state: dict[str, Any], catalog: list[dict[str, Any]]) -> None:
-    """Give a stage added to the catalogue after this paddock opened a record, in memory.
+    """Give a stage added to the catalogue after this bolt opened a record, in memory.
 
     Without it a ``state.json`` written earlier would crash or need a hand edit. The
-    record is saved with the next write. A closed paddock gets a skip, so it stays done.
+    record is saved with the next write. A closed bolt gets a skip, so it stays done.
     """
     stages = state.setdefault("stages", {})
     state.setdefault("jira", {"mode": None, "reason": "", "epic": None})
@@ -211,41 +211,39 @@ def backfill_stages(state: dict[str, Any], catalog: list[dict[str, Any]]) -> Non
         unit.setdefault("story", None)
         unit.setdefault("story_done", None)
     brownfield = any(t.get("kind") == "brownfield" for t in state.get("targets", []))
-    after = frame_after(catalog, paddock_kind(state))
+    after = frame_after(catalog, bolt_kind(state))
     for item in catalog:
         if item["per_unit"] or item["id"] in stages:
             continue
         if state.get("status") != "open":
-            stages[item["id"]] = new_record("skip", "added after this paddock closed")
+            stages[item["id"]] = new_record("skip", "added after this bolt closed")
             continue
         decision, reason = initial_decision(item, state.get("scope", "classic"), brownfield, after)
         stages[item["id"]] = new_record(decision, reason)
 
 
-def write_state(paddock: Path, state: dict[str, Any]) -> None:
+def write_state(bolt: Path, state: dict[str, Any]) -> None:
     """Write state.json atomically: a crash leaves the old file, never half a new one."""
     state["updated"] = now()
-    path = state_path(paddock)
+    path = state_path(bolt)
     tmp = path.with_name(".state.json.tmp")
     tmp.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
     tmp.replace(path)
 
 
-def log_event(paddock: Path, event: str, stage: str = "", by: str = "", note: str = "") -> None:
+def log_event(bolt: Path, event: str, stage: str = "", by: str = "", note: str = "") -> None:
     def clean(value: str) -> str:
         text = " ".join(value.replace("|", "/").split())
         return text or "-"
 
     line = " | ".join([now(), clean(event), clean(stage), clean(by or "agent"), clean(note)])
-    with (paddock / "log.md").open("a", encoding="utf-8") as handle:
+    with (bolt / "log.md").open("a", encoding="utf-8") as handle:
         handle.write(line + "\n")
 
 
 def require_open(state: dict[str, Any]) -> None:
     if state.get("status") != "open":
-        raise Fail(
-            EXIT_FINDINGS, f"paddock is {state.get('status')}; it no longer accepts changes."
-        )
+        raise Fail(EXIT_FINDINGS, f"bolt is {state.get('status')}; it no longer accepts changes.")
 
 
 # --- stage records -----------------------------------------------------------
@@ -261,12 +259,12 @@ def new_record(decision: str, reason: str, step: str = "todo") -> dict[str, Any]
     }
 
 
-def paddock_kind(state: dict[str, Any]) -> str:
+def bolt_kind(state: dict[str, Any]) -> str:
     return str(state.get("kind") or "delivery")
 
 
 def frame_after(catalog: list[dict[str, Any]], kind: str) -> Optional[int]:
-    """The order after which a frame paddock skips every stage; ``None`` for delivery."""
+    """The order after which a frame bolt skips every stage; ``None`` for delivery."""
     if kind != "frame":
         return None
     return next(int(item["order"]) for item in catalog if item["id"] == FRAME_STOP)
@@ -342,8 +340,8 @@ def slots(state: dict[str, Any], catalog: list[dict[str, Any]]) -> list[Slot]:
             result.append((item, None))
         elif not expanded:
             expanded = True
-            if not state["units"] and paddock_kind(state) != "frame":
-                result.append((per_unit[0], None))  # a frame paddock never loads units
+            if not state["units"] and bolt_kind(state) != "frame":
+                result.append((per_unit[0], None))  # a frame bolt never loads units
             for unit in state["units"]:
                 for sub in per_unit:
                     result.append((sub, unit["id"]))
@@ -415,7 +413,7 @@ def compute_next(state: dict[str, Any], catalog: list[dict[str, Any]]) -> dict[s
 
 def describe_next(nxt: dict[str, Any]) -> str:
     if nxt["done"]:
-        return "all stages done; close the paddock"
+        return "all stages done; close the bolt"
     where = nxt["stage"] + (f" [{nxt['unit']}]" if nxt["unit"] else "")
     if nxt["action"] == "load-units":
         return f"load units before {where}"
@@ -429,9 +427,9 @@ def refresh(state: dict[str, Any], catalog: list[dict[str, Any]]) -> dict[str, A
     return nxt
 
 
-def commit(paddock: Path, state: dict[str, Any], catalog: list[dict[str, Any]]) -> dict[str, Any]:
+def commit(bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]]) -> dict[str, Any]:
     nxt = refresh(state, catalog)
-    write_state(paddock, state)
+    write_state(bolt, state)
     return nxt
 
 
@@ -498,14 +496,14 @@ def make_target(spec: str, flag: str) -> tuple[dict[str, Any], str]:
 
 
 def resolve_parent(root: Path, spec: str) -> dict[str, str]:
-    """``{"id", "path"}`` of an existing paddock under ``root``; ``path`` is relative to it."""
+    """``{"id", "path"}`` of an existing bolt under ``root``; ``path`` is relative to it."""
     given = Path(spec).expanduser()
-    candidates = [given] if given.is_absolute() else [given, root / "paddocks" / spec]
+    candidates = [given] if given.is_absolute() else [given, root / "bolts" / spec]
     found = next((c.resolve() for c in candidates if state_path(c).is_file()), None)
     if found is None:
-        die(EXIT_INPUT, f"--parent '{spec}': no paddock with a state.json at {candidates[-1]}.")
-    if found.parent.name != "paddocks" or found.parent.parent != root.resolve():
-        die(EXIT_USAGE, f"--parent '{spec}': {found} is not a paddock under {root.resolve()}.")
+        die(EXIT_INPUT, f"--parent '{spec}': no bolt with a state.json at {candidates[-1]}.")
+    if found.parent.name != "bolts" or found.parent.parent != root.resolve():
+        die(EXIT_USAGE, f"--parent '{spec}': {found} is not a bolt under {root.resolve()}.")
     parent_state = load_state(found)
     return {"id": str(parent_state["id"]), "path": found.relative_to(root.resolve()).as_posix()}
 
@@ -519,10 +517,10 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
     root = Path(args.root)
     if not root.is_dir():
         die(EXIT_INPUT, f"{root}: --root is not a directory.")
-    paddock_id = f"{date}-{args.slug}"
-    paddock = root / "paddocks" / paddock_id
-    if paddock.exists():
-        raise Fail(EXIT_FINDINGS, f"{paddock}: paddock already exists. Resume it with `status`.")
+    bolt_id = f"{date}-{args.slug}"
+    bolt = root / "bolts" / bolt_id
+    if bolt.exists():
+        raise Fail(EXIT_FINDINGS, f"{bolt}: bolt already exists. Resume it with `status`.")
     parent = resolve_parent(root, args.parent) if args.parent else None
 
     targets: list[dict[str, Any]] = []
@@ -553,24 +551,24 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
         stages[item["id"]] = new_record(decision, reason, step)
 
     units: list[dict[str, Any]] = []
-    bolts: list[dict[str, Any]] = []
+    slices: list[dict[str, Any]] = []
     if args.scope in DEFAULT_UNIT_SCOPES:
         units = [
             {
                 "id": "u1",
                 "name": args.title,
                 "kind": None,
-                "bolt": "b1",
+                "slice": "s1",
                 "stages": unit_stage_records(catalog, args.scope, kind=args.kind),
                 "story": None,
                 "story_done": None,
             }
         ]
-        bolts = [{"id": "b1", "units": ["u1"], "status": "todo"}]
+        slices = [{"id": "s1", "units": ["u1"], "status": "todo"}]
 
     state: dict[str, Any] = {
         "schema": 1,
-        "id": paddock_id,
+        "id": bolt_id,
         "title": args.title,
         "intent": args.intent,
         "status": "open",
@@ -586,7 +584,7 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
         "decision_seq": 0,
         "stages": stages,
         "units": units,
-        "bolts": bolts,
+        "slices": slices,
         "current": {"stage": None, "unit": None},
         "next_action": "",
         "parked": None,
@@ -604,26 +602,24 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
         "docs/operation",
     ]
     for folder in folders:
-        (paddock / folder).mkdir(parents=True, exist_ok=True)
-        (paddock / folder / ".gitkeep").touch()
-    (paddock / "log.md").touch()
-    nxt = commit(paddock, state, catalog)
-    log_event(
-        paddock, "open", "", "", f"scope={args.scope} depth={state['depth']} kind={args.kind}"
-    )
+        (bolt / folder).mkdir(parents=True, exist_ok=True)
+        (bolt / folder / ".gitkeep").touch()
+    (bolt / "log.md").touch()
+    nxt = commit(bolt, state, catalog)
+    log_event(bolt, "open", "", "", f"scope={args.scope} depth={state['depth']} kind={args.kind}")
     if parent is not None:
-        log_event(paddock, "parent", "", "", f"{parent['id']} at {parent['path']}")
+        log_event(bolt, "parent", "", "", f"{parent['id']} at {parent['path']}")
     for rule in rules:
-        log_event(paddock, "classify", "workspace-detection", "", rule)
+        log_event(bolt, "classify", "workspace-detection", "", rule)
     return {
         "ok": True,
-        "paddock": str(paddock),
-        "id": paddock_id,
+        "bolt": str(bolt),
+        "id": bolt_id,
         "targets": targets,
         "architecture_ref": architecture,
         "parent": parent,
         "codekb": codekb_status(root.resolve(), targets),
-        "workspace": write_workspace(paddock, state, None, fetch=False),
+        "workspace": write_workspace(bolt, state, None, fetch=False),
         "next": nxt,
     }
 
@@ -635,11 +631,11 @@ def extras(state: dict[str, Any]) -> list[dict[str, str]]:
     return list((state.get("workspace") or {}).get("extra") or [])
 
 
-def workspace_folders(paddock: Path, state: dict[str, Any]) -> list[dict[str, str]]:
-    """Every folder a person works in for this paddock, in a fixed order."""
-    root = planning_root(paddock)
+def workspace_folders(bolt: Path, state: dict[str, Any]) -> list[dict[str, str]]:
+    """Every folder a person works in for this bolt, in a fixed order."""
+    root = planning_root(bolt)
     folders = [
-        {"name": f"paddock: {DATE_PREFIX.sub('', state['id'])}", "path": str(paddock.resolve())},
+        {"name": f"bolt: {DATE_PREFIX.sub('', state['id'])}", "path": str(bolt.resolve())},
         {"name": "planning repo", "path": str(root)},
     ]
     parent = state.get("parent")
@@ -753,11 +749,11 @@ def inspect_checkout(name: str, role: str, raw: str, fetch: bool) -> dict[str, A
 
 
 def write_workspace(
-    paddock: Path, state: dict[str, Any], out: Optional[Path], fetch: bool
+    bolt: Path, state: dict[str, Any], out: Optional[Path], fetch: bool
 ) -> dict[str, Any]:
     """Write the multi-root workspace file and report each checkout; targets stay untouched."""
-    folders = workspace_folders(paddock, state)
-    file = out if out is not None else paddock / f"{state['id']}{WORKSPACE_SUFFIX}"
+    folders = workspace_folders(bolt, state)
+    file = out if out is not None else bolt / f"{state['id']}{WORKSPACE_SUFFIX}"
     if not file.parent.is_dir():
         die(EXIT_INPUT, f"{file.parent}: folder for --out does not exist.")
     file.write_text(json.dumps({"folders": folders}, indent=2) + "\n", encoding="utf-8")
@@ -769,13 +765,13 @@ def write_workspace(
     return {
         "file": str(file.resolve()),
         "folders": folders,
-        "claude_command": claude_command(folders, planning_root(paddock)),
+        "claude_command": claude_command(folders, planning_root(bolt)),
         "checkouts": checkouts,
         "stale": [row["name"] for row in checkouts if row["stale"]],
     }
 
 
-def cmd_workspace(paddock: Path, state: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
+def cmd_workspace(bolt: Path, state: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
     if args.extra:
         require_open(state)
         current = extras(state)
@@ -797,10 +793,10 @@ def cmd_workspace(paddock: Path, state: dict[str, Any], args: argparse.Namespace
                 current.append(entry)
             changes.append(f"{name}={entry['path']}")
         state.setdefault("workspace", {})["extra"] = current
-        write_state(paddock, state)
-        log_event(paddock, "workspace", "", "", "; ".join(changes))
+        write_state(bolt, state)
+        log_event(bolt, "workspace", "", "", "; ".join(changes))
     out = Path(args.out).expanduser() if args.out else None
-    return {"ok": True, **write_workspace(paddock, state, out, fetch=args.fetch)}
+    return {"ok": True, **write_workspace(bolt, state, out, fetch=args.fetch)}
 
 
 def sync_reverse_engineering(
@@ -822,7 +818,7 @@ def sync_reverse_engineering(
 
 
 def cmd_target(
-    paddock: Path, state: dict[str, Any], catalog: list[dict[str, Any]], args: argparse.Namespace
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], args: argparse.Namespace
 ) -> dict[str, Any]:
     targets = list(state["targets"])
     before = any(t["kind"] == "brownfield" for t in targets)
@@ -846,17 +842,15 @@ def cmd_target(
     state["targets"] = targets
     after = any(t["kind"] == "brownfield" for t in targets)
     verdict = sync_reverse_engineering(state, catalog, before, after)
-    nxt = commit(paddock, state, catalog)
-    log_event(
-        paddock, "target", "workspace-detection", "", f"{note}; reverse-engineering {verdict}"
-    )
+    nxt = commit(bolt, state, catalog)
+    log_event(bolt, "target", "workspace-detection", "", f"{note}; reverse-engineering {verdict}")
     return {
         "ok": True,
         "targets": targets,
         "change": note,
         "reverse_engineering": verdict,
-        "codekb": codekb_status(planning_root(paddock), targets),
-        "workspace": write_workspace(paddock, state, None, fetch=False),
+        "codekb": codekb_status(planning_root(bolt), targets),
+        "workspace": write_workspace(bolt, state, None, fetch=False),
         "next": nxt,
     }
 
@@ -902,7 +896,7 @@ def jira_line(state: dict[str, Any]) -> str:
 
 
 def cmd_status(
-    paddock: Path, state: dict[str, Any], catalog: list[dict[str, Any]], fmt: str
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], fmt: str
 ) -> dict[str, Any]:
     nxt = compute_next(state, catalog)
     progress = phase_progress(state, catalog)
@@ -913,10 +907,10 @@ def cmd_status(
         "status": state["status"],
         "scope": state["scope"],
         "depth": state["depth"],
-        "kind": paddock_kind(state),
+        "kind": bolt_kind(state),
         "phases": progress,
         "units": len(state["units"]),
-        "bolts": len(state["bolts"]),
+        "slices": len(state["slices"]),
         "current": state["current"],
         "step": nxt.get("step"),
         "action": nxt["action"],
@@ -927,8 +921,8 @@ def cmd_status(
     parent = state.get("parent")
     if parent:
         facts["parent"] = parent
-        facts["parent_hla_status"] = parent_hla_status(paddock, state)
-    git_block = git_status_block(paddock)
+        facts["parent_hla_status"] = parent_hla_status(bolt, state)
+    git_block = git_status_block(bolt)
     if git_block is not None:
         facts["git"] = git_block
     if fmt == "json":
@@ -936,7 +930,7 @@ def cmd_status(
     lines = [
         f"{state['title'] or state['id']} ({state['id']})",
         f"Status: {state['status']} | Scope: {state['scope']} | Depth: {state['depth']}"
-        f" | Kind: {paddock_kind(state)}",
+        f" | Kind: {bolt_kind(state)}",
         f"Intent: {state['intent'][:160]}",
     ]
     if parent:
@@ -945,7 +939,7 @@ def cmd_status(
         entry = progress[phase]
         note = f", {entry['skipped']} skipped" if entry["skipped"] else ""
         lines.append(f"{phase.capitalize()}: {entry['done']}/{entry['total']} done{note}")
-    lines.append(f"Units: {len(state['units'])} | Bolts: {len(state['bolts'])}")
+    lines.append(f"Units: {len(state['units'])} | Slices: {len(state['slices'])}")
     lines.append(jira_line(state))
     if git_block is not None:
         lines.append(git_status_line(git_block))
@@ -961,19 +955,19 @@ def cmd_status(
     return {"text": "\n".join(lines[:20]) + "\n"}
 
 
-def planning_root(paddock: Path) -> Path:
-    """The planning repository root: paddocks live in ``<root>/paddocks/<id>``."""
-    return paddock.resolve().parent.parent
+def planning_root(bolt: Path) -> Path:
+    """The planning repository root: bolts live in ``<root>/bolts/<id>``."""
+    return bolt.resolve().parent.parent
 
 
-def parent_dir(paddock: Path, state: dict[str, Any]) -> Optional[Path]:
+def parent_dir(bolt: Path, state: dict[str, Any]) -> Optional[Path]:
     parent = state.get("parent")
-    return planning_root(paddock) / parent["path"] if parent else None
+    return planning_root(bolt) / parent["path"] if parent else None
 
 
-def parent_hla_status(paddock: Path, state: dict[str, Any]) -> str:
+def parent_hla_status(bolt: Path, state: dict[str, Any]) -> str:
     """The ``status:`` of the parent's ``hla.md`` header, or ``missing`` without a file."""
-    folder = parent_dir(paddock, state)
+    folder = parent_dir(bolt, state)
     hla = folder / "architecture" / "hla.md" if folder else None
     if hla is None or not hla.is_file():
         return "missing"
@@ -981,21 +975,21 @@ def parent_hla_status(paddock: Path, state: dict[str, Any]) -> str:
     return (header or {}).get("status") or "unknown"
 
 
-def locate(paddock: Path, rel: str, state: Optional[dict[str, Any]] = None) -> Path:
+def locate(bolt: Path, rel: str, state: Optional[dict[str, Any]] = None) -> Path:
     """Resolve a stages.json path: ``root:`` hangs off the planning root, ``parent:``
-    off the parent paddock; anything else off this paddock."""
+    off the parent bolt; anything else off this bolt."""
     if rel.startswith(ROOT_PREFIX):
-        return planning_root(paddock) / rel[len(ROOT_PREFIX) :]
-    folder = parent_dir(paddock, state) if state else None
+        return planning_root(bolt) / rel[len(ROOT_PREFIX) :]
+    folder = parent_dir(bolt, state) if state else None
     if rel.startswith(PARENT_PREFIX) and folder is not None:
         return folder / rel[len(PARENT_PREFIX) :]
-    return paddock / rel
+    return bolt / rel
 
 
-def glob_paths(paddock: Path, rel: str) -> list[Path]:
+def glob_paths(bolt: Path, rel: str) -> list[Path]:
     if rel.startswith(ROOT_PREFIX):
-        return sorted(planning_root(paddock).glob(rel[len(ROOT_PREFIX) :]))
-    return sorted(paddock.glob(rel))
+        return sorted(planning_root(bolt).glob(rel[len(ROOT_PREFIX) :]))
+    return sorted(bolt.glob(rel))
 
 
 def brownfield_repos(state: dict[str, Any]) -> list[str]:
@@ -1036,7 +1030,7 @@ def producer_of(catalog: list[dict[str, Any]], template: str) -> Optional[dict[s
 
 
 def cmd_inputs(
-    paddock: Path,
+    bolt: Path,
     state: dict[str, Any],
     catalog: list[dict[str, Any]],
     stage_id: str,
@@ -1047,7 +1041,7 @@ def cmd_inputs(
     repos = brownfield_repos(state)
     targets = [t["repo"] for t in state["targets"]]
     units = unit_ids(state, stage, unit)
-    folder = parent_dir(paddock, state)
+    folder = parent_dir(bolt, state)
     parent_state: Optional[dict[str, Any]] = None
     if folder is not None and state_path(folder).is_file():
         parent_state = load_state(folder)
@@ -1057,7 +1051,7 @@ def cmd_inputs(
         template = entry["path"]
         from_parent = template.startswith(PARENT_PREFIX)
         if from_parent and folder is None:
-            continue  # parent inputs exist only for a child paddock
+            continue  # parent inputs exist only for a child bolt
         own = template[len(PARENT_PREFIX) :] if from_parent else template
         producer = producer_of(catalog, own)
         optional = bool(entry.get("optional"))
@@ -1068,7 +1062,7 @@ def cmd_inputs(
                 producer_unit = row_unit if producer["per_unit"] else None
                 rec = slot_record(source, producer, producer_unit)
                 skipped = bool(rec and rec["decision"] == "skip")
-            file = locate(paddock, rel, state)
+            file = locate(bolt, rel, state)
             exists = file.is_file()
             if entry.get("if_exists") and not exists:
                 continue
@@ -1091,12 +1085,12 @@ def cmd_inputs(
         "ok": not missing,
         "stage": stage_id,
         "unit": unit,
-        "root": str(planning_root(paddock)),
+        "root": str(planning_root(bolt)),
         "inputs": rows,
         "missing": missing,
     }
     if folder is not None:
-        status = parent_hla_status(paddock, state)
+        status = parent_hla_status(bolt, state)
         payload.update({"parent": state["parent"], "parent_hla_status": status, "warnings": []})
         if status != "accepted":
             message = f"the parent's hla.md is {status}, not accepted; its decisions may change"
@@ -1267,7 +1261,7 @@ def digest_lines(text: str) -> Optional[int]:
 
 
 def gate_findings(
-    paddock: Path,
+    bolt: Path,
     state: dict[str, Any],
     stage: dict[str, Any],
     unit: Optional[str],
@@ -1291,7 +1285,7 @@ def gate_findings(
     }
     for template in stage["artifacts"]:
         for rel in expand(template, repos, units):
-            path = locate(paddock, rel)
+            path = locate(bolt, rel)
             if not path.is_file():
                 findings.append(
                     {"code": "artifact-missing", "path": rel, "message": "artifact does not exist"}
@@ -1315,7 +1309,7 @@ def gate_findings(
     questions: list[Path] = []
     for template in as_list(stage.get("questions")):
         for rel in expand(template, repos, units):
-            path = locate(paddock, rel)
+            path = locate(bolt, rel)
             if path.is_file():
                 questions.append(path)
             else:
@@ -1333,7 +1327,7 @@ def gate_findings(
     if patterns:
         for pattern in patterns:
             for rel in expand(pattern, repos, units):
-                clarifications.extend(glob_paths(paddock, rel))
+                clarifications.extend(glob_paths(bolt, rel))
     else:
         for parent in dict.fromkeys(path.parent for path in questions):
             clarifications.extend(sorted(parent.glob("*clarifications*.md")))
@@ -1348,13 +1342,13 @@ def gate_findings(
                 findings.append(
                     {
                         "code": "questions-" + found["code"],
-                        "path": str(item.relative_to(paddock)),
+                        "path": str(item.relative_to(bolt)),
                         "message": f"{found['question']} line {found['line']}: {found['message']}",
                     }
                 )
     for template in as_list(stage.get("signoff")):
         for rel in expand(template, repos, units):
-            path = locate(paddock, rel)
+            path = locate(bolt, rel)
             if not path.is_file():
                 continue
             header = header_fields(path.read_text(encoding="utf-8", errors="replace"))
@@ -1383,14 +1377,14 @@ def gate_findings(
                     }
                 )
     if stage["id"] == "reverse-engineering":
-        findings.extend(meta_findings(paddock, state))
+        findings.extend(meta_findings(bolt, state))
     return findings
 
 
-def meta_findings(paddock: Path, state: dict[str, Any]) -> list[dict[str, Any]]:
+def meta_findings(bolt: Path, state: dict[str, Any]) -> list[dict[str, Any]]:
     """Each brownfield target's ``_meta.json`` must carry the fields the freshness check reads."""
     findings: list[dict[str, Any]] = []
-    root = planning_root(paddock)
+    root = planning_root(bolt)
     for repo in brownfield_repos(state):
         meta = read_meta(root, repo)
         if meta is None:
@@ -1408,7 +1402,7 @@ def meta_findings(paddock: Path, state: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def last_inception_stage(state: dict[str, Any], catalog: list[dict[str, Any]]) -> Optional[str]:
-    """The last Inception stage of the paddock's scope that is not skipped."""
+    """The last Inception stage of the bolt's scope that is not skipped."""
     last: Optional[str] = None
     for item in catalog:
         if item["phase"] != "inception" or state["scope"] not in item["scopes"]:
@@ -1433,7 +1427,7 @@ def load_traceability_module() -> Any:
 
 
 def traceability_findings(
-    paddock: Path, state: dict[str, Any], catalog: list[dict[str, Any]], stage: dict[str, Any]
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], stage: dict[str, Any]
 ) -> list[dict[str, Any]]:
     """Refuse the last Inception gate while ids are not traced; bugfix has nothing to trace."""
     if state["scope"] in NO_TRACEABILITY_SCOPES:
@@ -1444,7 +1438,7 @@ def traceability_findings(
     if module is None:
         LOG.warning("check_traceability.py is not installed beside this script; skipping.")
         return []
-    result = module.check(paddock)
+    result = module.check(bolt)
     return [
         {
             "code": "traceability-" + item["code"],
@@ -1455,9 +1449,9 @@ def traceability_findings(
     ]
 
 
-def record_codekb_commits(paddock: Path, state: dict[str, Any]) -> None:
-    """Remember which commit of each target's code knowledge this paddock relied on."""
-    root = planning_root(paddock)
+def record_codekb_commits(bolt: Path, state: dict[str, Any]) -> None:
+    """Remember which commit of each target's code knowledge this bolt relied on."""
+    root = planning_root(bolt)
     for target in state["targets"]:
         meta = read_meta(root, target["repo"]) if target["kind"] == "brownfield" else None
         if meta is not None:
@@ -1465,7 +1459,7 @@ def record_codekb_commits(paddock: Path, state: dict[str, Any]) -> None:
 
 
 def cmd_gate(
-    paddock: Path,
+    bolt: Path,
     state: dict[str, Any],
     catalog: list[dict[str, Any]],
     stage: dict[str, Any],
@@ -1482,13 +1476,13 @@ def cmd_gate(
         record["step"] = "changes-requested"
         record["approved_at"] = None
         record["approved_by"] = None
-        nxt = commit(paddock, state, catalog)
-        log_event(paddock, "gate-request-changes", label, args.by or "", args.note)
+        nxt = commit(bolt, state, catalog)
+        log_event(bolt, "gate-request-changes", label, args.by or "", args.note)
         return {"ok": True, "stage": label, "unit": unit, "step": record["step"], "next": nxt}
     if not (args.by or "").strip():
         die(EXIT_USAGE, "--approve needs --by NAME.")
-    findings = gate_findings(paddock, state, stage, unit, record)
-    findings.extend(traceability_findings(paddock, state, catalog, stage))
+    findings = gate_findings(bolt, state, stage, unit, record)
+    findings.extend(traceability_findings(bolt, state, catalog, stage))
     if findings:
         raise Fail(
             EXIT_FINDINGS,
@@ -1499,11 +1493,11 @@ def cmd_gate(
     record["approved_at"] = now()
     record["approved_by"] = args.by.strip()
     if stage["id"] == "reverse-engineering":
-        record_codekb_commits(paddock, state)
+        record_codekb_commits(bolt, state)
     if not state.get("approver"):
         state["approver"] = args.by.strip()
-    nxt = commit(paddock, state, catalog)
-    log_event(paddock, "gate-approve", label, args.by, unit or "")
+    nxt = commit(bolt, state, catalog)
+    log_event(bolt, "gate-approve", label, args.by, unit or "")
     suggestion = (
         "A fresh session for the next stage is cheapest but optional. "
         f"Next: {state['next_action']}."
@@ -1519,7 +1513,7 @@ def cmd_gate(
 
 
 def cmd_units(
-    paddock: Path, state: dict[str, Any], catalog: list[dict[str, Any]], file: Path
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], file: Path
 ) -> dict[str, Any]:
     try:
         data = json.loads(file.read_text(encoding="utf-8"))
@@ -1527,14 +1521,14 @@ def cmd_units(
         die(EXIT_INPUT, f"{file}: units file not found.")
     except json.JSONDecodeError as exc:
         die(EXIT_MALFORMED, f"{file}: invalid JSON at line {exc.lineno}: {exc.msg}")
-    if not isinstance(data, dict) or not ("units" in data or "bolts" in data):
-        die(EXIT_MALFORMED, f'{file}: expected an object with "units" and/or "bolts".')
+    if not isinstance(data, dict) or not ("units" in data or "slices" in data):
+        die(EXIT_MALFORMED, f'{file}: expected an object with "units" and/or "slices".')
 
     old = {u["id"]: u for u in state["units"]}
     units = data.get("units", state["units"])
-    bolts = data.get("bolts", state["bolts"])
-    if not isinstance(units, list) or not isinstance(bolts, list):
-        die(EXIT_MALFORMED, f'{file}: "units" and "bolts" must be lists.')
+    slices = data.get("slices", state["slices"])
+    if not isinstance(units, list) or not isinstance(slices, list):
+        die(EXIT_MALFORMED, f'{file}: "units" and "slices" must be lists.')
     seen: set[str] = set()
     for unit in units:
         uid = unit.get("id") if isinstance(unit, dict) else None
@@ -1547,17 +1541,17 @@ def cmd_units(
                 EXIT_MALFORMED,
                 f"{file}: unit {uid} has kind {kind!r}; use one of {', '.join(UNIT_KINDS)}.",
             )
-    seen_bolts: set[str] = set()
-    for bolt in bolts:
-        bid = bolt.get("id") if isinstance(bolt, dict) else None
-        if not isinstance(bid, str) or bid in seen_bolts:
-            die(EXIT_MALFORMED, f"{file}: each bolt needs a unique id; saw {bid!r}.")
-        seen_bolts.add(bid)
-        for member in bolt.get("units", []):
+    seen_slices: set[str] = set()
+    for entry in slices:
+        sid = entry.get("id") if isinstance(entry, dict) else None
+        if not isinstance(sid, str) or sid in seen_slices:
+            die(EXIT_MALFORMED, f"{file}: each slice needs a unique id; saw {sid!r}.")
+        seen_slices.add(sid)
+        for member in entry.get("units", []):
             if member not in seen:
-                die(EXIT_MALFORMED, f"{file}: bolt {bid} names unknown unit {member!r}.")
-        bolt.setdefault("status", "todo")
-    owner_of = {m: b["id"] for b in bolts for m in b.get("units", [])}
+                die(EXIT_MALFORMED, f"{file}: slice {sid} names unknown unit {member!r}.")
+        entry.setdefault("status", "todo")
+    owner_of = {m: b["id"] for b in slices for m in b.get("units", [])}
     result: list[dict[str, Any]] = []
     for unit in units:
         previous = old.get(unit["id"], {})
@@ -1566,29 +1560,29 @@ def cmd_units(
                 "id": unit["id"],
                 "name": unit.get("name", ""),
                 "kind": unit.get("kind", previous.get("kind")),
-                "bolt": owner_of.get(unit["id"], unit.get("bolt")),
+                "slice": owner_of.get(unit["id"], unit.get("slice")),
                 "stages": unit_stage_records(
-                    catalog, state["scope"], previous.get("stages"), paddock_kind(state)
+                    catalog, state["scope"], previous.get("stages"), bolt_kind(state)
                 ),
                 "story": previous.get("story"),
                 "story_done": previous.get("story_done"),
             }
         )
     state["units"] = result
-    state["bolts"] = bolts
-    nxt = commit(paddock, state, catalog)
-    log_event(paddock, "units", "", "", f"{len(result)} unit(s), {len(bolts)} bolt(s)")
+    state["slices"] = slices
+    nxt = commit(bolt, state, catalog)
+    log_event(bolt, "units", "", "", f"{len(result)} unit(s), {len(slices)} slice(s)")
     return {
         "ok": True,
         "units": [u["id"] for u in result],
-        "bolts": [b["id"] for b in bolts],
+        "slices": [b["id"] for b in slices],
         "missing_kind": [u["id"] for u in result if not u["kind"]],
         "next": nxt,
     }
 
 
 def cmd_kind(
-    paddock: Path, state: dict[str, Any], catalog: list[dict[str, Any]], kind: str
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], kind: str
 ) -> dict[str, Any]:
     """Re-decide every stage after the HLA as ``open`` would for ``kind``.
 
@@ -1618,11 +1612,11 @@ def cmd_kind(
     if started:
         raise Fail(
             EXIT_FINDINGS,
-            f"cannot make this a {kind} paddock: {len(started)} stage(s) after "
+            f"cannot make this a {kind} bolt: {len(started)} stage(s) after "
             f"{FRAME_STOP} have started.",
             findings=started,
         )
-    previous = paddock_kind(state)
+    previous = bolt_kind(state)
     brownfield = any(t["kind"] == "brownfield" for t in state["targets"])
     after = frame_after(catalog, kind)
     for item, unit, _ in records:
@@ -1633,8 +1627,8 @@ def cmd_kind(
         else:
             find_unit(state, unit)["stages"][item["id"]] = record
     state["kind"] = kind
-    nxt = commit(paddock, state, catalog)
-    log_event(paddock, "kind", "", "", f"{previous} -> {kind}")
+    nxt = commit(bolt, state, catalog)
+    log_event(bolt, "kind", "", "", f"{previous} -> {kind}")
     return {
         "ok": True,
         "kind": kind,
@@ -1645,7 +1639,7 @@ def cmd_kind(
 
 
 def cmd_jira(
-    paddock: Path, state: dict[str, Any], catalog: list[dict[str, Any]], args: argparse.Namespace
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], args: argparse.Namespace
 ) -> dict[str, Any]:
     jira = state["jira"]
     forms = [
@@ -1694,8 +1688,8 @@ def cmd_jira(
     else:
         jira["mode"], jira["reason"] = "on", ""
         note = "on"
-    nxt = commit(paddock, state, catalog)
-    log_event(paddock, "jira", "", "", note)
+    nxt = commit(bolt, state, catalog)
+    log_event(bolt, "jira", "", "", note)
     return {"ok": True, "jira": jira_facts(state), "next": nxt}
 
 
@@ -1712,8 +1706,8 @@ def require_story(state: dict[str, Any], stage: dict[str, Any], unit: Optional[s
                 "stage": stage["id"],
                 "unit": unit,
                 "message": (
-                    f"file the story with crv-create-jira-story and run `jira --paddock <p> "
-                    f"--unit {unit} --story KEY`, or run `jira --paddock <p> --off --reason "
+                    f"file the story with crv-create-jira-story and run `jira --bolt <p> "
+                    f"--unit {unit} --story KEY`, or run `jira --bolt <p> --off --reason "
                     '"<why>"`.'
                 ),
             }
@@ -1722,7 +1716,7 @@ def require_story(state: dict[str, Any], stage: dict[str, Any], unit: Optional[s
 
 
 def cmd_close(
-    paddock: Path,
+    bolt: Path,
     state: dict[str, Any],
     catalog: list[dict[str, Any]],
     status: str,
@@ -1778,8 +1772,8 @@ def cmd_close(
         state["successor"] = successor
     state["current"] = {"stage": None, "unit": None}
     state["next_action"] = f"closed as {status}"
-    write_state(paddock, state)
-    log_event(paddock, "close", "", "", status + (f" successor={successor}" if successor else ""))
+    write_state(bolt, state)
+    log_event(bolt, "close", "", "", status + (f" successor={successor}" if successor else ""))
     return {"ok": True, "status": status, "successor": successor}
 
 
@@ -1913,11 +1907,11 @@ def in_progress(ctx: GitCtx) -> Optional[str]:
     return None
 
 
-def scope_match(ctx: GitCtx, path: str, paddock_rel: Optional[str]) -> bool:
+def scope_match(ctx: GitCtx, path: str, bolt_rel: Optional[str]) -> bool:
     if not path.startswith(ctx.prefix):
         return False
     rel = path[len(ctx.prefix) :]
-    if paddock_rel and rel.startswith(paddock_rel.rstrip("/") + "/"):
+    if bolt_rel and rel.startswith(bolt_rel.rstrip("/") + "/"):
         return True
     return rel in SHARED_FILES or any(rel.startswith(d) for d in SHARED_DIRS)
 
@@ -1978,19 +1972,19 @@ def short_head(ctx: GitCtx) -> Optional[str]:
 
 
 def commit_scope(
-    ctx: GitCtx, paddock_rel: Optional[str], message: str, result: dict[str, Any]
+    ctx: GitCtx, bolt_rel: Optional[str], message: str, result: dict[str, Any]
 ) -> None:
     changed = changed_paths(ctx)
-    scoped = [p for p in changed if scope_match(ctx, p, paddock_rel)]
+    scoped = [p for p in changed if scope_match(ctx, p, bolt_rel)]
     others = [p[len(ctx.prefix) :] if p.startswith(ctx.prefix) else p for p in changed]
-    others = [o for o, p in zip(others, changed) if not scope_match(ctx, p, paddock_rel)]
+    others = [o for o, p in zip(others, changed) if not scope_match(ctx, p, bolt_rel)]
     result["uncommitted"] = others[:UNCOMMITTED_CAP]
     result["uncommitted_count"] = len(others)
     if scoped:
         added = git_paths(ctx, "add", "-A", paths=scoped)
         if added.returncode != 0:
             raise Fail(EXIT_GIT, f"git add failed: {added.stderr.strip()[:300]}")
-    staged = [p for p in staged_paths(ctx) if scope_match(ctx, p, paddock_rel)]
+    staged = [p for p in staged_paths(ctx) if scope_match(ctx, p, bolt_rel)]
     if not staged:
         return
     hits = scan_staged(ctx, set(staged))
@@ -2026,12 +2020,12 @@ def unmerged(ctx: GitCtx) -> list[str]:
 def conflict_rule(ctx: GitCtx, path: str) -> str:
     rel = path[len(ctx.prefix) :] if path.startswith(ctx.prefix) else path
     name = rel.rsplit("/", 1)[-1]
-    if name == "state.json" and rel.startswith("paddocks/"):
+    if name == "state.json" and rel.startswith("bolts/"):
         return (
             "take the team's version (`git checkout --ours -- <file>`, then `git add <file>`), "
             "finish the rebase with `git rebase --continue`, then run your command again."
         )
-    if name == "log.md" and rel.startswith("paddocks/"):
+    if name == "log.md" and rel.startswith("bolts/"):
         return (
             "keep every line from both sides, in time order (each line starts with a UTC "
             "time); remove the conflict markers, then `git add <file>`."
@@ -2139,8 +2133,8 @@ def push_branch(ctx: GitCtx, branch: Optional[str], result: dict[str, Any]) -> N
         warnings.append(failed)
 
 
-def sync_git(ctx: GitCtx, paddock_rel: Optional[str], slug: str, event: str) -> dict[str, Any]:
-    """Bring in the team's work, commit this paddock's changes and push them."""
+def sync_git(ctx: GitCtx, bolt_rel: Optional[str], slug: str, event: str) -> dict[str, Any]:
+    """Bring in the team's work, commit this bolt's changes and push them."""
     result: dict[str, Any] = {
         "enabled": True,
         "branch": None,
@@ -2177,7 +2171,7 @@ def sync_git(ctx: GitCtx, paddock_rel: Optional[str], slug: str, event: str) -> 
     event = " ".join(event.split())
     message = f"docs({slug}): {event}" if slug else f"docs: {event}"
     if ctx.commit:
-        commit_scope(ctx, paddock_rel, message, result)
+        commit_scope(ctx, bolt_rel, message, result)
     if ctx.push:
         push_branch(ctx, ctx.branch or current, result)
     for text in result["warnings"]:
@@ -2185,10 +2179,10 @@ def sync_git(ctx: GitCtx, paddock_rel: Optional[str], slug: str, event: str) -> 
     return result
 
 
-def git_scope(paddock: Path) -> tuple[Path, str, str]:
-    """``(planning root, paddock path inside it, slug)`` of a paddock folder."""
-    resolved = paddock.resolve()
-    root = planning_root(paddock)
+def git_scope(bolt: Path) -> tuple[Path, str, str]:
+    """``(planning root, bolt path inside it, slug)`` of a bolt folder."""
+    resolved = bolt.resolve()
+    root = planning_root(bolt)
     return root, resolved.relative_to(root).as_posix(), DATE_PREFIX.sub("", resolved.name)
 
 
@@ -2196,7 +2190,7 @@ def git_event(args: argparse.Namespace, result: Optional[dict[str, Any]] = None)
     """The plain-English name of what a changing command does."""
     cmd = args.command
     if cmd == "open":
-        return "open the paddock"
+        return "open the bolt"
     if cmd == "decide":
         return f"decide {args.stage}: {args.decision}"
     if cmd == "step":
@@ -2213,11 +2207,11 @@ def git_event(args: argparse.Namespace, result: Optional[dict[str, Any]] = None)
     if cmd == "units":
         return "load the units"
     if cmd == "kind":
-        return f"make the paddock a {args.set} paddock"
+        return f"make the bolt a {args.set} bolt"
     if cmd == "park":
-        return "park the paddock"
+        return "park the bolt"
     if cmd == "unpark":
-        return "unpark the paddock"
+        return "unpark the bolt"
     if cmd == "jira":
         return "record Jira keys"
     if cmd == "target":
@@ -2225,7 +2219,7 @@ def git_event(args: argparse.Namespace, result: Optional[dict[str, Any]] = None)
             return f"add target {args.add.partition('=')[0]}"
         return f"remove target {args.remove}"
     if cmd == "close":
-        return f"close the paddock as {args.status}"
+        return f"close the bolt as {args.status}"
     return "update the workspace folders"
 
 
@@ -2239,27 +2233,27 @@ def changes_state(args: argparse.Namespace) -> bool:
 
 
 def cmd_sync(args: argparse.Namespace) -> dict[str, Any]:
-    if bool(args.paddock) == bool(args.root):
-        die(EXIT_USAGE, "give --paddock or --root, not both and not neither.")
-    if args.paddock:
-        paddock = Path(args.paddock)
-        if not paddock.is_dir():
-            die(EXIT_INPUT, f"{paddock}: paddock folder not found.")
-        root, rel, slug = git_scope(paddock)
-        paddock_rel: Optional[str] = rel
+    if bool(args.bolt) == bool(args.root):
+        die(EXIT_USAGE, "give --bolt or --root, not both and not neither.")
+    if args.bolt:
+        bolt = Path(args.bolt)
+        if not bolt.is_dir():
+            die(EXIT_INPUT, f"{bolt}: bolt folder not found.")
+        root, rel, slug = git_scope(bolt)
+        bolt_rel: Optional[str] = rel
     else:
-        root, paddock_rel, slug = Path(args.root), None, ""
+        root, bolt_rel, slug = Path(args.root), None, ""
         if not root.is_dir():
             die(EXIT_INPUT, f"{root}: --root is not a directory.")
     ctx, why = open_git(root.resolve())
     if ctx is None:
         return {"ok": True, "git": {"enabled": False, "reason": why}}
-    return {"ok": True, "git": sync_git(ctx, paddock_rel, slug, args.message)}
+    return {"ok": True, "git": sync_git(ctx, bolt_rel, slug, args.message)}
 
 
-def git_status_block(paddock: Path) -> Optional[dict[str, Any]]:
+def git_status_block(bolt: Path) -> Optional[dict[str, Any]]:
     """Branch, ahead and behind, and uncommitted paths. Reads only; never fetches."""
-    root, rel, _ = git_scope(paddock)
+    root, rel, _ = git_scope(bolt)
     try:
         ctx, _why = open_git(root)
     except Fail:
@@ -2283,7 +2277,7 @@ def git_status_block(paddock: Path) -> Optional[dict[str, Any]]:
     mine = ctx.prefix + rel + "/"
     block["uncommitted"] = sum(1 for p in changed_paths(ctx) if p.startswith(mine))
     if block["uncommitted"]:
-        block["hint"] = 'commit them now: sync --paddock <p> -m "<what changed>"'
+        block["hint"] = 'commit them now: sync --bolt <p> -m "<what changed>"'
     return block
 
 
@@ -2296,9 +2290,9 @@ def git_status_line(block: dict[str, Any]) -> str:
         if block["ahead"] is not None
         else "no fetched remote branch"
     )
-    line = f"Git: {where}, {sync}, {block['uncommitted']} uncommitted in this paddock"
+    line = f"Git: {where}, {sync}, {block['uncommitted']} uncommitted in this bolt"
     if block["uncommitted"]:
-        line += '; commit them now with `sync --paddock <p> -m "<what changed>"`'
+        line += '; commit them now with `sync --bolt <p> -m "<what changed>"`'
     return line
 
 
@@ -2307,7 +2301,7 @@ def git_status_line(block: dict[str, Any]) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Open, advance, gate and close an AI-DLC paddock.",
+        description="Open, advance, gate and close an AI-DLC bolt.",
         epilog=EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -2316,18 +2310,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     read_only = {"status", "next", "inputs", "codekb-status"}
 
-    def add(name: str, help_text: str, paddock: bool = True) -> argparse.ArgumentParser:
+    def add(name: str, help_text: str, bolt: bool = True) -> argparse.ArgumentParser:
         sp = sub.add_parser(name, help=help_text, description=help_text)
-        if paddock:
-            sp.add_argument("--paddock", required=True, help="Paddock folder.")
+        if bolt:
+            sp.add_argument("--bolt", required=True, help="Bolt folder.")
         if name not in read_only:
             sp.add_argument(
                 "--no-git", action="store_true", help="Do not commit or push this change."
             )
         return sp
 
-    sp = add("open", "Create a paddock.", paddock=False)
-    sp.add_argument("--root", required=True, help="Planning repository root (contains paddocks/).")
+    sp = add("open", "Create a bolt.", bolt=False)
+    sp.add_argument("--root", required=True, help="Planning repository root (contains bolts/).")
     sp.add_argument("--slug", required=True)
     sp.add_argument("--title", required=True)
     sp.add_argument("--intent", required=True, help="One sentence.")
@@ -2336,18 +2330,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--kind",
         choices=KINDS,
         default="delivery",
-        help="frame: programme-level design that ends at the HLA gate; phases are child paddocks.",
+        help="frame: programme-level design that ends at the HLA gate; phases are child bolts.",
     )
     sp.add_argument("--depth", choices=DEPTHS, help="Default: standard, or minimal for bugfix.")
     sp.add_argument(
         "--target", action="append", metavar="name=path", help="Target repository; repeatable."
     )
     sp.add_argument("--architecture-ref", help="ADR registry checkout; its commit is recorded.")
-    sp.add_argument("--owner", help="Paddock owner (optional).")
+    sp.add_argument("--owner", help="Bolt owner (optional).")
     sp.add_argument("--approver", help="Default approver (optional).")
     sp.add_argument("--date", help="Override the date part of the id, YYYY-MM-DD.")
     sp.add_argument(
-        "--parent", help="Parent paddock id or path under the same root; its HLA frames this one."
+        "--parent", help="Parent bolt id or path under the same root; its HLA frames this one."
     )
 
     sp = add("status", "Show progress.")
@@ -2379,12 +2373,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--by", help="Approver name (required with --approve).")
     sp.add_argument("--note", help="What to change (required with --request-changes).")
 
-    sp = add("units", "Load units and bolts from a JSON file.")
+    sp = add("units", "Load units and slices from a JSON file.")
     sp.add_argument(
         "--set",
         required=True,
         dest="file",
-        help='JSON with "units" (id, name, kind) and/or "bolts"; kind: ' + "|".join(UNIT_KINDS),
+        help='JSON with "units" (id, name, kind) and/or "slices"; kind: ' + "|".join(UNIT_KINDS),
     )
 
     sp = add("decision-id", "Reserve the next decision ids.")
@@ -2404,22 +2398,22 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=f"git fetch origin per repository first ({FETCH_TIMEOUT} s each, no prompts).",
     )
-    sp.add_argument("--out", help="Workspace file (default: <paddock>/<id>.code-workspace).")
+    sp.add_argument("--out", help="Workspace file (default: <bolt>/<id>.code-workspace).")
 
     sp = add("target", "Add or remove a target repository; it is classified as at open.")
     group = sp.add_mutually_exclusive_group(required=True)
     group.add_argument("--add", metavar="name=path", help="Add or replace a target.")
     group.add_argument("--remove", metavar="NAME", help="Remove a target by name.")
 
-    sp = add("kind", "Make the paddock a frame or a delivery paddock before later stages start.")
+    sp = add("kind", "Make the bolt a frame or a delivery bolt before later stages start.")
     sp.add_argument("--set", required=True, choices=KINDS)
 
     sp = add("park", "Leave a hand-over note.")
     sp.add_argument("--note", required=True)
     add("unpark", "Clear the hand-over note.")
 
-    sp = add("jira", "Record Jira keys: one epic per paddock, one story per unit.")
-    sp.add_argument("--epic", help="The paddock's Epic key; turns Jira on.")
+    sp = add("jira", "Record Jira keys: one epic per bolt, one story per unit.")
+    sp.add_argument("--epic", help="The bolt's Epic key; turns Jira on.")
     sp.add_argument("--unit", help="With --story or --done.")
     sp.add_argument("--story", help="The unit's Story key.")
     sp.add_argument("--done", action="store_true", help="The unit's Story is Done.")
@@ -2431,21 +2425,21 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser(
         "sync",
         help="Commit and push work that changed files but no state.",
-        description="Bring in the team's work, commit the paddock (or only the shared paths "
+        description="Bring in the team's work, commit the bolt (or only the shared paths "
         "with --root) and push.",
     )
-    sp.add_argument("--paddock", help="Paddock folder.")
+    sp.add_argument("--bolt", help="Bolt folder.")
     sp.add_argument("--root", help="Planning repository root: commit only the shared paths.")
     sp.add_argument("-m", "--message", default="save work in progress", help="What changed.")
 
-    sp = add("close", "Close the paddock.")
+    sp = add("close", "Close the bolt.")
     sp.add_argument("--status", required=True, choices=["complete", "superseded", "archived"])
-    sp.add_argument("--successor", help="Id of the paddock that replaces this one.")
+    sp.add_argument("--successor", help="Id of the bolt that replaces this one.")
     return parser
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
-    """Run a command; a command that changes a paddock is wrapped in two git syncs."""
+    """Run a command; a command that changes a bolt is wrapped in two git syncs."""
     if args.command == "sync":
         return cmd_sync(args)
     if not changes_state(args) or getattr(args, "no_git", False):
@@ -2453,8 +2447,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if args.command == "open":
         root, rel, slug = Path(args.root), None, ""
     else:
-        load_state(Path(args.paddock))  # report a missing or broken paddock before any git work
-        root, rel, slug = git_scope(Path(args.paddock))
+        load_state(Path(args.bolt))  # report a missing or broken bolt before any git work
+        root, rel, slug = git_scope(Path(args.bolt))
     ctx, _why = open_git(root.resolve())
     if ctx is None:
         return run_command(args)
@@ -2462,7 +2456,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     before = sync_git(ctx, rel, slug, f"save work before {event}")
     result = run_command(args)
     if args.command == "open":
-        _root, rel, slug = git_scope(Path(result["paddock"]))
+        _root, rel, slug = git_scope(Path(result["bolt"]))
     try:
         after = sync_git(ctx, rel, slug, git_event(args, result))
     except Fail as exc:
@@ -2479,36 +2473,36 @@ def run_command(args: argparse.Namespace) -> dict[str, Any]:
     if args.command == "open":
         return cmd_open(args, catalog)
 
-    paddock = Path(args.paddock)
-    state = load_state(paddock)
+    bolt = Path(args.bolt)
+    state = load_state(bolt)
     backfill_stages(state, catalog)
     cmd = args.command
     if cmd == "codekb-status":
         return {
             "ok": True,
-            "root": str(planning_root(paddock)),
-            "targets": codekb_status(planning_root(paddock), state["targets"]),
+            "root": str(planning_root(bolt)),
+            "targets": codekb_status(planning_root(bolt), state["targets"]),
         }
     if cmd == "status":
-        return cmd_status(paddock, state, catalog, args.format)
+        return cmd_status(bolt, state, catalog, args.format)
     if cmd == "next":
         return {"ok": True, **compute_next(state, catalog)}
     if cmd == "inputs":
-        return cmd_inputs(paddock, state, catalog, args.stage, args.unit)
+        return cmd_inputs(bolt, state, catalog, args.stage, args.unit)
     if cmd == "workspace":
-        return cmd_workspace(paddock, state, args)
+        return cmd_workspace(bolt, state, args)
 
     require_open(state)
     if cmd == "target":
-        return cmd_target(paddock, state, catalog, args)
+        return cmd_target(bolt, state, catalog, args)
     if cmd == "jira":
-        return cmd_jira(paddock, state, catalog, args)
+        return cmd_jira(bolt, state, catalog, args)
     if cmd == "kind":
-        return cmd_kind(paddock, state, catalog, args.set)
+        return cmd_kind(bolt, state, catalog, args.set)
     if cmd in {"decide", "step", "gate"}:
         stage = stage_def(catalog, args.stage)
         if cmd == "gate":
-            return cmd_gate(paddock, state, catalog, stage, args.unit, args)
+            return cmd_gate(bolt, state, catalog, stage, args.unit, args)
         if cmd in {"decide", "step"}:
             require_story(state, stage, args.unit)
         if cmd == "decide":
@@ -2517,32 +2511,32 @@ def run_command(args: argparse.Namespace) -> dict[str, Any]:
         else:
             cmd_step(state, stage, args.unit, args.to)
             event, note = "step", f"to {args.to}"
-        nxt = commit(paddock, state, catalog)
-        log_event(paddock, event, stage["id"], "", (f"[{args.unit}] " if args.unit else "") + note)
+        nxt = commit(bolt, state, catalog)
+        log_event(bolt, event, stage["id"], "", (f"[{args.unit}] " if args.unit else "") + note)
         return {"ok": True, "stage": stage["id"], "unit": args.unit, "next": nxt}
     if cmd == "units":
-        return cmd_units(paddock, state, catalog, Path(args.file))
+        return cmd_units(bolt, state, catalog, Path(args.file))
     if cmd == "decision-id":
         if args.count < 1:
             die(EXIT_USAGE, "--count must be at least 1.")
         start = int(state["decision_seq"])
         ids = [f"D{start + i}" for i in range(1, args.count + 1)]
         state["decision_seq"] = start + args.count
-        write_state(paddock, state)
-        log_event(paddock, "decision-id", "", "", ",".join(ids))
+        write_state(bolt, state)
+        log_event(bolt, "decision-id", "", "", ",".join(ids))
         return {"ok": True, "ids": ids}
     if cmd == "park":
         state["parked"] = {"note": args.note, "at": now()}
-        write_state(paddock, state)
-        log_event(paddock, "park", "", "", args.note)
+        write_state(bolt, state)
+        log_event(bolt, "park", "", "", args.note)
         return {"ok": True, "parked": state["parked"]}
     if cmd == "unpark":
         state["parked"] = None
-        write_state(paddock, state)
-        log_event(paddock, "unpark")
+        write_state(bolt, state)
+        log_event(bolt, "unpark")
         return {"ok": True, "parked": None}
     if cmd == "close":
-        return cmd_close(paddock, state, catalog, args.status, args.successor)
+        return cmd_close(bolt, state, catalog, args.status, args.successor)
     die(EXIT_USAGE, f"unknown command {cmd}")
 
 

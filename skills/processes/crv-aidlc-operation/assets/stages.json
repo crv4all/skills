@@ -320,7 +320,7 @@
         "classic"
       ],
       "conditional": true,
-      "runs_when": "When new components are needed. Skip when only existing components change. Decisions use the paddock D<n> sequence.",
+      "runs_when": "When new components are needed. Skip when only existing components change. Decisions use the Bolt D<n> sequence.",
       "inputs": [
         {
           "path": "docs/inception/requirements-analysis/requirements.md",
@@ -454,7 +454,7 @@
         "classic"
       ],
       "conditional": false,
-      "runs_when": "classic: always, after Units Generation. Plans the Bolt sequence only; it does not choose stages.",
+      "runs_when": "classic: always, after Units Generation. Plans the Slice sequence only; it does not choose stages.",
       "inputs": [
         {
           "path": "docs/inception/requirements-analysis/requirements.md",
@@ -488,7 +488,7 @@
       ],
       "questions": "docs/inception/delivery-planning/delivery-planning-questions.md",
       "artifacts": [
-        "docs/inception/delivery-planning/bolt-plan.md",
+        "docs/inception/delivery-planning/slice-plan.md",
         "docs/inception/delivery-planning/team-allocation.md",
         "docs/inception/delivery-planning/risk-and-sequencing-rationale.md",
         "docs/inception/delivery-planning/external-dependency-map.md",
@@ -796,7 +796,7 @@
           "mode": "digest"
         },
         {
-          "path": "docs/inception/delivery-planning/bolt-plan.md",
+          "path": "docs/inception/delivery-planning/slice-plan.md",
           "mode": "digest"
         }
       ],
@@ -820,14 +820,14 @@
         "classic"
       ],
       "conditional": true,
-      "runs_when": "When people must release or cut over the paddock's change: a data migration, a cut-over, a switch of write master, a retirement, or a release across several repositories. Skip, with the reason, when each target repository's own pipeline releases on merge and nothing else has to happen. Other scopes: only when forced with `decide`.",
+      "runs_when": "When people must release or cut over the Bolt's change: a data migration, a cut-over, a switch of write master, a retirement, or a release across several repositories. Skip, with the reason, when each target repository's own pipeline releases on merge and nothing else has to happen. Other scopes: only when forced with `decide`.",
       "inputs": [
         {
           "path": "docs/construction/build-and-test/build-and-test-summary.md",
           "mode": "digest"
         },
         {
-          "path": "docs/inception/delivery-planning/bolt-plan.md",
+          "path": "docs/inception/delivery-planning/slice-plan.md",
           "mode": "digest"
         },
         {

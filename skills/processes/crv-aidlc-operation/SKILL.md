@@ -1,7 +1,7 @@
 ---
 name: crv-aidlc-operation
 description: >-
-  Prepares and records the release of a paddock's change: a release plan, a runbook with named people, a rollback runbook and verification checks, then an environment-by-environment execution log in which people run every step and the agent records the evidence. Use when someone wants to plan or run a release, a data migration, a cut-over, a switch of write master or a retirement for a paddock, or resume its deploy log. Never runs a deployment itself. Not for routing a paddock (crv-aidlc), building or testing units (crv-aidlc-construction), the design (crv-aidlc-hla, crv-aidlc-tdd), requirements and units (crv-aidlc-inception), or repo scans (crv-aidlc-reverse-engineering).
+  Prepares and records the release of a Bolt's change: a release plan, a runbook with named people, a rollback runbook and verification checks, then an environment-by-environment execution log in which people run every step and the agent records the evidence. Use when someone wants to plan or run a release, a data migration, a cut-over, a switch of write master or a retirement for a Bolt, or resume its deploy log. Never runs a deployment itself. Not for routing a Bolt (crv-aidlc), building or testing units (crv-aidlc-construction), the design (crv-aidlc-hla, crv-aidlc-tdd), requirements and units (crv-aidlc-inception), or repo scans (crv-aidlc-reverse-engineering).
 license: Apache-2.0
 metadata:
   owner: cloudforce-team-data
@@ -13,7 +13,7 @@ metadata:
 
 # Operation
 
-Two stages after Build and Test: plan the release, then record it being done. Plans and records live in the paddock; every change to an environment is made by a person.
+Two stages after Build and Test: plan the release, then record it being done. Plans and records live in the Bolt; every change to an environment is made by a person.
 
 ## Execution
 
@@ -41,12 +41,12 @@ In `docs/operation/<stage>/`. Both stages are conditional: `decide` first. Deplo
 
 ## Runs
 
-Start with `aidlc_state.py inputs --paddock <p> --stage <id>`; exit 3: name the missing file, stop.
+Start with `aidlc_state.py inputs --bolt <p> --stage <id>`; exit 3: name the missing file, stop.
 
 - **Ask:** write the questions, `lint_questions.py --file <f> --allow-open`, `step --stage <id> --to asked`, stop.
 - **Analyse, produce:** `lint_questions.py --file <f>`, then `step ... --to analysed` and `--to produced`.
 - **Execute:** follow the reference; `step --to produced` after the last environment's verification.
-- **Gate:** `gate --paddock <p> --stage <id> ...`.
+- **Gate:** `gate --bolt <p> --stage <id> ...`.
 
 ## When a step fails
 

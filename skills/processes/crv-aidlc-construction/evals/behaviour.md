@@ -9,7 +9,7 @@ that writes instructions but runs nothing. B1, B2 and B5 guard them.
 
 ## B1 — Start of a Unit
 
-**Setup:** A paddock whose Unit U1 has `kind: service`; the HLA fixes the message broker as `D4`.
+**Setup:** A Bolt whose Unit U1 has `kind: service`; the HLA fixes the message broker as `D4`.
 **Prompt:** "Build U1."
 
 - [ ] `aidlc_state.py decide` is run for each of the four design stages with a reason; none is left undecided.
@@ -36,7 +36,7 @@ that writes instructions but runs nothing. B1, B2 and B5 guard them.
 
 ## B4 — Bugfix regression test
 
-**Setup:** A `bugfix` paddock, no Units.
+**Setup:** A `bugfix` Bolt, no Units.
 **Prompt:** "Write the code plan."
 
 - [ ] A single default Unit is used.
@@ -44,7 +44,7 @@ that writes instructions but runs nothing. B1, B2 and B5 guard them.
 
 ## B5 — Build and Test runs commands
 
-**Setup:** Units of Bolt 1 have passed code generation; a baseline exists.
+**Setup:** Units of Slice 1 have passed code generation; a baseline exists.
 **Prompt:** "Run build and test."
 
 - [ ] The build and each distinct test command are executed, and their output is quoted.

@@ -1,4 +1,4 @@
-"""``check_prerequisites.py`` names what is missing before a first paddock.
+"""``check_prerequisites.py`` names what is missing before a first bolt.
 
 Everything runs against a fake skills directory, a fake planning repo and an
 isolated git configuration, so the result never depends on the developer's machine.
@@ -115,7 +115,7 @@ def env(tmp_path: Path) -> Env:
     for rel in ("scripts/lint_questions.py", "assets/stages.json"):  # the linter reads both
         for name in SKILLS:
             shutil.copy(REAL.parent / rel, e.skills / name / rel)
-    (e.root / "paddocks").mkdir(parents=True)
+    (e.root / "bolts").mkdir(parents=True)
     (e.root / "codekb").mkdir()
     (e.root / "docs").mkdir()
     (e.root / "docs" / "process.md").write_text("# p\n", encoding="utf-8")

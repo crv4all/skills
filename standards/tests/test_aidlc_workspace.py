@@ -1,6 +1,6 @@
-"""``aidlc_state.py workspace`` and ``target``: one place to open every folder of a paddock.
+"""``aidlc_state.py workspace`` and ``target``: one place to open every folder of a bolt.
 
-A paddock's work spans the planning repository, the ADR registry and several
+A bolt's work spans the planning repository, the ADR registry and several
 target repositories, and a stale checkout read by a stage goes unnoticed. These
 tests build real throwaway git repositories with an origin, because "behind
 origin" is a statement about git refs.
@@ -69,21 +69,21 @@ def run(*args: str) -> tuple[int, dict[str, Any]]:
     return done.returncode, (json.loads(done.stdout) if done.stdout.startswith("{") else {})
 
 
-def open_paddock(root: Path, *args: str) -> tuple[Path, dict[str, Any]]:
+def open_bolt(root: Path, *args: str) -> tuple[Path, dict[str, Any]]:
     code, data = run(
         "open", "--root", str(root), "--slug", "demo", "--title", "Demo",
         "--intent", "Try", "--date", "2026-01-05", *args,
     )  # fmt: skip
     assert code == 0, data
-    return Path(data["paddock"]), data
+    return Path(data["bolt"]), data
 
 
-def state(paddock: Path) -> dict[str, Any]:
-    return json.loads((paddock / "state.json").read_text(encoding="utf-8"))
+def state(bolt: Path) -> dict[str, Any]:
+    return json.loads((bolt / "state.json").read_text(encoding="utf-8"))
 
 
-def log_lines(paddock: Path) -> list[str]:
-    return (paddock / "log.md").read_text(encoding="utf-8").splitlines()
+def log_lines(bolt: Path) -> list[str]:
+    return (bolt / "log.md").read_text(encoding="utf-8").splitlines()
 
 
 def checkout(data: dict[str, Any], name: str) -> dict[str, Any]:
@@ -104,18 +104,18 @@ def world(tmp_path: Path) -> dict[str, Path]:
 
 
 def test_open_writes_the_workspace_file_in_order(world: dict[str, Path]) -> None:
-    paddock, data = open_paddock(
+    bolt, data = open_bolt(
         world["root"],
         "--target",
         f"svc={world['svc']}",
         "--architecture-ref",
         str(world["registry"]),
     )
-    file = paddock / "2026-01-05-demo.code-workspace"
+    file = bolt / "2026-01-05-demo.code-workspace"
     assert data["workspace"]["file"] == str(file.resolve())
     folders = json.loads(file.read_text(encoding="utf-8"))["folders"]
     assert [f["name"] for f in folders] == [
-        "paddock: demo",
+        "bolt: demo",
         "planning repo",
         "adr registry",
         "target: svc",
@@ -125,53 +125,53 @@ def test_open_writes_the_workspace_file_in_order(world: dict[str, Path]) -> None
 
 
 def test_claude_command_skips_only_the_planning_root(world: dict[str, Path]) -> None:
-    paddock, data = open_paddock(world["root"], "--target", f"svc={world['svc']}")
+    bolt, data = open_bolt(world["root"], "--target", f"svc={world['svc']}")
     command = data["workspace"]["claude_command"]
     assert command.startswith("claude --add-dir ")
-    assert f'--add-dir "{paddock.resolve()}"' in command
+    assert f'--add-dir "{bolt.resolve()}"' in command
     assert f'--add-dir "{world["svc"].resolve()}"' in command
     assert f'"{world["root"].resolve()}"' not in command
 
 
 def test_out_writes_the_file_elsewhere(world: dict[str, Path]) -> None:
-    paddock, _ = open_paddock(world["root"])
+    bolt, _ = open_bolt(world["root"])
     out = world["base"] / "mine.code-workspace"
-    code, data = run("workspace", "--paddock", str(paddock), "--out", str(out))
+    code, data = run("workspace", "--bolt", str(bolt), "--out", str(out))
     assert code == 0 and data["file"] == str(out.resolve())
-    assert json.loads(out.read_text(encoding="utf-8"))["folders"][0]["name"] == "paddock: demo"
+    assert json.loads(out.read_text(encoding="utf-8"))["folders"][0]["name"] == "bolt: demo"
     missing = world["base"] / "nope" / "x.code-workspace"
-    assert run("workspace", "--paddock", str(paddock), "--out", str(missing))[0] == 3
+    assert run("workspace", "--bolt", str(bolt), "--out", str(missing))[0] == 3
 
 
 def test_extras_are_kept_and_removed(world: dict[str, Path]) -> None:
-    paddock, _ = open_paddock(world["root"])
+    bolt, _ = open_bolt(world["root"])
     docs = world["base"] / "docs"
     docs.mkdir()
-    p = str(paddock)
-    assert run("workspace", "--paddock", p, "--extra", f"docs={docs}")[0] == 0
-    assert state(paddock)["workspace"]["extra"] == [{"name": "docs", "path": str(docs.resolve())}]
-    assert "| workspace |" in log_lines(paddock)[-1]
-    code, data = run("workspace", "--paddock", p)
+    p = str(bolt)
+    assert run("workspace", "--bolt", p, "--extra", f"docs={docs}")[0] == 0
+    assert state(bolt)["workspace"]["extra"] == [{"name": "docs", "path": str(docs.resolve())}]
+    assert "| workspace |" in log_lines(bolt)[-1]
+    code, data = run("workspace", "--bolt", p)
     assert code == 0 and data["folders"][-1] == {"name": "docs", "path": str(docs.resolve())}
     assert data["checkouts"] == []  # an extra that is not a git repository is not a checkout
-    assert run("workspace", "--paddock", p, "--extra", "docs=")[0] == 0
-    assert state(paddock)["workspace"]["extra"] == []
-    assert run("workspace", "--paddock", p, "--extra", "docs=")[0] == 3
+    assert run("workspace", "--bolt", p, "--extra", "docs=")[0] == 0
+    assert state(bolt)["workspace"]["extra"] == []
+    assert run("workspace", "--bolt", p, "--extra", "docs=")[0] == 3
 
 
 def test_extra_refusals_change_nothing(world: dict[str, Path]) -> None:
-    paddock, _ = open_paddock(world["root"])
-    before = state(paddock)
-    p = str(paddock)
-    assert run("workspace", "--paddock", p, "--extra", f"x={world['base'] / 'none'}")[0] == 3
-    assert run("workspace", "--paddock", p, "--extra", "no-equals-sign")[0] == 2
-    assert state(paddock) == before
+    bolt, _ = open_bolt(world["root"])
+    before = state(bolt)
+    p = str(bolt)
+    assert run("workspace", "--bolt", p, "--extra", f"x={world['base'] / 'none'}")[0] == 3
+    assert run("workspace", "--bolt", p, "--extra", "no-equals-sign")[0] == 2
+    assert state(bolt) == before
 
 
 def test_extra_git_repository_is_a_checkout(world: dict[str, Path]) -> None:
-    paddock, _ = open_paddock(world["root"])
+    bolt, _ = open_bolt(world["root"])
     _, lib = origin_and_clone(world["base"], "lib")
-    code, data = run("workspace", "--paddock", str(paddock), "--extra", f"lib={lib}")
+    code, data = run("workspace", "--bolt", str(bolt), "--extra", f"lib={lib}")
     assert code == 0 and checkout(data, "lib")["role"] == "extra"
 
 
@@ -179,7 +179,7 @@ def test_extra_git_repository_is_a_checkout(world: dict[str, Path]) -> None:
 
 
 def test_a_current_checkout_is_not_stale(world: dict[str, Path]) -> None:
-    _, data = open_paddock(world["root"], "--target", f"svc={world['svc']}")
+    _, data = open_bolt(world["root"], "--target", f"svc={world['svc']}")
     row = checkout(data["workspace"], "svc")
     assert row["is_git"] and row["exists"] and not row["fetched"]
     assert (row["branch"], row["default_branch"]) == ("main", "main")
@@ -188,11 +188,11 @@ def test_a_current_checkout_is_not_stale(world: dict[str, Path]) -> None:
 
 
 def test_behind_origin_shows_only_after_a_fetch(world: dict[str, Path]) -> None:
-    paddock, _ = open_paddock(world["root"], "--target", f"svc={world['svc']}")
+    bolt, _ = open_bolt(world["root"], "--target", f"svc={world['svc']}")
     push_one_more(world["base"], world["origin"])
-    code, data = run("workspace", "--paddock", str(paddock))
+    code, data = run("workspace", "--bolt", str(bolt))
     assert code == 0 and checkout(data, "svc")["behind"] == 0  # no network without --fetch
-    code, data = run("workspace", "--paddock", str(paddock), "--fetch")
+    code, data = run("workspace", "--bolt", str(bolt), "--fetch")
     row = checkout(data, "svc")
     assert code == 0 and row["fetched"] and row["behind"] == 1 and row["stale"]
     assert data["stale"] == ["svc"]
@@ -203,15 +203,15 @@ def test_another_branch_and_local_edits_are_reported(world: dict[str, Path]) -> 
     git(svc, "switch", "-q", "-c", "feature")
     (svc / "app.py").write_text("x = 2\n", encoding="utf-8")
     (svc / "new.py").write_text("z = 3\n", encoding="utf-8")
-    _, data = open_paddock(world["root"], "--target", f"svc={svc}")
+    _, data = open_bolt(world["root"], "--target", f"svc={svc}")
     row = checkout(data["workspace"], "svc")
     assert row["branch"] == "feature" and row["stale"] and row["dirty"] == 2
 
 
 def test_a_failed_fetch_is_data_not_a_crash(world: dict[str, Path]) -> None:
     git(world["svc"], "remote", "set-url", "origin", str(world["base"] / "gone.git"))
-    paddock, _ = open_paddock(world["root"], "--target", f"svc={world['svc']}")
-    code, data = run("workspace", "--paddock", str(paddock), "--fetch")
+    bolt, _ = open_bolt(world["root"], "--target", f"svc={world['svc']}")
+    code, data = run("workspace", "--bolt", str(bolt), "--fetch")
     row = checkout(data, "svc")
     assert code == 0 and not row["fetched"] and row["fetch_error"]
 
@@ -220,7 +220,7 @@ def test_a_folder_that_is_not_git_is_reported_not_judged(world: dict[str, Path])
     plain = world["base"] / "plain"
     plain.mkdir()
     (plain / "a.py").write_text("a = 1\n", encoding="utf-8")
-    _, data = open_paddock(world["root"], "--target", f"plain={plain}")
+    _, data = open_bolt(world["root"], "--target", f"plain={plain}")
     row = checkout(data["workspace"], "plain")
     assert row["exists"] and not row["is_git"] and not row["stale"]
 
@@ -228,7 +228,7 @@ def test_a_folder_that_is_not_git_is_reported_not_judged(world: dict[str, Path])
 def test_workspace_never_changes_a_target(world: dict[str, Path]) -> None:
     svc = world["svc"]
     (svc / "app.py").write_text("x = 9\n", encoding="utf-8")
-    paddock, _ = open_paddock(world["root"], "--target", f"svc={svc}")
+    bolt, _ = open_bolt(world["root"], "--target", f"svc={svc}")
     push_one_more(world["base"], world["origin"])
 
     def snapshot() -> tuple[str, str, str, bytes]:
@@ -240,7 +240,7 @@ def test_workspace_never_changes_a_target(world: dict[str, Path]) -> None:
         )
 
     before = snapshot()
-    assert run("workspace", "--paddock", str(paddock), "--fetch")[0] == 0
+    assert run("workspace", "--bolt", str(bolt), "--fetch")[0] == 0
     assert snapshot() == before
 
 
@@ -248,43 +248,43 @@ def test_workspace_never_changes_a_target(world: dict[str, Path]) -> None:
 
 
 def test_target_add_classifies_and_turns_on_reverse_engineering(world: dict[str, Path]) -> None:
-    paddock, _ = open_paddock(world["root"])
-    assert state(paddock)["stages"]["reverse-engineering"]["decision"] == "skip"
-    code, data = run("target", "--paddock", str(paddock), "--add", f"svc={world['svc']}")
+    bolt, _ = open_bolt(world["root"])
+    assert state(bolt)["stages"]["reverse-engineering"]["decision"] == "skip"
+    code, data = run("target", "--bolt", str(bolt), "--add", f"svc={world['svc']}")
     assert code == 0, data
-    assert [(t["repo"], t["kind"]) for t in state(paddock)["targets"]] == [("svc", "brownfield")]
-    assert state(paddock)["stages"]["reverse-engineering"]["decision"] == "execute"
+    assert [(t["repo"], t["kind"]) for t in state(bolt)["targets"]] == [("svc", "brownfield")]
+    assert state(bolt)["stages"]["reverse-engineering"]["decision"] == "execute"
     assert [f["name"] for f in data["workspace"]["folders"]][-1] == "target: svc"
-    assert "| target |" in log_lines(paddock)[-1] and "brownfield" in log_lines(paddock)[-1]
+    assert "| target |" in log_lines(bolt)[-1] and "brownfield" in log_lines(bolt)[-1]
 
 
 def test_target_remove_restores_the_skip(world: dict[str, Path]) -> None:
-    paddock, _ = open_paddock(world["root"], "--target", f"svc={world['svc']}")
-    code, data = run("target", "--paddock", str(paddock), "--remove", "svc")
-    assert code == 0 and state(paddock)["targets"] == []
-    record = state(paddock)["stages"]["reverse-engineering"]
+    bolt, _ = open_bolt(world["root"], "--target", f"svc={world['svc']}")
+    code, data = run("target", "--bolt", str(bolt), "--remove", "svc")
+    assert code == 0 and state(bolt)["targets"] == []
+    record = state(bolt)["stages"]["reverse-engineering"]
     assert (record["decision"], record["reason"]) == ("skip", "no brownfield target")
     assert data["workspace"]["checkouts"] == []
 
 
 def test_target_keeps_a_decision_made_by_a_person(world: dict[str, Path]) -> None:
-    paddock, _ = open_paddock(world["root"])
-    p = str(paddock)
-    run("decide", "--paddock", p, "--stage", "reverse-engineering", "--decision", "skip",
+    bolt, _ = open_bolt(world["root"])
+    p = str(bolt)
+    run("decide", "--bolt", p, "--stage", "reverse-engineering", "--decision", "skip",
         "--reason", "store is fresh enough")  # fmt: skip
-    code, data = run("target", "--paddock", p, "--add", f"svc={world['svc']}")
+    code, data = run("target", "--bolt", p, "--add", f"svc={world['svc']}")
     assert code == 0 and data["reverse_engineering"].startswith("left as skip")
-    assert state(paddock)["stages"]["reverse-engineering"]["reason"] == "store is fresh enough"
+    assert state(bolt)["stages"]["reverse-engineering"]["reason"] == "store is fresh enough"
 
 
 def test_target_refusals(world: dict[str, Path]) -> None:
-    paddock, _ = open_paddock(world["root"])
-    p = str(paddock)
-    before = state(paddock)
-    assert run("target", "--paddock", p, "--remove", "nope")[0] == 3
-    assert run("target", "--paddock", p, "--add", f"x={world['base'] / 'none'}")[0] == 3
-    assert run("target", "--paddock", p, "--add", "x")[0] == 2
-    assert run("target", "--paddock", p)[0] == 2
-    assert state(paddock) == before
-    run("close", "--paddock", p, "--status", "archived")
-    assert run("target", "--paddock", p, "--add", f"svc={world['svc']}")[0] == 1
+    bolt, _ = open_bolt(world["root"])
+    p = str(bolt)
+    before = state(bolt)
+    assert run("target", "--bolt", p, "--remove", "nope")[0] == 3
+    assert run("target", "--bolt", p, "--add", f"x={world['base'] / 'none'}")[0] == 3
+    assert run("target", "--bolt", p, "--add", "x")[0] == 2
+    assert run("target", "--bolt", p)[0] == 2
+    assert state(bolt) == before
+    run("close", "--bolt", p, "--status", "archived")
+    assert run("target", "--bolt", p, "--add", f"svc={world['svc']}")[0] == 1

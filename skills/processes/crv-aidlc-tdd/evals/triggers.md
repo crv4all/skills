@@ -13,7 +13,7 @@ acronym also collides with test-driven development, which is tested below.
 | # | Prompt | Why |
 | --- | --- | --- |
 | T1 | "The HLA is accepted; write the technical design document." | Names the TDD after an accepted HLA. |
-| T2 | "Do we need a TDD for the billing paddock?" | The applicability decision is this skill's first step. |
+| T2 | "Do we need a TDD for the billing Bolt?" | The applicability decision is this skill's first step. |
 | T3 | "The TDD questions are answered, write it up." | Resuming the round. |
 | T4 | "Reviewers asked for a detailed design of the ingestion part." | A review request for detailed design. |
 
@@ -22,7 +22,7 @@ acronym also collides with test-driven development, which is tested below.
 | # | Prompt | Why not | Should fire instead |
 | --- | --- | --- | --- |
 | N1 | "Let's do TDD on this parser: write the failing test first." | Test-driven development, not a design document. | nothing |
-| N2 | "Write the high-level architecture for this paddock." | The HLA comes first. | `crv-aidlc-hla` |
+| N2 | "Write the high-level architecture for this Bolt." | The HLA comes first. | `crv-aidlc-hla` |
 | N3 | "Change the HLA so the API is event-driven." | An HLA change. | `crv-aidlc-hla` |
 | N4 | "Break the accepted design into units of work." | Inception work. | `crv-aidlc-inception` |
 

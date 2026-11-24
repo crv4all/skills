@@ -37,7 +37,7 @@ The units and their kinds, the dependency graph, which unit delivers every story
 3. Assign each unit a kind: `service`, `spec`, `ui`, `packaging` or `library`. The kind decides which Construction artifacts it owes later, so ask when it is not obvious.
 4. Write units, graph and story map. The graph must have no cycles; break a cycle by moving the shared part into a unit of its own.
 5. Give no build order or critical path here; that is Delivery Planning's.
-6. After the gate, load the units: write `{"units": [{"id": "u-1", "name": ..., "kind": ...}]}` to a file (the id is the lower-case form of `U-n`; it names the unit's construction folder) and run `aidlc_state.py units --paddock <p> --set <file.json>`; a refusal lists the findings.
+6. After the gate, load the units: write `{"units": [{"id": "u-1", "name": ..., "kind": ...}]}` to a file (the id is the lower-case form of `U-n`; it names the unit's construction folder) and run `aidlc_state.py units --bolt <p> --set <file.json>`; a refusal lists the findings.
 
 ## Writes
 

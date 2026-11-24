@@ -9,7 +9,7 @@ one should be reused. B1, B2 and B3 guard them.
 
 ## B1 — Plan reuses the existing mechanism
 
-**Setup:** A paddock past Build and Test with two target repos; `codekb/<repo>/technology-stack.md` names each repo's release mechanism.
+**Setup:** A Bolt past Build and Test with two target repos; `codekb/<repo>/technology-stack.md` names each repo's release mechanism.
 **Prompt:** "Plan the release."
 
 - [ ] `deployment-pipeline-questions.md` covers every category in the reference, or says in one line why one does not apply.

@@ -27,7 +27,7 @@ Keep the template's headings, order and tables. Remove the guidance comments. Ea
 | all | Digest, Design decisions, Appendix, header |
 
 - **Digest** last: at most 10 lines, because later stages and the gate read only this.
-- In a frame paddock (`status` shows `kind: frame`), the sections that would design components hold the rules the child paddocks must follow, and the phase map with the contracts between phases goes under Proposed architecture.
+- In a frame Bolt (`status` shows `kind: frame`), the sections that would design components hold the rules the child Bolts must follow, and the phase map with the contracts between phases goes under Proposed architecture.
 - A section marked Optional in the template may hold only `Not applicable: <reason>`. Required sections cannot. Modernization is required when `solution_type` is `modernization`.
 - Every fact carries its source: a decision id, an answer id (`A-Q3`, `CL-Q2`), an ADR id, or a document path with lines. Anything not checked is marked `unverified`.
 - In table cells with several items, put each on its own line with `<br/>`; never run them together with full stops.
@@ -50,7 +50,7 @@ Routine choices that follow a pattern, ordinary engineering practice, and target
 - Departing from an Accepted ADR is an exception, recorded in four places: header `exceptions` (`required: true`, `link_or_reason`), a Risks row, a `decision_needed` entry, and a Design decisions row.
 - Using a Proposed ADR is a recorded decision in `hla-decisions.md`, flagged in the doc table only when it meets a criterion above.
 - Superseded and Deprecated ADRs are never a basis. Find the successor, or record the gap as a risk.
-- In a child paddock, a decision of the parent (`parent:D3`) binds like an Accepted ADR: cite it, and treat a departure from it as an exception, with the parent id as the link.
+- In a child Bolt, a decision of the parent (`parent:D3`) binds like an Accepted ADR: cite it, and treat a departure from it as an exception, with the parent id as the link.
 
 ## Header
 
@@ -74,7 +74,7 @@ Plain Mermaid only; plugin syntaxes do not render everywhere.
 ## Validate
 
 ```bash
-python3 scripts/validate_doc.py --file <paddock>/architecture/hla.md --kind hla \
+python3 scripts/validate_doc.py --file <bolt>/architecture/hla.md --kind hla \
   --adr-index <planning repo>/architecture-index.json
 ```
 
@@ -94,10 +94,10 @@ If the stage was already approved, follow the core rules for changes after appro
 
 ## Sign-off
 
-The decision is recorded in the file by people, then mirrored into paddock state by the script.
+The decision is recorded in the file by people, then mirrored into Bolt state by the script.
 
 1. Set `status: in-review` and give the owner the path, the Digest and the `decision_needed` list.
 2. A reviewer edits the header: `status` to `accepted`, `changes-requested` or `declined`; `signed_off_by`; `signed_off_on`; any `review_conditions` (a TDD request goes there). The `Signed off by` cells in the decisions table are theirs too.
 3. Validate again.
 4. Accepted: `aidlc_state.py gate --stage hla --approve --by "<signed_off_by>"`. The gate refuses unless the header says `accepted` and is signed.
-5. Changes requested: `gate --request-changes --note "<the requests>"`, then refine. Declined: the same with the reason, and tell the owner the paddock needs a new direction.
+5. Changes requested: `gate --request-changes --note "<the requests>"`, then refine. Declined: the same with the reason, and tell the owner the Bolt needs a new direction.

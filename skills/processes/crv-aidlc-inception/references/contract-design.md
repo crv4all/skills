@@ -4,7 +4,7 @@ Defines the agreements at unit boundaries and at the system's edge before anythi
 
 ## Runs when / skipped when
 
-Runs when units talk to each other, or to outside consumers, through an API, an event or a file. Skipped for one self-contained unit; write one line saying so. Runs once per paddock.
+Runs when units talk to each other, or to outside consumers, through an API, an event or a file. Skipped for one self-contained unit; write one line saying so. Runs once per Bolt.
 
 ## Reads
 

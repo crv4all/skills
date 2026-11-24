@@ -1,7 +1,7 @@
-"""Parent and child paddocks in ``aidlc_state.py``.
+"""Parent and child bolts in ``aidlc_state.py``.
 
-A programme has one paddock whose HLA fixes principles and phases, and one
-paddock per phase whose HLA builds on it. The child must read the parent's
+A programme has one bolt whose HLA fixes principles and phases, and one
+bolt per phase whose HLA builds on it. The child must read the parent's
 settled decisions rather than ask them again, so ``inputs`` lists them and
 ``status`` says whether the parent's HLA is accepted yet.
 """
@@ -29,7 +29,7 @@ def run(*args: str) -> tuple[int, dict[str, Any], str]:
     return done.returncode, data, done.stdout
 
 
-def open_paddock(root: Path, slug: str, *args: str) -> tuple[int, dict[str, Any]]:
+def open_bolt(root: Path, slug: str, *args: str) -> tuple[int, dict[str, Any]]:
     code, data, _ = run(
         "open", "--root", str(root), "--slug", slug, "--title", slug.title(),
         "--intent", "Try", "--date", "2026-01-05", *args,
@@ -37,16 +37,16 @@ def open_paddock(root: Path, slug: str, *args: str) -> tuple[int, dict[str, Any]
     return code, data
 
 
-def state(paddock: Path) -> dict[str, Any]:
-    return json.loads((paddock / "state.json").read_text(encoding="utf-8"))
+def state(bolt: Path) -> dict[str, Any]:
+    return json.loads((bolt / "state.json").read_text(encoding="utf-8"))
 
 
 def frame_and_child(root: Path, *child_args: str) -> tuple[Path, Path]:
-    code, frame = open_paddock(root, "programme")
+    code, frame = open_bolt(root, "programme")
     assert code == 0, frame
-    code, child = open_paddock(root, "phase-one", "--parent", frame["id"], *child_args)
+    code, child = open_bolt(root, "phase-one", "--parent", frame["id"], *child_args)
     assert code == 0, child
-    return Path(frame["paddock"]), Path(child["paddock"])
+    return Path(frame["bolt"]), Path(child["bolt"])
 
 
 def write(path: Path, text: str) -> None:
@@ -58,7 +58,7 @@ def test_open_records_the_parent_by_id(tmp_path: Path) -> None:
     frame, child = frame_and_child(tmp_path)
     assert state(child)["parent"] == {
         "id": "2026-01-05-programme",
-        "path": "paddocks/2026-01-05-programme",
+        "path": "bolts/2026-01-05-programme",
     }
     log = (child / "log.md").read_text(encoding="utf-8")
     assert "| parent |" in log and "2026-01-05-programme" in log
@@ -66,48 +66,48 @@ def test_open_records_the_parent_by_id(tmp_path: Path) -> None:
 
 
 def test_open_accepts_the_parent_as_a_path(tmp_path: Path) -> None:
-    _, frame = open_paddock(tmp_path, "programme")
-    code, data = open_paddock(tmp_path, "phase-one", "--parent", frame["paddock"])
+    _, frame = open_bolt(tmp_path, "programme")
+    code, data = open_bolt(tmp_path, "phase-one", "--parent", frame["bolt"])
     assert code == 0 and data["parent"]["id"] == "2026-01-05-programme"
 
 
 def test_open_refuses_a_parent_that_does_not_exist(tmp_path: Path) -> None:
-    code, _ = open_paddock(tmp_path, "phase-one", "--parent", "2026-01-05-nothing")
+    code, _ = open_bolt(tmp_path, "phase-one", "--parent", "2026-01-05-nothing")
     assert code == 3
-    assert not (tmp_path / "paddocks" / "2026-01-05-phase-one").exists()
+    assert not (tmp_path / "bolts" / "2026-01-05-phase-one").exists()
 
 
 def test_open_refuses_a_parent_under_another_root(tmp_path: Path) -> None:
     other = tmp_path / "other"
     other.mkdir()
-    _, frame = open_paddock(other, "programme")
+    _, frame = open_bolt(other, "programme")
     plan = tmp_path / "plan"
     plan.mkdir()
-    code, _ = open_paddock(plan, "phase-one", "--parent", frame["paddock"])
+    code, _ = open_bolt(plan, "phase-one", "--parent", frame["bolt"])
     assert code == 2
 
 
 def test_status_shows_the_parent_and_its_hla_status(tmp_path: Path) -> None:
     frame, child = frame_and_child(tmp_path)
-    code, data, _ = run("status", "--paddock", str(child))
+    code, data, _ = run("status", "--bolt", str(child))
     assert code == 0 and data["parent"]["id"] == "2026-01-05-programme"
     assert data["parent_hla_status"] == "missing"
     write(frame / "architecture" / "hla.md", HLA.format(status="in-review"))
-    _, _, text = run("status", "--paddock", str(child), "--format", "text")
+    _, _, text = run("status", "--bolt", str(child), "--format", "text")
     assert "Parent: 2026-01-05-programme (HLA in-review)" in text
     assert len(text.splitlines()) <= 20
 
 
 def test_child_hla_inputs_read_the_parent(tmp_path: Path) -> None:
     frame, child = frame_and_child(tmp_path)
-    run("decide", "--paddock", str(child), "--stage", "document-knowledge", "--decision", "skip",
+    run("decide", "--bolt", str(child), "--stage", "document-knowledge", "--decision", "skip",
         "--reason", "no documents")  # fmt: skip
-    code, data, _ = run("inputs", "--paddock", str(child), "--stage", "hla")
+    code, data, _ = run("inputs", "--bolt", str(child), "--stage", "hla")
     assert code == 3
     assert {"path": "parent:architecture/hla.md", "produced_by": "parent:hla"} in data["missing"]
     write(frame / "architecture" / "hla.md", HLA.format(status="accepted"))
     write(frame / "architecture" / "hla-decisions.md", DIGEST)
-    code, data, _ = run("inputs", "--paddock", str(child), "--stage", "hla")
+    code, data, _ = run("inputs", "--bolt", str(child), "--stage", "hla")
     assert code == 0, data
     rows = {row["path"]: row for row in data["inputs"]}
     assert rows["parent:architecture/hla.md"]["mode"] == "digest"
@@ -120,21 +120,21 @@ def test_child_hla_inputs_read_the_parent(tmp_path: Path) -> None:
 
 def test_a_parent_hla_in_review_is_a_warning_not_a_refusal(tmp_path: Path) -> None:
     frame, child = frame_and_child(tmp_path)
-    run("decide", "--paddock", str(child), "--stage", "document-knowledge", "--decision", "skip",
+    run("decide", "--bolt", str(child), "--stage", "document-knowledge", "--decision", "skip",
         "--reason", "no documents")  # fmt: skip
     write(frame / "architecture" / "hla.md", HLA.format(status="in-review"))
     write(frame / "architecture" / "hla-decisions.md", DIGEST)
-    code, data, _ = run("inputs", "--paddock", str(child), "--stage", "hla")
+    code, data, _ = run("inputs", "--bolt", str(child), "--stage", "hla")
     assert code == 0
     assert data["parent_hla_status"] == "in-review"
     assert [w["code"] for w in data["warnings"]] == ["parent-hla-not-accepted"]
 
 
-def test_a_paddock_without_a_parent_lists_no_parent_inputs(tmp_path: Path) -> None:
-    code, data = open_paddock(tmp_path, "solo")
-    run("decide", "--paddock", data["paddock"], "--stage", "document-knowledge", "--decision",
+def test_a_bolt_without_a_parent_lists_no_parent_inputs(tmp_path: Path) -> None:
+    code, data = open_bolt(tmp_path, "solo")
+    run("decide", "--bolt", data["bolt"], "--stage", "document-knowledge", "--decision",
         "skip", "--reason", "none")  # fmt: skip
-    code, data, _ = run("inputs", "--paddock", data["paddock"], "--stage", "hla")
+    code, data, _ = run("inputs", "--bolt", data["bolt"], "--stage", "hla")
     assert code == 0
     assert not [row for row in data["inputs"] if row["path"].startswith("parent:")]
     assert "parent_hla_status" not in data
@@ -148,9 +148,9 @@ def test_reverse_engineering_reads_a_scope_card_only_when_it_exists(tmp_path: Pa
     web.mkdir()
     frame, child = frame_and_child(tmp_path, "--target", f"svc={svc}", "--target", f"web={web}")
     write(frame / "knowledge" / "repos" / "svc.md", "# svc scope\n")
-    run("decide", "--paddock", str(child), "--stage", "document-knowledge", "--decision", "skip",
+    run("decide", "--bolt", str(child), "--stage", "document-knowledge", "--decision", "skip",
         "--reason", "no documents")  # fmt: skip
-    code, data, _ = run("inputs", "--paddock", str(child), "--stage", "reverse-engineering")
+    code, data, _ = run("inputs", "--bolt", str(child), "--stage", "reverse-engineering")
     assert code == 0, data
     paths = [row["path"] for row in data["inputs"]]
     assert "parent:knowledge/repos/svc.md" in paths
@@ -161,10 +161,10 @@ def test_reverse_engineering_reads_a_scope_card_only_when_it_exists(tmp_path: Pa
 
 def test_the_workspace_lists_the_parent_after_the_planning_repo(tmp_path: Path) -> None:
     frame, child = frame_and_child(tmp_path)
-    code, data, _ = run("workspace", "--paddock", str(child))
+    code, data, _ = run("workspace", "--bolt", str(child))
     assert code == 0
     assert [f["name"] for f in data["folders"]][:3] == [
-        "paddock: phase-one",
+        "bolt: phase-one",
         "planning repo",
         "parent: programme",
     ]
@@ -173,6 +173,6 @@ def test_the_workspace_lists_the_parent_after_the_planning_repo(tmp_path: Path) 
 
 def test_child_decision_ids_start_at_d1(tmp_path: Path) -> None:
     frame, child = frame_and_child(tmp_path)
-    run("decision-id", "--paddock", str(frame), "--count", "4")
-    _, data, _ = run("decision-id", "--paddock", str(child))
+    run("decision-id", "--bolt", str(frame), "--count", "4")
+    _, data, _ = run("decision-id", "--bolt", str(child))
     assert data["ids"] == ["D1"]

@@ -3,7 +3,7 @@
 # requires-python = ">=3.9"
 # dependencies = []
 # ///
-"""Outline the raw documents handed into a paddock so agents read ranges, not files.
+"""Outline the raw documents handed into a bolt so agents read ranges, not files.
 
 A model asked to read a 200-page specification reads all of it, every session.
 An outline with line ranges and sizes lets the Document Knowledge stage send a
@@ -34,7 +34,7 @@ EXIT_MALFORMED = 4
 EXIT_INTERNAL = 5
 
 EPILOG = """examples:
-  python3 index_inputs.py --paddock paddocks/2026-01-05-billing
+  python3 index_inputs.py --bolt bolts/2026-01-05-billing
 
 Writes knowledge/_outline.json and knowledge/extracted/<file>.md.
 Per file: outlined (markdown, text), extracted (docx, pptx, xlsx, and pdf when
@@ -45,8 +45,8 @@ exit codes:
   0  every file was handled or deliberately skipped
   1  at least one file failed to extract
   2  usage error
-  3  the paddock or its inputs/ folder does not exist
-  4  the paddock is malformed
+  3  the bolt or its inputs/ folder does not exist
+  4  the bolt is malformed
   5  internal error
 """
 
@@ -258,8 +258,8 @@ def pdf_to_markdown(path: Path) -> Optional[str]:
     return "\n".join(out)
 
 
-def process(paddock: Path, file: Path) -> dict[str, Any]:
-    rel = file.relative_to(paddock).as_posix()
+def process(bolt: Path, file: Path) -> dict[str, Any]:
+    rel = file.relative_to(bolt).as_posix()
     suffix = file.suffix.lower()
     size = file.stat().st_size
     entry: dict[str, Any] = {"path": rel, "bytes": size, "kind": suffix.lstrip(".") or "none"}
@@ -297,13 +297,13 @@ def process(paddock: Path, file: Path) -> dict[str, Any]:
                 "outline": [],
             }
         out_name = "__".join(Path(rel).relative_to("inputs").parts) + ".md"
-        out_path = paddock / "knowledge" / "extracted" / out_name
+        out_path = bolt / "knowledge" / "extracted" / out_name
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(text, encoding="utf-8")
         return {
             **entry,
             "status": "extracted",
-            "extracted": out_path.relative_to(paddock).as_posix(),
+            "extracted": out_path.relative_to(bolt).as_posix(),
             "outline": outline(text),
         }
     if size > MAX_PLAIN_BYTES:
@@ -313,11 +313,11 @@ def process(paddock: Path, file: Path) -> dict[str, Any]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Outline the documents in a paddock's inputs/ folder.",
+        description="Outline the documents in a bolt's inputs/ folder.",
         epilog=EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--paddock", required=True, help="Paddock folder.")
+    parser.add_argument("--bolt", required=True, help="Bolt folder.")
     parser.add_argument("--verbose", action="store_true", help="Verbose diagnostics on stderr.")
     return parser
 
@@ -329,23 +329,23 @@ def main(argv: Optional[list[str]] = None) -> int:
         format="%(levelname)s: %(message)s",
         stream=sys.stderr,
     )
-    paddock = Path(args.paddock)
-    inputs = paddock / "inputs"
+    bolt = Path(args.bolt)
+    inputs = bolt / "inputs"
     if not inputs.is_dir():
-        LOG.error("%s: inputs/ not found. Is this a paddock?", inputs)
+        LOG.error("%s: inputs/ not found. Is this a bolt?", inputs)
         return EXIT_INPUT
-    (paddock / "knowledge").mkdir(exist_ok=True)
+    (bolt / "knowledge").mkdir(exist_ok=True)
 
     files = sorted(
         p
         for p in inputs.rglob("*")
         if p.is_file() and not any(part.startswith(".") for part in p.relative_to(inputs).parts)
     )
-    entries = [process(paddock, file) for file in files]
+    entries = [process(bolt, file) for file in files]
     for item in entries:
         if item["status"] == "failed":
             LOG.error("%s: %s", item["path"], item["reason"])
-    out_path = paddock / "knowledge" / "_outline.json"
+    out_path = bolt / "knowledge" / "_outline.json"
     out_path.write_text(
         json.dumps({"schema": 1, "files": entries}, indent=2) + "\n", encoding="utf-8"
     )
@@ -358,7 +358,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         json.dumps(
             {
                 "ok": failed == 0,
-                "outline": out_path.relative_to(paddock).as_posix(),
+                "outline": out_path.relative_to(bolt).as_posix(),
                 "files": len(entries),
                 "counts": counts,
             },

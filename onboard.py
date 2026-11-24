@@ -53,8 +53,8 @@ CHECK_SCRIPT = Path("skills") / "processes" / "crv-aidlc" / "scripts" / "check_p
 
 #: Same list as ``MANUAL_ITEMS`` in check_prerequisites.py.
 MANUAL_ITEMS = (
-    "Access to the target repositories of your paddock (ask the repository owner).",
-    "The Jira and Confluence connector, when your paddock uses Jira.",
+    "Access to the target repositories of your bolt (ask the repository owner).",
+    "The Jira and Confluence connector, when your bolt uses Jira.",
     "Databricks access, when a stage reads data.",
     "az login, only if you list repositories.",
 )

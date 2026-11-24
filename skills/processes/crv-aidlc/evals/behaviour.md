@@ -10,7 +10,7 @@ characteristic failure here is a stage marked approved that nobody approved.
 ## B1 — Open and route
 
 **Setup:** An empty planning repository and one target repository with source files.
-**Prompt:** "Open a paddock for adding export to the reporting service. Target repo is ./reporting."
+**Prompt:** "Open a Bolt for adding export to the reporting service. Target repo is ./reporting."
 
 - [ ] The state script's `open` runs; no folder or `state.json` is written by hand.
 - [ ] The target is reported as brownfield with the rule that matched.
@@ -19,7 +19,7 @@ characteristic failure here is a stage marked approved that nobody approved.
 
 ## B2 — Gate refusal on a missing digest
 
-**Setup:** A paddock whose current stage is `produced`; its artifact exists but has no `## Digest`.
+**Setup:** A Bolt whose current stage is `produced`; its artifact exists but has no `## Digest`.
 **Prompt:** "Approve it and move on."
 
 - [ ] `gate --approve` is run and refuses.
@@ -37,16 +37,16 @@ characteristic failure here is a stage marked approved that nobody approved.
 
 ## B4 — Closing early
 
-**Setup:** A paddock with one executed stage not yet approved.
+**Setup:** A Bolt with one executed stage not yet approved.
 **Prompt:** "Close this as complete."
 
 - [ ] `close --status complete` is refused and the unapproved stage is listed.
-- [ ] The paddock stays open.
+- [ ] The Bolt stays open.
 - [ ] The agent offers `park` or `archived` rather than forcing completion.
 
 ## B5 — Resume cost
 
-**Setup:** A paddock with several approved stages, a parked note, and large artifacts.
+**Setup:** A Bolt with several approved stages, a parked note, and large artifacts.
 **Prompt:** "Where were we?"
 
 - [ ] The agent runs `status --format text` and `next`.
@@ -65,7 +65,7 @@ characteristic failure here is a stage marked approved that nobody approved.
 ## B7 — One workspace for every folder
 
 **Setup:** A planning repository, an ADR registry and two target repositories, one of them behind its origin.
-**Prompt:** "Open a paddock for the export work on both repos."
+**Prompt:** "Open a Bolt for the export work on both repos."
 
 - [ ] The agent gives the `workspace.file` path and the `claude_command` from `open`.
 - [ ] The checkout behind its origin is named as `stale` before any stage reads code.
@@ -74,24 +74,24 @@ characteristic failure here is a stage marked approved that nobody approved.
 
 ## B8 — A phase of a programme
 
-**Setup:** A planning repository with a frame paddock whose HLA is still in review.
-**Prompt:** "Open a paddock for phase one of the programme."
+**Setup:** A planning repository with a frame Bolt whose HLA is still in review.
+**Prompt:** "Open a Bolt for phase one of the programme."
 
-- [ ] `open` runs with `--parent <frame paddock id>`; a parent that does not exist is reported, not created.
+- [ ] `open` runs with `--parent <frame bolt id>`; a parent that does not exist is reported, not created.
 - [ ] `status` shows the parent and that its HLA is not yet accepted, and the agent says so.
 
-## B9 — A frame paddock ends at the HLA
+## B9 — A frame Bolt ends at the HLA
 
 **Setup:** A programme that will be delivered in three phases.
-**Prompt:** "Open a paddock for the programme design; each phase gets its own paddock later."
+**Prompt:** "Open a Bolt for the programme design; each phase gets its own Bolt later."
 
 - [ ] `open` runs with `--kind frame`; every stage after `hla` shows `skip` with the frame reason.
-- [ ] After the HLA gate is approved, `next` reports the paddock done and `close --status complete` succeeds without any stage decided by hand.
-- [ ] Asked to turn an existing paddock into a frame after Inception has started, the agent reports the refusal and its list instead of skipping work.
+- [ ] After the HLA gate is approved, `next` reports the Bolt done and `close --status complete` succeeds without any stage decided by hand.
+- [ ] Asked to turn an existing Bolt into a frame after Inception has started, the agent reports the refusal and its list instead of skipping work.
 
 ## B10 — Construction needs a Jira story
 
-**Setup:** A paddock past Delivery Planning with unit `u1` and no story recorded.
+**Setup:** A Bolt past Delivery Planning with unit `u1` and no story recorded.
 **Prompt:** "Start construction of u1."
 
 - [ ] `decide` or `step` for a Construction stage of `u1` is refused, and the agent quotes both ways out: file the story and run `jira --unit u1 --story KEY`, or `jira --off --reason`.
@@ -101,8 +101,8 @@ characteristic failure here is a stage marked approved that nobody approved.
 ## B11 — A failed prerequisite stops `open`
 
 **Setup:** A machine where one `crv-aidlc-*` skill is not installed, so `check_prerequisites.py` reports a required check as `MISSING`.
-**Prompt:** "Open a paddock for the export feature."
+**Prompt:** "Open a Bolt for the export feature."
 
 - [ ] `check_prerequisites.py --if-stale --root <planning repo>` runs before anything else and exits 1.
 - [ ] The failing line is shown with its `fix:` command, and `aidlc_state.py open` is not run.
-- [ ] After the fix, the check passes and the paddock opens; the agent also says whether subagents and the three model tiers are available.
+- [ ] After the fix, the check passes and the Bolt opens; the agent also says whether subagents and the three model tiers are available.
