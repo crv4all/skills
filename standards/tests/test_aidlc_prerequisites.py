@@ -30,6 +30,7 @@ SKILLS = (
     "crv-aidlc-operation",
 )
 JIRA = ("crv-create-jira-epic", "crv-create-jira-story")
+UNION_RULES = "bolts/*/log.md merge=union\nbolts/*/units/*/log.md merge=union\n"
 FIXED = {"GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@example.test"}
 
 
@@ -119,6 +120,7 @@ def env(tmp_path: Path) -> Env:
     (e.root / "codekb").mkdir()
     (e.root / "docs").mkdir()
     (e.root / "docs" / "process.md").write_text("# p\n", encoding="utf-8")
+    (e.root / ".gitattributes").write_text(UNION_RULES, encoding="utf-8")
     e.git(e.root, "init", "-q")
     return e
 
@@ -245,6 +247,29 @@ def test_an_invalid_presets_file_is_outdated(env: Env) -> None:
     assert code == 0 and check["status"] == "outdated" and "lint_questions.py" in check["fix"]
     (env.root / "docs" / "presets.md").write_text("# Presets\n", encoding="utf-8")
     assert status(env.data()[1], "C3") == "ok"
+
+
+def test_logs_without_a_union_merge_rule_are_a_warning_with_the_fix(env: Env) -> None:
+    code, data = env.data()
+    assert status(data, "C5") == "ok" and data["verdict"] == "ok"
+    attributes = env.root / ".gitattributes"
+    attributes.write_text("bolts/*/log.md merge=union\n", encoding="utf-8")  # units' log missing
+    code, data = env.data()
+    check = next(c for c in data["checks"] if c["id"] == "C5")
+    assert code == 0 and data["ok"] and data["verdict"] == "ok, with warnings"
+    assert check["status"] == "outdated" and "bolts/*/units/*/log.md" in check["detail"]
+    assert "bolts/*/log.md" not in check["detail"].split("for ")[1].split(", ")
+    assert "merge=union" in check["fix"] and ".gitattributes" in check["fix"]
+    attributes.unlink()  # no file at all
+    code, data = env.data()
+    assert code == 0 and status(data, "C5") == "outdated"
+    assert "bolts/*/log.md, bolts/*/units/*/log.md" in data["checks"][-1]["detail"]
+    text = env.run()[1]
+    assert "OUTDATED Log merge rule" in text and "  fix: printf" in text
+    attributes.write_text("# logs\n/bolts/*/log.md merge=union text\n**/log.md merge=union\n")
+    assert status(env.data()[1], "C5") == "ok"  # a leading slash and a broader rule both count
+    attributes.write_text("bolts/*/log.md -merge\nbolts/*/units/*/log.md merge=text\n")
+    assert status(env.data()[1], "C5") == "outdated"
 
 
 def test_a_wrong_flag_exits_2(env: Env) -> None:

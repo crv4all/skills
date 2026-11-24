@@ -519,6 +519,43 @@ def c3_presets(root: Optional[Path]) -> dict[str, str]:
     return check("C3", name, "conditional", "outdated", detail, f"python3 {lint} --presets {path}")
 
 
+#: The two log files two engineers append to, and the patterns that cover each of them.
+LOG_RULES = (
+    ("bolts/*/log.md", {"bolts/*/log.md", "bolts/**/log.md", "**/log.md", "log.md"}),
+    (
+        "bolts/*/units/*/log.md",
+        {"bolts/*/units/*/log.md", "bolts/**/log.md", "**/log.md", "log.md"},
+    ),
+)
+
+
+def c5_log_merge(root: Optional[Path]) -> dict[str, str]:
+    """Logs are append-only lines; without ``merge=union`` two engineers' lines conflict."""
+    name = "Log merge rule"
+    if root is None:
+        return check("C5", name, "conditional", "skipped", "no planning repo")
+    unions: set[str] = set()
+    try:
+        lines = (root / ".gitattributes").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        lines = []
+    for line in lines:
+        parts = line.split()
+        if len(parts) > 1 and not parts[0].startswith("#") and "merge=union" in parts[1:]:
+            unions.add(parts[0].lstrip("/"))
+    missing = [rule for rule, accepted in LOG_RULES if not accepted & unions]
+    if not missing:
+        return check("C5", name, "conditional", "ok", ".gitattributes merges the logs by union")
+    fix = (
+        f"printf 'bolts/*/log.md merge=union\\nbolts/*/units/*/log.md merge=union\\n' "
+        f">> {root / '.gitattributes'}  (then commit it)"
+    )
+    return check(
+        "C5", name, "conditional", "outdated",
+        "no merge=union rule in .gitattributes for " + ", ".join(missing), fix,
+    )  # fmt: skip
+
+
 def fingerprint(found: dict[str, Path]) -> str:
     digest = hashlib.sha256()
     for _rel, _copy, source, target in sorted(shared_pairs(found), key=lambda p: (p[0], p[1])):
@@ -643,7 +680,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         r6_ssh_tools(), r7_azure(args.offline, checkout), r8_remotes(root, registry),
         r9_branch(root),
         c1_adr(root, args.architecture_ref, found, args.offline), c2_jira(args.jira, found),
-        c3_presets(root), c4_current(found, checkout, args.offline),
+        c3_presets(root), c4_current(found, checkout, args.offline), c5_log_merge(root),
     ]  # fmt: skip
     required_ok = all(c["status"] in ("ok", "skipped") for c in checks if c["level"] == "required")
     warned = any(

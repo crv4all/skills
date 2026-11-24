@@ -12,6 +12,11 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The readiness check warns when logs have no `merge=union` rule.**
+  `check_prerequisites.py` reports, as a warning, a planning repo whose
+  `.gitattributes` does not merge `bolts/*/log.md` and `bolts/*/units/*/log.md`
+  by union, because two engineers' log lines would then conflict.
+
 - **Decision ids never repeat, and `--provisional` is gone.**
   A Bolt whose decision record already holds D75 while its counter says 73 used
   to hand out D74 again. `decision-id` now starts above both the stored counter
