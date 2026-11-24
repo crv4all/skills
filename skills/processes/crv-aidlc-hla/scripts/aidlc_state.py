@@ -71,7 +71,9 @@ EPILOG = """commands:
 Git: a command that changes a bolt first brings in the team's work, then commits the
 bolt and pushes it. `aidlc.json` at the planning root may hold
 {"git": {"branch": "..", "remote": "origin", "commit": true, "push": true}}.
-AIDLC_GIT=off or --no-git turns git writes off; a folder outside git is skipped.
+AIDLC_GIT=off or --no-git turns git writes off; a folder outside git is skipped. A leftover
+`*.tmp` file is never committed, and neither is a file that still holds git conflict markers
+(exit 6, the files are named).
 
 Lock: a command that changes a bolt (and `sync`) holds one lock per planning checkout for
 its whole run, git steps included, so two sessions in one checkout queue instead of
@@ -415,6 +417,17 @@ def normalise_portable(bolt: Path, state: dict[str, Any]) -> bool:
     return True
 
 
+def write_json_atomic(path: Path, content: dict[str, Any]) -> None:
+    """Write JSON through a temp file named for this process, so a crash leaves the old file
+    (and at most one ``*.tmp`` that is never committed) and two writers never share a name."""
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(json.dumps(content, indent=2) + "\n", encoding="utf-8")
+        tmp.replace(path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def save_if_changed(path: Path, content: dict[str, Any], touch: bool) -> None:
     """Write ``content`` atomically unless the file already holds it (``updated`` aside)."""
     if path.is_file():
@@ -429,9 +442,7 @@ def save_if_changed(path: Path, content: dict[str, Any], touch: bool) -> None:
     if touch:
         content = {**content, "updated": now()}
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(".state.json.tmp")
-    tmp.write_text(json.dumps(content, indent=2) + "\n", encoding="utf-8")
-    tmp.replace(path)
+    write_json_atomic(path, content)
 
 
 def write_split(bolt: Path, state: dict[str, Any]) -> None:
@@ -453,10 +464,7 @@ def write_state(bolt: Path, state: dict[str, Any]) -> None:
     if is_split(state):
         write_split(bolt, state)
     else:
-        path = state_path(bolt)
-        tmp = path.with_name(".state.json.tmp")
-        tmp.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
-        tmp.replace(path)
+        write_json_atomic(state_path(bolt), state)
     if moved:
         log_event(bolt, "portable", "", "", "machine paths moved to .aidlc-local.json")
 
@@ -2871,6 +2879,8 @@ def scope_match(ctx: GitCtx, path: str, bolt_rel: Optional[str]) -> bool:
     rel = path[len(ctx.prefix) :]
     if rel.rsplit("/", 1)[-1] == LOCK_NAME:
         return False  # a session's lock is local; it is never committed
+    if rel.endswith(".tmp"):
+        return False  # a temp file left by a killed write is never committed
     if bolt_rel and rel.startswith(bolt_rel.rstrip("/") + "/"):
         return True
     return rel in SHARED_FILES or any(rel.startswith(d) for d in SHARED_DIRS)
@@ -2924,6 +2934,25 @@ def scan_staged(ctx: GitCtx, scope: set[str]) -> list[tuple[str, int, str]]:
                         break
             line_no += 1
     return hits
+
+
+def conflict_marker_files(ctx: GitCtx, staged: list[str]) -> list[str]:
+    """Staged files that hold a whole git conflict (`<<<<<<< `, `=======`, `>>>>>>> `)."""
+    found: list[str] = []
+    for name in staged:
+        shown = run_git(ctx.top, "show", f":{name}")
+        if shown.returncode != 0:
+            continue  # deleted, or not text
+        stage = 0
+        for line in shown.stdout.splitlines():
+            if stage == 0 and line.startswith("<<<<<<< "):
+                stage = 1
+            elif stage == 1 and line.startswith("======="):
+                stage = 2
+            elif stage == 2 and line.startswith(">>>>>>> "):
+                found.append(name)
+                break
+    return found
 
 
 def short_head(ctx: GitCtx) -> Optional[str]:
@@ -3002,6 +3031,20 @@ def commit_scope(
     staged = [p for p in staged_paths(ctx) if scope_match(ctx, p, bolt_rel)]
     if not staged:
         return
+    marked = conflict_marker_files(ctx, staged)
+    if marked:
+        git_paths(ctx, "reset", "-q", paths=staged)
+        raise Fail(
+            EXIT_GIT,
+            f"{len(marked)} file(s) still hold git conflict markers; nothing was committed. "
+            "Resolve each one (keep both people's content, remove the `<<<<<<<`, `=======` and "
+            "`>>>>>>>` lines), then run `sync` again.",
+            findings=[
+                {"code": "conflict-markers", "path": n, "message": "unresolved conflict markers"}
+                for n in marked
+            ],
+            extra={"git": result},
+        )
     hits = scan_staged(ctx, set(staged))
     if hits:
         git_paths(ctx, "reset", "-q", paths=staged)

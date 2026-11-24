@@ -12,6 +12,13 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Leftovers and unresolved conflicts are never committed.**
+  A state write that was killed halfway used to leave `.state.json.tmp`, which
+  the next automatic commit picked up. Each write now uses a temp name of its
+  own process and cleans it up, and no `*.tmp` file is ever staged. A file in
+  the Bolt that still holds git conflict markers (`<<<<<<<`, `=======`,
+  `>>>>>>>`) stops the commit with exit 6 and the files are named.
+
 - **One lock per planning checkout, held for a whole command.**
   Two sessions in one checkout on two different Bolts used to fail half of
   their commands (`index.lock`, "a rebase is in progress"), because the old

@@ -347,3 +347,72 @@ def test_a_change_to_an_approved_artifact_warns_once_and_is_logged(repos: Repos)
     log = (bolt / "log.md").read_text(encoding="utf-8")
     assert log.count("| approved-change | document-knowledge |") == 1
     assert git(repos.a, "status", "--porcelain") == ""  # the log line went in the same commit
+
+
+# --- leftovers are never committed --------------------------------------------
+
+
+def test_a_temp_file_left_by_a_killed_write_is_never_committed(repos: Repos) -> None:
+    assert open_demo(repos.a)[0] == 0
+    bolt = bolt_of(repos.a)
+    write(bolt / ".state.json.tmp", "{half")
+    write(bolt / ".state.json.4242.tmp", "{half")
+    write(bolt / "units" / "u1" / ".state.json.7.tmp", "{half")
+    code, out, _ = script("park", "--bolt", str(bolt), "--note", "n")
+    assert code == 0 and out["git"]["commit"]
+    assert not [f for f in git(repos.a, "ls-files").splitlines() if f.endswith(".tmp")]
+    assert not [f for f in git(repos.remote, "ls-tree", "-r", "--name-only", "main").splitlines()
+                if f.endswith(".tmp")]  # fmt: skip
+    assert git(repos.a, "status", "--porcelain", "-uall").count(".tmp") == 3  # left where they were
+
+
+def test_the_temp_name_of_a_state_write_is_unique_per_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("aidlc_state_tmp_test", SCRIPT)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    seen: list[str] = []
+    real_replace = Path.replace
+
+    def spy(self: Path, target: Any) -> Any:
+        seen.append(self.name)
+        return real_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", spy)
+    for pid in (111, 222):
+        monkeypatch.setattr(mod.os, "getpid", lambda pid=pid: pid)
+        mod.write_json_atomic(tmp_path / "state.json", {"pid": pid})
+    assert seen == [".state.json.111.tmp", ".state.json.222.tmp"]
+    assert [p.name for p in tmp_path.iterdir()] == ["state.json"]  # nothing left behind
+    monkeypatch.setattr(Path, "replace", lambda *_: (_ for _ in ()).throw(OSError("disk")))
+    with pytest.raises(OSError):
+        mod.write_json_atomic(tmp_path / "state.json", {"pid": 3})
+    assert [p.name for p in tmp_path.iterdir()] == ["state.json"]  # a failed write cleans up
+
+
+def test_a_file_with_conflict_markers_is_not_committed(repos: Repos) -> None:
+    assert open_demo(repos.a)[0] == 0
+    head = git(repos.a, "rev-parse", "HEAD")
+    bolt = bolt_of(repos.a)
+    rel = f"bolts/{BOLT_ID}/architecture/hla.md"
+    write(repos.a / rel, "intro\n<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> branch\n")
+    write(bolt / "inputs" / "other.md", "also broken\n<<<<<<< x\n=======\n>>>>>>> y\n")
+    write(bolt / "inputs" / "fine.md", "Title\n=======\nA setext heading is not a conflict.\n")
+    code, out, _ = script("sync", "--bolt", str(bolt))
+    assert code == 6
+    assert sorted(f["path"] for f in out["findings"]) == sorted(
+        [rel, f"bolts/{BOLT_ID}/inputs/other.md"]
+    )
+    assert {f["code"] for f in out["findings"]} == {"conflict-markers"}
+    assert git(repos.a, "rev-parse", "HEAD") == head
+    assert git(repos.a, "diff", "--cached", "--name-only") == ""
+    (repos.a / rel).unlink()
+    (bolt / "inputs" / "other.md").unlink()
+    code, out, _ = script("sync", "--bolt", str(bolt))
+    assert code == 0 and out["git"]["commit"]
+    assert "inputs/fine.md" in git(repos.a, "show", "--name-only", "--format=", "HEAD")

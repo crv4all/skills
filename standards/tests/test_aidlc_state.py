@@ -617,7 +617,7 @@ def test_reads_do_not_write(bolt: Bolt) -> None:
 
 def test_writes_update_the_timestamp_atomically(bolt: Bolt) -> None:
     bolt.run("park", "--note", "n")
-    assert not list(bolt.path.glob(".state.json.tmp"))
+    assert not list(bolt.path.glob("*.tmp")) and not list(bolt.path.glob(".*.tmp"))
     assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", bolt.state["updated"])
 
 
