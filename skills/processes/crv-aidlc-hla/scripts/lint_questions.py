@@ -48,7 +48,8 @@ EPILOG = """examples:
 findings (exit 1): no-questions, no-context, too-few-options, too-many-options,
   no-other-option, no-recommendation, no-recommendation-reason, no-answer-line,
   empty-answer, answer-not-offered, other-without-text, multiple-letters,
-  answer-rewritten (a formatter turned the answer line into a link)
+  answer-rewritten (a formatter turned the answer line into a link), should-not-ask and
+  class-unknown (the optional `Class:` line), assumed-no-reason (a bullet under ## Assumed)
 presets findings (exit 1): preset-field-missing, preset-field-empty, preset-duplicate-id,
   preset-unknown-stage, preset-bad-date, preset-unknown-id (cited in a question file)
 warnings (never change the exit code): vague-answer
@@ -68,6 +69,12 @@ HEADING = re.compile(r"^##\s+Q(\d+)\b")
 ANY_H2 = re.compile(r"^##\s+")
 OPTION = re.compile(r"^\s*(?:[-*]\s*)?([A-Z])\)\s*(.*)$")
 RECOMMENDED = re.compile(r"^\s*(?:[-*]\s*)?\**Recommended\**\s*:?\**\s*(.*)$", re.IGNORECASE)
+CLASS = re.compile(r"^\s*(?:[-*]\s*)?\**Class\**\s*:\**\s*(.*)$", re.IGNORECASE)
+CLASSES_ASKED = ("critical", "material")
+CLASSES_DECIDED = ("reversible", "trivial")
+ASSUMED_HEADING = re.compile(r"^##\s+Assumed\b", re.IGNORECASE)
+BULLET = re.compile(r"^\s*[-*]\s+(.*)$")
+BECAUSE = re.compile(r"\bbecause\b", re.IGNORECASE)
 ANSWER = re.compile(r"^\s*(?:Answer|\[Answer\])\s*:\s*(.*)$")
 REWRITTEN = re.compile(r"^\s*\[Answer\]\(")
 LAYER = re.compile(r"^##\s+Layer\b")
@@ -135,6 +142,29 @@ def check_block(
     seen_structure = False
 
     for number, text in body:
+        klass = CLASS.match(text)
+        if klass:
+            value = klass.group(1).strip().strip("*").lower()
+            if value in CLASSES_DECIDED:
+                findings.append(
+                    finding(
+                        "should-not-ask",
+                        qid,
+                        number,
+                        "a reversible or trivial choice is decided, not asked: "
+                        "record it under ## Assumed",
+                    )
+                )
+            elif value not in CLASSES_ASKED:
+                findings.append(
+                    finding(
+                        "class-unknown",
+                        qid,
+                        number,
+                        f"`Class: {value}` is not one of critical, material, reversible, trivial.",
+                    )
+                )
+            continue
         if REWRITTEN.match(text):
             rewritten = number
             seen_structure = True
@@ -271,7 +301,29 @@ def lint_text(text: str, allow_open: bool = False) -> dict[str, Any]:
         block_findings, block_warnings = check_block(qid, heading_line, body, allow_open, proposal)
         findings.extend(block_findings)
         warnings.extend(block_warnings)
+    findings.extend(assumed_findings(lines))
     return {"questions": len(blocks), "findings": findings, "warnings": warnings}
+
+
+def assumed_findings(lines: list[str]) -> list[dict[str, Any]]:
+    """Each bullet under ``## Assumed`` is a choice taken without asking; it needs a reason."""
+    found: list[dict[str, Any]] = []
+    inside = False
+    for number, text in enumerate(lines, start=1):
+        if ANY_H2.match(text):
+            inside = bool(ASSUMED_HEADING.match(text))
+            continue
+        bullet = BULLET.match(text) if inside else None
+        if bullet and not BECAUSE.search(bullet.group(1)):
+            found.append(
+                finding(
+                    "assumed-no-reason",
+                    "-",
+                    number,
+                    "an assumed choice needs its reason: say `because ...`.",
+                )
+            )
+    return found
 
 
 PRESET_HEADING = re.compile(r"^##\s+(P-\d+)\b")

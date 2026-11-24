@@ -73,6 +73,8 @@ Run `aidlc_state.py status --bolt <p> --format text`, then `aidlc_state.py next 
 
 Action `decide`: ask the approver for EXECUTE or SKIP with a reason (`next` shows `runs_when` and, per unit, the unit's `kind`), then `decide`. A per-unit design stage is decided when that unit's construction starts. Action `load-units`: units (each with `kind`: `service`, `spec`, `ui`, `packaging` or `library`) come from Units Generation, slices from Delivery Planning; write them to a JSON file and run `units --set`. `hla` and `tdd` run in `classic` only unless forced with `decide`. The stage skill moves steps with `step --to asked|analysed|produced`.
 
+Class each question. Critical (security, compliance, irreversible, data loss) and material (business meaning, public contracts, architecture, other units' work) are asked, with a Class: line. Reversible and trivial choices are decided from conventions and listed under ## Assumed with the reason; the approver can overturn them at the gate.
+
 ## Gate
 
 1. The stage skill ends with a summary of at most 8 lines, the paths to review and two choices: Request changes or Continue.

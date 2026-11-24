@@ -44,6 +44,8 @@ The table is for reviewers to sign, so it holds only decisions that need a revie
 
 Routine choices that follow a pattern, ordinary engineering practice, and targets already stated in their own section stay out. The first column states the tension (for example "fresh data for operators versus load on the source system"), not the topic ("caching"). The `Id` column holds the decision id from `hla-decisions.md`. Leave `Signed off by` empty. If no row qualifies, mark the section not applicable and say so.
 
+The record `hla-decisions.md` may add two optional columns after `Flag`: `Status` (`constraint`, `accepted`, `proposed`, `assumption`, `open`, `needs-evidence` or `superseded`) and `Owner`. Only a `constraint` binds later work: an `assumption` is never cited as one. A cross-team decision names its `Owner`. The gate refuses any other Status word; a record without the columns stays valid.
+
 ## ADR rule
 
 - Following an Accepted ADR is cited where it applies (a container's basis, a security row), never re-decided and never a row in the decisions table.
@@ -101,3 +103,5 @@ The decision is recorded in the file by people, then mirrored into Bolt state by
 3. Validate again.
 4. Accepted: `aidlc_state.py gate --stage hla --approve --by "<signed_off_by>"`. The gate refuses unless the header says `accepted` and is signed.
 5. Changes requested: `gate --request-changes --note "<the requests>"`, then refine. Declined: the same with the reason, and tell the owner the Bolt needs a new direction.
+
+Before its gate, a Bolt that will have children writes one `architecture/briefs/<child slug>.md` per planned child: the child's scope, the decision ids that bind it, the contracts it provides and consumes, and the open decisions it carries as assumptions. A child reads it in full.

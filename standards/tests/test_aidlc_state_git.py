@@ -323,3 +323,27 @@ def test_a_decision_counter_race_returns_no_ids(repos: Repos, tmp_path: Path) ->
     code, out, _ = script("decision-id", "--bolt", str(bolt_of(repos.b)))
     assert code == 6 and "the ids were not reserved" in out["error"]
     assert "ids" not in out and "ids" not in out["result"]
+
+
+def test_a_change_to_an_approved_artifact_warns_once_and_is_logged(repos: Repos) -> None:
+    assert open_demo(repos.a)[0] == 0
+    bolt = bolt_of(repos.a)
+    write(bolt / "knowledge" / "_digest.md", "# Notes\n\n## Digest\n- one\n")
+    write(bolt / "knowledge" / "_outline.json", '{"files": []}\n')
+    common = ["--bolt", str(bolt), "--stage", "document-knowledge"]
+    assert script("decide", *common, "--decision", "execute", "--reason", "t")[0] == 0
+    assert script("step", *common, "--to", "produced")[0] == 0
+    code, out, _ = script("gate", *common, "--approve", "--by", "Ada")
+    assert code == 0, out
+    assert not any("approved artifact changed" in w for w in out["git"]["warnings"])  # the approval
+    write(bolt / "knowledge" / "_digest.md", "# Notes\n\n## Digest\n- two\n")
+    code, out, _ = script("sync", "--bolt", str(bolt), "-m", "edit the digest")
+    assert code == 0 and out["git"]["commit"]
+    warnings = [w for w in out["git"]["warnings"] if w.startswith("approved artifact changed")]
+    assert warnings == [
+        "approved artifact changed: knowledge/_digest.md (stage document-knowledge is approved; "
+        "reopen it with gate --request-changes)"
+    ]
+    log = (bolt / "log.md").read_text(encoding="utf-8")
+    assert log.count("| approved-change | document-knowledge |") == 1
+    assert git(repos.a, "status", "--porcelain") == ""  # the log line went in the same commit

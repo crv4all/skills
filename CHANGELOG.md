@@ -12,6 +12,22 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`overview` shows every Bolt of a planning repo at once, and an edit to an approved artifact is noticed.**
+  `aidlc_state.py overview --root <repo>` reads each Bolt (a broken or newer
+  one is listed with its error) and prints its next step, children, units with
+  owner and what they wait for, changed context, the latest log line and a short
+  list of deterministic problems: a parent HLA not accepted, an unowned or
+  waiting unit, a contested or still-open decision. `--log N` merges the last
+  lines of all logs. When the automatic commit includes a changed artifact of an
+  approved stage, it warns, once, and logs `approved-change`; it never refuses.
+- **Decisions carry a status and an owner, a parent hands each child a brief, and questions are classed.**
+  The decision record may add `Status` and `Owner` columns; the gate refuses a
+  status word outside the list. The `hla` stage reads an optional
+  `architecture/briefs/<child slug>.md` from its parent in full. A question may
+  carry `Class:`; `lint_questions.py` refuses a reversible or trivial one
+  (`should-not-ask`) and an unknown class, and a bullet under `## Assumed`
+  needs a `because`. The rule is in the router's SKILL.md because the shared
+  core rules have no token room left.
 - **Several engineers can build different units of one Bolt at the same time.**
   `open --units split` (or `"units": "split"` in `aidlc.json`) keeps one
   `state.json` and one `log.md` per unit under `units/<id>/`, so moving a unit

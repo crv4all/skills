@@ -1074,3 +1074,108 @@ def test_decision_ids_are_numbered_per_unit(bolt: Bolt) -> None:
     assert bolt.state["decision_seq"] == 0
     assert bolt.run("decision-id")[1]["ids"] == ["D1"]
     assert bolt.run("decision-id", "--unit", "zz")[0] == 2
+
+
+# --- overview, decision status and the brief for a child ----------------------
+
+
+def open_named(root: Path, slug: str, date: str, *args: str) -> Bolt:
+    done = subprocess.run(
+        [sys.executable, str(SCRIPT), "open", "--root", str(root), "--slug", slug, "--title", slug,
+         "--intent", "Try it", "--date", date, *args],
+        capture_output=True, text=True, timeout=60,
+    )  # fmt: skip
+    assert done.returncode == 0, done.stderr
+    return Bolt(root, Path(json.loads(done.stdout)["bolt"]))
+
+
+def overview(root: Path, *args: str) -> tuple[int, dict[str, Any]]:
+    done = subprocess.run(
+        [sys.executable, str(SCRIPT), "overview", "--root", str(root), *args],
+        capture_output=True, text=True, timeout=60,
+    )  # fmt: skip
+    return done.returncode, (json.loads(done.stdout) if done.stdout.startswith("{") else {})
+
+
+def test_overview_nests_a_child_and_reports_unit_problems(tmp_path: Path) -> None:
+    parent = open_named(tmp_path, "programme", "2026-01-05", "--kind", "frame")
+    child = open_named(tmp_path, "phase", "2026-01-06", "--parent", parent.state["id"], "--units", "split")  # fmt: skip
+    skip_inception(child)
+    load_units(child, [{"id": "u1"}, {"id": "u2", "owner": "Ada", "depends_on": ["u1"]}])
+    code, data = overview(tmp_path)
+    assert code == 0
+    rows = {r["id"]: r for r in data["bolts"]}
+    assert list(rows) == ["2026-01-05-programme", "2026-01-06-phase"]
+    assert rows["2026-01-05-programme"]["children"] == ["2026-01-06-phase"]
+    found = {(p["code"], p["where"]) for p in rows["2026-01-06-phase"]["problems"]}
+    assert {("unowned-unit", "u1"), ("waiting-unit", "u2")} <= found
+    assert ("parent-not-accepted", parent.state["id"]) in found
+    assert [u["id"] for u in rows["2026-01-06-phase"]["units"]] == ["u1", "u2"]
+    text = subprocess.run([sys.executable, str(SCRIPT), "overview", "--root", str(tmp_path),
+                           "--format", "text"], capture_output=True, text=True).stdout  # fmt: skip
+    assert "  2026-01-06-phase" in text and "unit u2 | Ada" in text
+
+
+def test_overview_goes_on_past_an_unreadable_bolt_and_lists_the_last_log_lines(
+    tmp_path: Path,
+) -> None:
+    p = open_named(tmp_path, "good", "2026-01-05", "--units", "split")
+    skip_inception(p)
+    load_units(p, [{"id": "u1"}, {"id": "u2"}])
+    for unit in ("u1", "u2", "u1"):
+        p.run("decide", "--stage", "functional-design", "--unit", unit, "--decision", "skip",
+              "--reason", "t")  # fmt: skip
+    broken = tmp_path / "bolts" / "2026-01-06-broken"
+    broken.mkdir()
+    (broken / "state.json").write_text("{", encoding="utf-8")
+    newer = tmp_path / "bolts" / "2026-01-07-newer"
+    newer.mkdir()
+    (newer / "state.json").write_text('{"schema": 1, "framework": 99}', encoding="utf-8")
+    code, data = overview(tmp_path, "--log", "3")
+    assert code == 0 and data["bolts"][0]["id"] == "2026-01-05-good"
+    errors = {r["id"]: r["error"] for r in data["bolts"] if "error" in r}
+    assert set(errors) == {"2026-01-06-broken", "2026-01-07-newer"}
+    assert "newer skills" in errors["2026-01-07-newer"]
+    times = [e["time"] for e in data["log"]]
+    assert len(times) == 3 and times == sorted(times)
+    assert {e["unit"] for e in data["log"]} <= {"", "u1", "u2"}
+    assert data["bolts"][0]["last"]["event"] == "decide"
+
+
+def test_decision_status_words_are_checked_only_when_the_column_exists(tmp_path: Path) -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("aidlc_state_under_test", SCRIPT)
+    module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    sys.modules["aidlc_state_under_test"] = module  # dataclasses look the module up by name
+    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    stage = next(s for s in module.load_catalog() if s["id"] == "hla")
+    base = {"targets": [], "units": []}
+    record = tmp_path / "architecture" / "hla-decisions.md"
+    record.parent.mkdir()
+    plain = "| Id | Layer | Decision | Reason | Source | Flag |\n|---|---|---|---|---|---|\n"
+    record.write_text(plain + "| D1 | 1 | x | y | A-Q1 | - |\n", encoding="utf-8")
+    assert module.decision_status_findings(tmp_path, base, stage, None) == []
+    rich = plain.replace("| Flag |", "| Flag | Status | Owner |").replace(
+        "---|\n", "---|---|---|\n"
+    )
+    record.write_text(
+        rich
+        + "| D1 | 1 | x | y | A-Q1 | - | accepted | Ada |\n| D2 | 1 | x | y | A-Q2 | - | maybe | - |\n",
+        encoding="utf-8",
+    )
+    found = module.decision_status_findings(tmp_path, base, stage, None)
+    assert [f["code"] for f in found] == ["decision-status-unknown"] and "D2" in found[0]["message"]
+
+
+def test_a_child_reads_its_brief_from_the_parent_when_there_is_one(tmp_path: Path) -> None:
+    parent = open_named(tmp_path, "programme", "2026-01-05", "--kind", "frame")
+    child = open_named(tmp_path, "phase", "2026-01-06", "--parent", parent.state["id"])
+    wanted = "parent:architecture/briefs/phase.md"
+    for brief in (False, True):
+        if brief:
+            parent.write("architecture/briefs/phase.md", "# Brief\n")
+        data = child.run("inputs", "--stage", "hla")[1]
+        row = next(r for r in data["inputs"] if r["path"] == wanted)
+        assert row["mode"] == "full" and row["exists"] is brief
+        assert wanted not in [m["path"] for m in data["missing"]]

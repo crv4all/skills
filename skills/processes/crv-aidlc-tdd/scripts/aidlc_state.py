@@ -40,6 +40,7 @@ EPILOG = """commands:
   open        create a bolt           --root R --slug S --title T --intent I [--parent P]
                                          [--kind frame|delivery]
   status      show progress              --bolt P [--format text]
+  overview    every Bolt at a glance     --root R [--format text] [--log N]
   next        the next stage and step    --bolt P
   inputs      files a stage reads        --bolt P --stage S [--unit U]
   decide      execute or skip a stage    --bolt P --stage S --decision D --reason R
@@ -89,6 +90,11 @@ LOCK_NAME = ".aidlc.lock"
 LOCK_STALE = 120  # seconds after which a lock left by a crashed session is taken over
 INDEX_KEYS = ("id", "name", "kind", "slice", "owner", "repo", "depends_on")
 UNIT_MODES = ["split", "inline"]
+DECISION_STATUS = (
+    "constraint", "accepted", "proposed", "assumption", "open", "needs-evidence", "superseded"
+)  # fmt: skip
+UNSETTLED = ("open", "assumption", "needs-evidence")
+DECISION_FILES = ("hla-decisions.md", "tdd-decisions.md")
 PATH_HINT = "set it in .aidlc-local.json or clone it next to the planning repo"
 
 STAGES_PATH = Path(__file__).resolve().parent.parent / "assets" / "stages.json"
@@ -1455,6 +1461,169 @@ def cmd_status(
     return {"text": "\n".join(lines[: 20 + len(details) + len(stale)]) + "\n"}
 
 
+def log_rows(bolt: Path) -> list[dict[str, str]]:
+    """Every line of a Bolt's log and its units' logs, with the unit it came from."""
+    rows: list[dict[str, str]] = []
+    files = [(bolt / "log.md", "")] + [
+        (path, path.parent.name) for path in sorted(bolt.glob("units/*/log.md"))
+    ]
+    for path, unit in files:
+        if not path.is_file():
+            continue
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            parts = [p.strip() for p in line.split(" | ")]
+            if len(parts) >= 5:
+                keys = ("time", "event", "stage", "by", "note")
+                rows.append({**dict(zip(keys, parts[:5])), "bolt": bolt.name, "unit": unit})
+    return rows
+
+
+def decision_problems(bolt: Path, state: dict[str, Any]) -> list[dict[str, str]]:
+    record = bolt / "architecture" / "hla-decisions.md"
+    if not record.is_file():
+        return []
+    settled = (state.get("stages", {}).get("hla") or {}).get("step") == "approved"
+    found: list[dict[str, str]] = []
+    for row in decision_rows(record.read_text(encoding="utf-8", errors="replace")):
+        if "contested" in (row["flag"] or "").lower():
+            found.append({"code": "contested", "where": row["id"], "message": "flagged contested"})
+        if settled and (row["status"] or "").lower() in UNSETTLED:
+            message = f"{row['status']} although the HLA is approved"
+            found.append({"code": "unsettled-decision", "where": row["id"], "message": message})
+    return found
+
+
+def overview_row(bolt: Path, catalog: list[dict[str, Any]]) -> dict[str, Any]:
+    state = load_state(bolt)
+    backfill_stages(state, catalog)
+    first = min((i["order"] for i in catalog if i["per_unit"]), default=0)
+    reached = all(
+        is_done(state["stages"].get(i["id"]))
+        for i in catalog
+        if not i["per_unit"] and i["order"] < first
+    )
+    units: list[dict[str, Any]] = []
+    problems: list[dict[str, str]] = []
+    parent = (state.get("parent") or {}).get("id")
+    if parent and parent_hla_status(bolt, state) != "accepted":
+        problems.append(
+            {
+                "code": "parent-not-accepted",
+                "where": parent,
+                "message": "the parent's HLA is not accepted",
+            }
+        )
+    stale = stale_rows(bolt, state, catalog)
+    for row in stale:
+        where = row["stage"] + (f" [{row['unit']}]" if row["unit"] else "")
+        problems.append(
+            {"code": "stale-context", "where": where, "message": ", ".join(row["changed"])}
+        )
+    for unit in state["units"]:
+        nxt = next_for_unit(bolt, state, catalog, unit["id"])
+        open_unit = not nxt["done"]
+        units.append(
+            {
+                "id": unit["id"],
+                "owner": unit.get("owner"),
+                "repo": unit.get("repo"),
+                "next": f"{nxt['stage']} {nxt['action']}" if open_unit else "done",
+                "blocked_by": nxt["blocked_by"],
+                "story": unit.get("story"),
+                "pr": (unit.get("story_done") or {}).get("pr"),
+            }
+        )
+        if state["status"] == "open" and reached and open_unit and not unit.get("owner"):
+            problems.append({"code": "unowned-unit", "where": unit["id"], "message": "no owner"})
+        if nxt["blocked_by"]:
+            problems.append(
+                {
+                    "code": "waiting-unit",
+                    "where": unit["id"],
+                    "message": waits_sentence(nxt["blocked_by"]),
+                }
+            )
+    problems.extend(decision_problems(bolt, state))
+    lines = sorted(log_rows(bolt), key=lambda r: r["time"])
+    last = {k: lines[-1][k] for k in ("time", "event", "stage", "by")} if lines else None
+    return {
+        "id": state["id"],
+        "title": state.get("title", ""),
+        "kind": bolt_kind(state),
+        "status": state["status"],
+        "scope": state.get("scope"),
+        "owner": state.get("owner") or None,
+        "parent": parent,
+        "next": describe_next(compute_next(state, catalog, bolt)),
+        "children": [],
+        "units": units,
+        "stale": stale,
+        "last": last,
+        "problems": problems,
+    }
+
+
+def overview_text(rows: list[dict[str, Any]]) -> str:
+    by_id = {r["id"]: r for r in rows}
+    lines: list[str] = []
+
+    def show(row: dict[str, Any], depth: int) -> None:
+        pad = "  " * depth
+        if "error" in row:
+            lines.append(f"{pad}{row['id']}: unreadable: {row['error']}")
+            return
+        owner = f", owner {row['owner']}" if row["owner"] else ""
+        lines.append(f"{pad}{row['id']} [{row['status']}] {row['title']}{owner}")
+        lines.append(f"{pad}  next: {row['next']}")
+        for unit in row["units"]:
+            waits = f" | {waits_sentence(unit['blocked_by'])}" if unit["blocked_by"] else ""
+            lines.append(
+                f"{pad}  unit {unit['id']} | {unit['owner'] or '-'} | {unit['next']}{waits}"
+            )
+        for problem in row["problems"]:
+            lines.append(f"{pad}  ! {problem['code']} {problem['where']}: {problem['message']}")
+        for child in row["children"]:
+            show(by_id[child], depth + 1)
+
+    for row in rows:
+        if not row.get("parent") or row["parent"] not in by_id:
+            show(row, 0)
+    return "\n".join(lines) + "\n"
+
+
+def cmd_overview(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[str, Any]:
+    """Every Bolt of a planning repository in one read-only roll-up."""
+    root = Path(args.root)
+    if not root.is_dir():
+        die(EXIT_INPUT, f"{root}: --root is not a directory.")
+    rows: list[dict[str, Any]] = []
+    logs: list[dict[str, str]] = []
+    for state_file in sorted(root.glob("bolts/*/state.json")):
+        bolt = state_file.parent
+        try:
+            rows.append(overview_row(bolt, catalog))
+        except Fail as exc:
+            rows.append({"id": bolt.name, "error": exc.message})
+        except Exception as exc:  # one unreadable Bolt must not hide the others
+            rows.append({"id": bolt.name, "error": f"{type(exc).__name__}: {exc}"})
+        logs.extend(log_rows(bolt))
+    known = {r["id"]: r for r in rows}
+    for row in rows:
+        parent = known.get(row.get("parent") or "")
+        if parent is not None and "children" in parent:
+            parent["children"].append(row["id"])
+    result: dict[str, Any] = {"ok": True, "root": str(root.resolve()), "bolts": rows}
+    if args.log:
+        result["log"] = sorted(logs, key=lambda r: r["time"])[-args.log :]
+    if args.format == "text":
+        text = overview_text(rows)
+        for entry in result.get("log", []):
+            unit = f" [{entry['unit']}]" if entry["unit"] else ""
+            text += f"{entry['time']} {entry['bolt']}{unit} {entry['event']} {entry['stage']}\n"
+        return {"text": text}
+    return result
+
+
 def planning_root(bolt: Path) -> Path:
     """The planning repository root: bolts live in ``<root>/bolts/<id>``."""
     return bolt.resolve().parent.parent
@@ -1546,8 +1715,9 @@ def input_rows(
         parent_state = load_state(folder)
     rows: list[dict[str, Any]] = []
     missing: list[dict[str, Any]] = []
+    slug = DATE_PREFIX.sub("", str(state["id"]))
     for entry in stage["inputs"]:
-        template = entry["path"]
+        template = entry["path"].replace("<bolt>", slug)
         from_parent = template.startswith(PARENT_PREFIX)
         if from_parent and folder is None:
             continue  # parent inputs exist only for a child bolt
@@ -2052,6 +2222,69 @@ def same_person(left: str, right: str) -> bool:
     return " ".join(left.split()).casefold() == " ".join(right.split()).casefold()
 
 
+def decision_rows(text: str) -> list[dict[str, Any]]:
+    """Rows of a decision table: ``id``, ``flag``, ``status``, ``owner`` (``None`` when the
+    table has no such column) and ``line``. Only the columns it has are read."""
+    rows: list[dict[str, Any]] = []
+    columns: Optional[dict[str, int]] = None
+    for number, line in enumerate(text.splitlines(), start=1):
+        if not line.strip().startswith("|"):
+            columns = None
+            continue
+        cells = [re.sub(r"[*`_]", "", c).strip() for c in line.strip().strip("|").split("|")]
+        if all(re.fullmatch(r":?-{3,}:?", c) for c in cells if c):
+            continue
+        if columns is None:
+            lowered = [c.lower() for c in cells]
+            columns = (
+                {name: lowered.index(name) for name in lowered if name} if "id" in lowered else {}
+            )
+            continue
+        if not columns or not re.fullmatch(
+            r"D\d+", cells[columns["id"]] if columns["id"] < len(cells) else ""
+        ):
+            continue
+
+        def cell(name: str, cells: list[str] = cells, columns: dict[str, int] = columns) -> Any:
+            index = columns.get(name)
+            return cells[index] if index is not None and index < len(cells) else None
+
+        rows.append(
+            {
+                "id": cells[columns["id"]],
+                "flag": cell("flag"),
+                "status": cell("status"),
+                "owner": cell("owner"),
+                "line": number,
+            }
+        )
+    return rows
+
+
+def decision_status_findings(
+    bolt: Path, state: dict[str, Any], stage: dict[str, Any], unit: Optional[str]
+) -> list[dict[str, Any]]:
+    """A decision table may carry a ``Status`` column; its words come from one list."""
+    found: list[dict[str, Any]] = []
+    for template in stage["artifacts"]:
+        for rel in expand(template, brownfield_repos(state), unit_ids(state, stage, unit)):
+            path = locate(bolt, rel)
+            if Path(rel).name not in DECISION_FILES or not path.is_file():
+                continue
+            for row in decision_rows(path.read_text(encoding="utf-8", errors="replace")):
+                value = (row["status"] or "").lower()
+                if value not in ("", "-", *DECISION_STATUS):
+                    message = f"{row['id']}: status '{row['status']}' is not one of "
+                    found.append(
+                        {
+                            "code": "decision-status-unknown",
+                            "path": rel,
+                            "message": message + ", ".join(DECISION_STATUS),
+                        }
+                    )
+    return found
+
+
 def cmd_gate(
     bolt: Path,
     state: dict[str, Any],
@@ -2089,6 +2322,7 @@ def cmd_gate(
         die(EXIT_USAGE, "--approve needs --by NAME.")
     findings = gate_findings(bolt, state, stage, unit, record)
     findings.extend(traceability_findings(bolt, state, catalog, stage))
+    findings.extend(decision_status_findings(bolt, state, stage, unit))
     ack = (getattr(args, "ack_context", None) or "").strip()
     if not ack:
         for path in context_changed(bolt, state, catalog, stage, unit):
@@ -2681,10 +2915,65 @@ def short_head(ctx: GitCtx) -> Optional[str]:
     return done.stdout.strip() if done.returncode == 0 else None
 
 
+def head_step(ctx: GitCtx, bolt_rel: str, stage: str, unit: Optional[str]) -> Optional[str]:
+    """The step a stage had in the last commit, or ``None`` when HEAD does not say."""
+    base = f"{ctx.prefix}{bolt_rel}"
+    names = [f"{base}/state.json"] + ([f"{base}/units/{unit}/state.json"] if unit else [])
+    for name in reversed(names):
+        shown = run_git(ctx.top, "show", f"HEAD:{name}")
+        if shown.returncode != 0:
+            continue
+        try:
+            data = json.loads(shown.stdout)
+        except json.JSONDecodeError:
+            return None
+        if unit and "stages" not in data:  # a unit kept inline in the Bolt's file
+            data = next((u for u in data.get("units", []) if u.get("id") == unit), {})
+        record = (data.get("stages") or {}).get(stage)
+        if record is not None or not unit:
+            return str((record or {}).get("step")) if record else None
+    return None
+
+
+def warn_approved_changes(
+    ctx: GitCtx, bolt_rel: str, changed: list[str], result: dict[str, Any]
+) -> bool:
+    """Warn, and log once, for each changed artifact of an approved stage; True if logged.
+
+    The commit that records the approval itself is not a change after approval."""
+    bolt = ctx.top / ctx.prefix / bolt_rel
+    try:
+        state = load_state(bolt)
+        catalog = load_catalog()
+    except Fail:
+        return False
+    head = f"{ctx.prefix}{bolt_rel}/"
+    watched: dict[str, tuple[str, Optional[str]]] = {}
+    for item, unit in slots(state, catalog):
+        record = slot_record(state, item, unit)
+        if record and record.get("step") == "approved":
+            for template in item["artifacts"]:
+                for rel in expand(template, brownfield_repos(state), unit_ids(state, item, unit)):
+                    watched.setdefault(rel, (item["id"], unit))
+    logged = False
+    for path in changed:
+        found = watched.get(path[len(head) :]) if path.startswith(head) else None
+        if found is None or head_step(ctx, bolt_rel, found[0], found[1]) != "approved":
+            continue
+        rel = path[len(head) :]
+        text = f"approved artifact changed: {rel} (stage {found[0]} is approved; "
+        result["warnings"].append(text + "reopen it with gate --request-changes)")
+        log_event(bolt, "approved-change", found[0], "", rel, found[1] or "")
+        logged = True
+    return logged
+
+
 def commit_scope(
     ctx: GitCtx, bolt_rel: Optional[str], message: str, result: dict[str, Any]
 ) -> None:
     changed = changed_paths(ctx)
+    if bolt_rel and warn_approved_changes(ctx, bolt_rel, changed, result):
+        changed = changed_paths(ctx)  # the log line is new
     scoped = [p for p in changed if scope_match(ctx, p, bolt_rel)]
     others = [p[len(ctx.prefix) :] if p.startswith(ctx.prefix) else p for p in changed]
     others = [o for o, p in zip(others, changed) if not scope_match(ctx, p, bolt_rel)]
@@ -3031,7 +3320,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--verbose", action="store_true", help="Verbose diagnostics on stderr.")
     sub = parser.add_subparsers(dest="command", required=True, metavar="command")
 
-    read_only = {"status", "next", "inputs", "codekb-status"}
+    read_only = {"status", "next", "inputs", "codekb-status", "overview"}
 
     def add(name: str, help_text: str, bolt: bool = True) -> argparse.ArgumentParser:
         sp = sub.add_parser(name, help=help_text, description=help_text)
@@ -3072,6 +3361,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--parent", help="Parent bolt id or path under the same root; its HLA frames this one."
     )
+
+    sp = add("overview", "Roll up every Bolt of a planning repository; writes nothing.", bolt=False)
+    sp.add_argument("--root", required=True, help="Planning repository root (contains bolts/).")
+    sp.add_argument("--format", choices=["json", "text"], default="json")
+    sp.add_argument("--log", type=int, metavar="N", help="Add the last N log lines of all Bolts.")
 
     sp = add("status", "Show progress.")
     sp.add_argument("--format", choices=["json", "text"], default="json")
@@ -3286,7 +3580,7 @@ def take_lock(bolt: Path) -> list[str]:
 
 def run_command(args: argparse.Namespace) -> dict[str, Any]:
     """Run a command; one that changes a Bolt holds the Bolt's local lock while it does."""
-    if args.command == "open" or not changes_state(args):
+    if args.command in {"open", "overview"} or not changes_state(args):
         return run_locked(args)
     bolt = Path(args.bolt)
     warnings = take_lock(bolt)
@@ -3304,6 +3598,8 @@ def run_locked(args: argparse.Namespace) -> dict[str, Any]:
     if args.command == "open":
         return cmd_open(args, catalog)
 
+    if args.command == "overview":
+        return cmd_overview(args, catalog)
     bolt = Path(args.bolt)
     state = load_state(bolt)
     backfill_stages(state, catalog)

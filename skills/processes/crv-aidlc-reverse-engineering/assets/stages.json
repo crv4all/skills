@@ -145,6 +145,11 @@
           "mode": "digest"
         },
         {
+          "path": "parent:architecture/briefs/<bolt>.md",
+          "mode": "full",
+          "optional": true
+        },
+        {
           "path": "parent:knowledge/_digest.md",
           "mode": "digest",
           "optional": true

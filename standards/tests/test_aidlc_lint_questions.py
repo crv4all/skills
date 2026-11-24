@@ -286,3 +286,20 @@ def test_the_shipped_template_passes_and_has_no_entries(tmp_path: Path) -> None:
 def test_lint_needs_a_file_or_presets() -> None:
     done = subprocess.run([sys.executable, str(SCRIPT)], capture_output=True, text=True, timeout=60)
     assert done.returncode == 2
+
+
+def test_class_line_and_assumed_section(tmp_path: Path) -> None:
+    def with_class(value: str) -> str:
+        return GOOD.replace("Recommended:", f"Class: {value}\nRecommended:")
+
+    assert lint(tmp_path, with_class("material"))[0] == 0
+    assert lint(tmp_path, GOOD)[0] == 0  # no Class line: an old file stays valid
+    code, result = lint(tmp_path, with_class("Trivial"))
+    assert code == 1 and codes(result) == ["should-not-ask"]
+    assert codes(lint(tmp_path, with_class("reversible"))[1]) == ["should-not-ask"]
+    assert codes(lint(tmp_path, with_class("urgent"))[1]) == ["class-unknown"]
+    assumed = GOOD + "\n## Assumed\n- Use snake_case because the repo does.\n- Tabs for indent\n"
+    code, result = lint(tmp_path, assumed)
+    assert code == 1 and codes(result) == ["assumed-no-reason"] and result["questions"] == 1
+    only = "# Notes\n\n## Assumed\n- Use snake_case because the repo does.\n"
+    assert codes(lint(tmp_path, only)[1]) == ["no-questions"]
