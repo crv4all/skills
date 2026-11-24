@@ -12,6 +12,17 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **One lock per planning checkout, held for a whole command.**
+  Two sessions in one checkout on two different Bolts used to fail half of
+  their commands (`index.lock`, "a rebase is in progress"), because the old
+  per-Bolt lock covered only the state write and not the git steps. A command
+  that changes a Bolt, and `sync`, now holds a single lock for the sync before,
+  the command and the sync after; the second session waits up to 60 s and then
+  stops with a message naming the lock file. The lock lives in the git
+  directory (`.git/aidlc.lock`), or at the planning root outside git, and the
+  operating system frees it when a session dies, so there is no stale lock and
+  no expiry. Reads never wait. Native Windows keeps a weaker file-based lock.
+
 - **`overview` shows every Bolt of a planning repo at once, and an edit to an approved artifact is noticed.**
   `aidlc_state.py overview --root <repo>` reads each Bolt (a broken or newer
   one is listed with its error) and prints its next step, children, units with

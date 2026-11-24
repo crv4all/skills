@@ -14,6 +14,7 @@ Everything here is deterministic, so it costs no model tokens.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
 import hashlib
 import importlib.util
@@ -24,9 +25,16 @@ import re
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NoReturn, Optional, cast
+
+_fcntl: Any
+try:
+    import fcntl as _fcntl
+except ImportError:  # native Windows: the lock falls back to an exclusive-create file
+    _fcntl = None
 
 EXIT_OK = 0
 EXIT_FINDINGS = 1
@@ -65,6 +73,11 @@ bolt and pushes it. `aidlc.json` at the planning root may hold
 {"git": {"branch": "..", "remote": "origin", "commit": true, "push": true}}.
 AIDLC_GIT=off or --no-git turns git writes off; a folder outside git is skipped.
 
+Lock: a command that changes a bolt (and `sync`) holds one lock per planning checkout for
+its whole run, git steps included, so two sessions in one checkout queue instead of
+colliding. It waits up to 60 s, then stops and names the lock file. The lock is freed by
+the operating system if the session dies. Reads (status, next, overview) never wait.
+
 examples:
   python3 aidlc_state.py open --root . --slug billing --title "Billing" --intent "Move billing"
   python3 aidlc_state.py next --bolt bolts/2026-01-05-billing
@@ -87,7 +100,10 @@ LOG = logging.getLogger("aidlc_state")
 FRAMEWORK = 3  # bumped when a change to state.json would break an older copy of the skills
 LOCAL_FILE = ".aidlc-local.json"  # per machine, never committed; sits at the planning root
 LOCK_NAME = ".aidlc.lock"
-LOCK_STALE = 120  # seconds after which a lock left by a crashed session is taken over
+LOCK_WAIT = 60.0  # seconds a command waits for another session of the same checkout
+LOCK_POLL = 0.2
+LOCK_WAIT_ENV = "AIDLC_LOCK_WAIT"  # test only: seconds to wait instead of LOCK_WAIT
+LOCK_STALE = 120  # fallback lock only: seconds after which a lock left by a crash is taken over
 INDEX_KEYS = ("id", "name", "kind", "slice", "owner", "repo", "depends_on")
 UNIT_MODES = ["split", "inline"]
 DECISION_STATUS = (
@@ -3494,11 +3510,20 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
-    """Run a command; a command that changes a bolt is wrapped in two git syncs."""
+    """Run a command. One that changes a Bolt (or syncs) holds the checkout lock for its
+    whole run, git syncs included; a read takes no lock."""
+    if args.command != "sync" and not changes_state(args):
+        return run_locked(args)
+    with checkout_lock(lock_location(args)):
+        return run_changing(args)
+
+
+def run_changing(args: argparse.Namespace) -> dict[str, Any]:
+    """A command that changes a bolt is wrapped in two git syncs."""
     if args.command == "sync":
         return cmd_sync(args)
-    if not changes_state(args) or getattr(args, "no_git", False):
-        return run_command(args)
+    if getattr(args, "no_git", False):
+        return run_locked(args)
     if args.command == "open":
         root, rel, slug = Path(args.root), None, ""
     else:
@@ -3506,7 +3531,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         root, rel, slug = git_scope(Path(args.bolt))
     ctx, _why = open_git(root.resolve())
     if ctx is None:
-        return run_command(args)
+        return run_locked(args)
     event = git_event(args)
     before = sync_git(ctx, rel, slug, f"save work before {event}")
     shared_counter = args.command == "decision-id" and not args.unit
@@ -3520,7 +3545,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 extra={"git": before},
             )
         provisional = True
-    result = run_command(args)
+    result = run_locked(args)
     if provisional:
         result["provisional"] = True
     if args.command == "open":
@@ -3550,13 +3575,105 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     return result
 
 
-def take_lock(bolt: Path) -> list[str]:
-    """Create ``<bolt>/.aidlc.lock`` or refuse; return a warning when a stale one is taken."""
-    path = bolt / LOCK_NAME
-    warnings: list[str] = []
-    if not bolt.is_dir():
-        return warnings  # run_locked reports the missing Bolt
-    for _attempt in range(2):
+def lock_wait() -> float:
+    """Seconds to wait for the checkout lock; ``AIDLC_LOCK_WAIT`` is for tests only."""
+    raw = os.environ.get(LOCK_WAIT_ENV, "")
+    try:
+        return float(raw) if raw else LOCK_WAIT
+    except ValueError:
+        return LOCK_WAIT
+
+
+def lock_busy(path: Path, waited: float) -> Fail:
+    return Fail(
+        EXIT_FINDINGS,
+        f"another session in this checkout is still working (waited {int(waited)} s for "
+        f"{path}). Let it finish, then run the command again.",
+    )
+
+
+def lock_location(args: argparse.Namespace) -> Optional[Path]:
+    """The checkout-wide lock file of a command, or ``None`` when there is nothing to lock.
+
+    Inside the git directory of the planning checkout, so it is never a work-tree file; at
+    the planning root when git is off or the root is not a git repository."""
+    if args.command == "open" or (args.command == "sync" and args.root):
+        root = Path(args.root)
+    elif getattr(args, "bolt", None):
+        bolt = Path(args.bolt)
+        if not bolt.is_dir():
+            return None  # the command reports the missing Bolt
+        root = planning_root(bolt)
+    else:
+        return None
+    if not root.is_dir():
+        return None
+    root = root.resolve()
+    git_off = getattr(args, "no_git", False) or os.environ.get("AIDLC_GIT", "").lower() == "off"
+    if not git_off:
+        inside = run_git(root, "rev-parse", "--is-inside-work-tree")
+        found = run_git(root, "rev-parse", "--git-path", "aidlc.lock")
+        if inside.stdout.strip() == "true" and found.returncode == 0:
+            path = Path(found.stdout.strip())
+            return path if path.is_absolute() else root / path
+    return root / LOCK_NAME
+
+
+def flock_open(path: Path, deadline: float, started: float) -> int:
+    """Open ``path`` and take its ``flock``; return the descriptor that holds it.
+
+    A holder may delete the file when it is done (see ``flock_lock``). Once we own the
+    lock we check that the path still names the file we hold, else we start again."""
+    while True:
+        fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o644)
+        while True:
+            try:
+                _fcntl.flock(fd, _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    os.close(fd)
+                    raise lock_busy(path, time.monotonic() - started) from None
+                time.sleep(LOCK_POLL)
+        try:
+            same = path.stat().st_ino == os.fstat(fd).st_ino
+        except FileNotFoundError:
+            same = False
+        if same:
+            return fd
+        os.close(fd)
+
+
+@contextlib.contextmanager
+def flock_lock(path: Path, wait: float) -> Iterator[None]:
+    """Hold an exclusive ``flock`` on ``path``; the operating system frees it when we die.
+
+    A lock file in the work tree is deleted on the way out so it never shows in
+    ``git status``; one inside the git directory stays."""
+    started = time.monotonic()
+    fd = flock_open(path, started + wait, started)
+    try:
+        try:  # the file is a note for people; the lock is the flock
+            os.ftruncate(fd, 0)
+            os.write(fd, f"{os.getpid()} {now()}\n".encode())
+        except OSError:
+            pass
+        yield
+    finally:
+        if path.name == LOCK_NAME:
+            path.unlink(missing_ok=True)  # while we still hold it
+        os.close(fd)  # releases the lock
+
+
+@contextlib.contextmanager
+def fallback_lock(path: Path, wait: float) -> Iterator[None]:
+    """Where ``fcntl`` is missing (native Windows): an exclusive-create file.
+
+    Not exercised on Windows. After a crash it is only freed by age (``LOCK_STALE``), so
+    it gives weaker guarantees than ``flock_lock``."""
+    deadline = time.monotonic() + wait
+    started = time.monotonic()
+    while True:
         try:
             handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         except FileExistsError:
@@ -3564,33 +3681,32 @@ def take_lock(bolt: Path) -> list[str]:
                 age = time.time() - path.stat().st_mtime
             except FileNotFoundError:
                 continue  # released a moment ago: try again
-            if age < LOCK_STALE:
-                raise Fail(
-                    EXIT_FINDINGS,
-                    "another session is changing this Bolt; run the command again",
-                ) from None
-            warnings.append(f"took over a lock left {int(age)} s ago by a session that stopped")
-            path.unlink(missing_ok=True)
+            if age >= LOCK_STALE:
+                LOG.warning("took over a lock left %d s ago by a session that stopped", age)
+                path.unlink(missing_ok=True)
+                continue
+            if time.monotonic() >= deadline:
+                raise lock_busy(path, time.monotonic() - started) from None
+            time.sleep(LOCK_POLL)
             continue
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
             stream.write(f"{os.getpid()} {now()}\n")
-        return warnings
-    raise Fail(EXIT_FINDINGS, "another session is changing this Bolt; run the command again")
-
-
-def run_command(args: argparse.Namespace) -> dict[str, Any]:
-    """Run a command; one that changes a Bolt holds the Bolt's local lock while it does."""
-    if args.command in {"open", "overview"} or not changes_state(args):
-        return run_locked(args)
-    bolt = Path(args.bolt)
-    warnings = take_lock(bolt)
+        break
     try:
-        result = run_locked(args)
+        yield
     finally:
-        (bolt / LOCK_NAME).unlink(missing_ok=True)
-    if warnings:
-        result["warnings"] = [*result.get("warnings", []), *warnings]
-    return result
+        path.unlink(missing_ok=True)
+
+
+@contextlib.contextmanager
+def checkout_lock(path: Optional[Path]) -> Iterator[None]:
+    """One exclusive lock per planning checkout for a whole state-changing command."""
+    if path is None:
+        yield
+        return
+    wait = lock_wait()
+    with flock_lock(path, wait) if _fcntl else fallback_lock(path, wait):
+        yield
 
 
 def run_locked(args: argparse.Namespace) -> dict[str, Any]:
@@ -3634,6 +3750,7 @@ def run_locked(args: argparse.Namespace) -> dict[str, Any]:
         return cmd_assign(bolt, state, catalog, args)
     if cmd in {"decide", "step", "gate"}:
         stage = stage_def(catalog, args.stage)
+        suffix = ""
         if cmd == "gate":
             return cmd_gate(bolt, state, catalog, stage, args.unit, args)
         if cmd in {"decide", "step"}:

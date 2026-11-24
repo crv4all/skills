@@ -7,11 +7,9 @@ most of these tests assert a refusal and that nothing changed.
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
@@ -1034,16 +1032,25 @@ def test_next_in_a_split_bolt_lists_every_unit_in_progress(tmp_path: Path) -> No
     )
 
 
-def test_a_fresh_lock_refuses_and_a_stale_one_is_taken_over(bolt: Bolt) -> None:
-    lock = bolt.path / ".aidlc.lock"
-    lock.write_text("x", encoding="utf-8")
-    code, data, _ = bolt.run("park", "--note", "n")
-    assert code == 1 and "another session" in data["error"] and lock.exists()
-    old = time.time() - 600
-    os.utime(lock, (old, old))
-    code, data, _ = bolt.run("park", "--note", "n")
-    assert code == 0 and data["warnings"] and not lock.exists()
+def test_a_command_holds_the_checkout_lock_and_leaves_no_file_behind(
+    bolt: Bolt, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Outside git the lock sits at the planning root; a held lock stops a changing command."""
+    lock = bolt.root / ".aidlc.lock"
     assert bolt.run("park", "--note", "n")[0] == 0 and not lock.exists()
+    assert not (bolt.path / ".aidlc.lock").exists()  # the per-Bolt lock is gone
+    if sys.platform == "win32":  # pragma: no cover
+        pytest.skip("flock is not available")
+    import fcntl
+
+    monkeypatch.setenv("AIDLC_LOCK_WAIT", "0.5")
+    with lock.open("a") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        code, data, _ = bolt.run("park", "--note", "n")
+        assert code == 1 and "another session in this checkout" in data["error"]
+        assert str(lock) in data["error"]
+        assert bolt.run("status")[0] == 0  # a read takes no lock
+    assert bolt.run("park", "--note", "n")[0] == 0
 
 
 def test_the_owner_guard_needs_a_takeover_but_not_for_a_gate(
