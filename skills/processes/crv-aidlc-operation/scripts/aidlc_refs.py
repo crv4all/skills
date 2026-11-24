@@ -202,6 +202,8 @@ class Bolt:
         self._outline: Optional[list[str]] = None
         self.config_found = False
         self.line_sources: dict[str, str] = {}
+        self.units: list[str] = []  # unit ids of a split bolt: their decisions are <unit>:D<n>
+        self.unit_re: Optional[re.Pattern[str]] = None
         self.foreign_re: Optional[re.Pattern[str]] = None
         self._aliases: list[tuple[re.Pattern[str], str, bool, str]] = []
 
@@ -266,11 +268,36 @@ class Bolt:
 
     # -- loading ----------------------------------------------------------
 
+    def load_units(self) -> None:
+        """A split bolt names its units in state.json; others have no qualified ids."""
+        try:
+            state = json.loads((self.root / "state.json").read_text(encoding="utf-8"))
+            if state.get("unit_state") == "split":
+                self.units = [str(u["id"]) for u in state.get("units", [])]
+        except (OSError, ValueError, AttributeError, KeyError, TypeError):
+            return
+        if self.units:
+            names = "|".join(re.escape(u) for u in sorted(self.units, key=len, reverse=True))
+            self.unit_re = re.compile(rf"(?<![\w-])(?:{names}):{ID}(?![\w-])")
+
+    def unit_of(self, rel: str) -> Optional[str]:
+        """The unit whose folder under ``docs/construction/`` holds ``rel``."""
+        parts = Path(rel).parts
+        if len(parts) > 3 and parts[:2] == ("docs", "construction") and parts[2] in self.units:
+            return parts[2]
+        return None
+
+    def winner(self, ident: str, rel: str) -> Optional[Decl]:
+        """The declaration of ``ident`` as cited from ``rel``: its own unit's first."""
+        unit = self.unit_of(rel)
+        return (unit and self.winners.get(f"{unit}:{ident}")) or self.winners.get(ident)
+
     def load(self) -> None:
         self.load_config()
+        self.load_units()
         for path in sorted(self.root.rglob("*.md")):
             rel = path.relative_to(self.root)
-            if is_skipped(rel):
+            if is_skipped(rel) or (rel.parts[0] == "units" and rel.name == "log.md"):
                 continue
             try:
                 raw = path.read_text(encoding="utf-8")
@@ -283,7 +310,10 @@ class Bolt:
             posix = rel.as_posix()
             self.files[posix] = parse_file(posix, raw)
         for scan in self.files.values():
+            unit = self.unit_of(scan.rel)
             for decl in scan.decls:
+                if unit:
+                    decl.ident = f"{unit}:{decl.ident}"
                 self.decls.setdefault(decl.ident, []).append(decl)
         for ident, found in self.decls.items():
             found.sort(key=lambda d: (d.rank, d.file, d.line))
@@ -359,7 +389,7 @@ class Bolt:
     def resolve(self, ref: Ref, scan: FileScan) -> tuple[Optional[tuple[str, int]], str]:
         """Return ``((file, line), "")`` or ``(None, reason)``."""
         if ref.kind == "id":
-            win = self.winners.get(ref.ident)
+            win = self.winner(ref.ident, scan.rel)
             return ((win.file, win.line), "") if win else (None, "not declared")
         if ref.kind == "answer":
             prefix, number = ref.ident.split("-Q")
@@ -379,7 +409,9 @@ class Bolt:
         return (source, ref.first), ""
 
     def collect_refs(self, scan: FileScan) -> None:
-        shapes = {(re.sub(r"[^A-Z]", "", i), "-" in i) for i in self.decls}
+        shapes = {
+            (re.sub(r"[^A-Z]", "", i), "-" in i) for i in (k.rpartition(":")[2] for k in self.decls)
+        }
         for index, declared_at, own, skips in scan.ref_lines:
             line = scan.lines[index]
             spans = Masker().spans(line)
@@ -441,6 +473,9 @@ class Bolt:
                     template,
                 )
                 keep(previous)
+            for m in self.unit_re.finditer(line) if self.unit_re else []:
+                if free(m.start(), m.end()):
+                    keep(Ref(m.group(0), m.group(0), "id", scan.rel, index + 1, m.start(), m.end()))
             for m in ID_RE.finditer(line):
                 ident = m.group(1)
                 if not free(m.start(1), m.end(1)) or m.start(1) in (declared_at, *skips):
@@ -475,7 +510,8 @@ class Bolt:
                     continue
                 target, why = self.resolve(ref, scan)
                 if target is None:
-                    shape = (re.sub(r"[^A-Z]", "", ref.ident), "-" in ref.ident)
+                    bare = ref.ident.rpartition(":")[2]
+                    shape = (re.sub(r"[^A-Z]", "", bare), "-" in bare)
                     if ref.kind == "id" and shape not in shapes:
                         continue  # "SHA256", "C08": not an id of this bolt
                     self.unresolved.append(
@@ -483,6 +519,9 @@ class Bolt:
                     )
                     continue
                 key = ref.token if ref.kind == "line" else ref.ident
+                unit = self.unit_of(scan.rel)
+                if ref.kind == "id" and unit and f"{unit}:{ref.ident}" in self.winners:
+                    key = f"{unit}:{ref.ident}"
                 self.refs.setdefault(key, []).append(ref)
                 self.file_refs.setdefault(scan.rel, []).append(ref)
 
@@ -787,6 +826,7 @@ def parse_declarations(scan: FileScan) -> None:
 
 
 def sort_key(ident: str) -> tuple[str, list[int]]:
+    ident = ident.rpartition(":")[2]  # a unit's <unit>:D<n> sorts by its D<n>
     return re.sub(r"[^A-Z]", "", ident), [int(n) for n in re.findall(r"\d+", ident)]
 
 
@@ -912,8 +952,8 @@ def show_one(
                 "text": text if full else lines[first - 1].strip(),
             }
         ]
-    win = bolt.winners.get(token)
-    return [decl_entry(bolt, win, token, full)] if win else not_found(token)
+    win = bolt.winner(token, file or "")
+    return [decl_entry(bolt, win, win.ident, full)] if win else not_found(token)
 
 
 def text_line(entry: dict[str, Any]) -> str:
@@ -964,7 +1004,7 @@ def definition_for(
     dest = relative_link(target[0], citing, target[1])
     title = ""
     if titles and ref.kind != "line":
-        decl = bolt.winners.get(ref.ident)
+        decl = bolt.winner(ref.ident, citing)
         if ref.kind == "answer":
             prefix, number = ref.ident.split("-Q")
             decl, _ = bolt.answer_target(prefix, int(number))

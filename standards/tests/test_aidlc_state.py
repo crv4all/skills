@@ -7,9 +7,11 @@ most of these tests assert a refusal and that nothing changed.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -863,11 +865,11 @@ def test_a_newer_framework_is_refused_and_a_missing_one_is_added(bolt: Bolt) -> 
     del state["framework"]
     (bolt.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
     assert bolt.run("status")[0] == 0
-    assert bolt.run("park", "--note", "n")[0] == 0 and bolt.state["framework"] == 2
-    state["framework"] = 3
+    assert bolt.run("park", "--note", "n")[0] == 0 and bolt.state["framework"] == 3
+    state["framework"] = 4
     (bolt.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
     code, data, _ = bolt.run("status")
-    assert code == 4 and "framework 3, installed 2" in data["error"]
+    assert code == 4 and "framework 4, installed 3" in data["error"]
 
 
 # --- unit owners, waiting, changed context and the brief ---------------------
@@ -989,3 +991,86 @@ def test_assign_changes_the_owner_and_logs_it(bolt: Bolt) -> None:
     assert "| assign |" in last and last.endswith("[u1] Ada -> Grace")
     assert bolt.run("assign", "--unit", "zz", "--owner", "X")[0] == 2
     assert load_units(bolt, [{"id": "u1"}])[0] == 0 and bolt.state["units"][0]["owner"] == "Grace"
+
+
+# --- units that persist on their own, and the guards around them ---------------
+
+
+def split_bolt(tmp_path: Path) -> Bolt:
+    root = tmp_path / "split"
+    root.mkdir()
+    done = open_bolt(root, "--units", "split")
+    assert done.returncode == 0, done.stderr
+    return Bolt(root, Path(json.loads(done.stdout)["bolt"]))
+
+
+def test_a_split_bolt_moves_one_unit_without_touching_the_shared_files(tmp_path: Path) -> None:
+    p = split_bolt(tmp_path)
+    skip_inception(p)
+    assert load_units(p, [{"id": "u1"}, {"id": "u2"}])[0] == 0
+    assert (p.path / "units" / "u2" / "state.json").is_file()
+    assert "stages" not in p.state["units"][0] and "current" not in p.state
+    shared = {name: (p.path / name).read_bytes() for name in ("state.json", "log.md")}
+    u1 = (p.path / "units" / "u1" / "state.json").read_bytes()
+    code, data, _ = p.run("decide", "--stage", "functional-design", "--unit", "u2",
+                          "--decision", "skip", "--reason", "t")  # fmt: skip
+    assert code == 0, data
+    assert {n: (p.path / n).read_bytes() for n in shared} == shared
+    assert (p.path / "units" / "u1" / "state.json").read_bytes() == u1
+    own = json.loads((p.path / "units" / "u2" / "state.json").read_text(encoding="utf-8"))
+    assert own["stages"]["functional-design"]["decision"] == "skip"
+    assert "| decide |" in (p.path / "units" / "u2" / "log.md").read_text(encoding="utf-8")
+    assert "current" in p.run("status")[1]  # computed in memory after load
+
+
+def test_next_in_a_split_bolt_lists_every_unit_in_progress(tmp_path: Path) -> None:
+    p = split_bolt(tmp_path)
+    skip_inception(p)
+    load_units(p, [{"id": "u1"}, {"id": "u2", "depends_on": ["u1"]}])
+    data = p.run("next")[1]
+    assert data["action"] == "units" and [u["unit"] for u in data["units"]] == ["u1", "u2"]
+    assert p.run("status")[1]["next_action"] == (
+        "units in progress: u1 functional-design, u2 waits for u1"
+    )
+
+
+def test_a_fresh_lock_refuses_and_a_stale_one_is_taken_over(bolt: Bolt) -> None:
+    lock = bolt.path / ".aidlc.lock"
+    lock.write_text("x", encoding="utf-8")
+    code, data, _ = bolt.run("park", "--note", "n")
+    assert code == 1 and "another session" in data["error"] and lock.exists()
+    old = time.time() - 600
+    os.utime(lock, (old, old))
+    code, data, _ = bolt.run("park", "--note", "n")
+    assert code == 0 and data["warnings"] and not lock.exists()
+    assert bolt.run("park", "--note", "n")[0] == 0 and not lock.exists()
+
+
+def test_the_owner_guard_needs_a_takeover_but_not_for_a_gate(
+    bolt: Bolt, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    skip_inception(bolt)
+    load_units(bolt, [{"id": "u1", "owner": "Ada Lovelace"}])
+    step = ("step", "--stage", "code-generation", "--unit", "u1", "--to", "asked")
+    monkeypatch.setenv("AIDLC_ACTOR", "Grace Hopper")
+    code, data, _ = bolt.run(*step)
+    assert code == 1 and "belongs to Ada Lovelace and you are Grace Hopper" in data["error"]
+    assert bolt.run(*step, "--takeover", "Ada is away")[0] == 0
+    assert bolt.log_lines()[-1].endswith("takeover by Grace Hopper: Ada is away")
+    gate = bolt.run("gate", "--stage", "code-generation", "--unit", "u1", "--approve", "--by", "X")
+    assert gate[0] == 1 and "belongs to" not in gate[1]["error"]
+    monkeypatch.setenv("AIDLC_ACTOR", "ada  lovelace")
+    assert (
+        bolt.run("step", "--stage", "code-generation", "--unit", "u1", "--to", "analysed")[0] == 0
+    )
+
+
+def test_decision_ids_are_numbered_per_unit(bolt: Bolt) -> None:
+    load_units(bolt, [{"id": "u1"}, {"id": "u2"}])
+    data = bolt.run("decision-id", "--unit", "u1", "--count", "2")[1]
+    assert data["ids"] == ["D1", "D2"] and data["cite_as"] == ["u1:D1", "u1:D2"]
+    assert bolt.run("decision-id", "--unit", "u2")[1]["cite_as"] == ["u2:D1"]
+    assert bolt.run("decision-id", "--unit", "u1")[1]["ids"] == ["D3"]
+    assert bolt.state["decision_seq"] == 0
+    assert bolt.run("decision-id")[1]["ids"] == ["D1"]
+    assert bolt.run("decision-id", "--unit", "zz")[0] == 2

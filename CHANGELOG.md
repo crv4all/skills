@@ -12,6 +12,17 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Several engineers can build different units of one Bolt at the same time.**
+  `open --units split` (or `"units": "split"` in `aidlc.json`) keeps one
+  `state.json` and one `log.md` per unit under `units/<id>/`, so moving a unit
+  never rewrites the shared files, and a git conflict can only happen when two
+  people change the same unit, which has its own rule. A state-changing command
+  holds a short local lock, a unit's owner is asked before someone else changes
+  it (`--takeover` records why), and `decision-id --unit` numbers a unit's
+  decisions from D1, cited elsewhere as `<unit>:D<n>`. The shared decision
+  counter now refuses, or returns no ids, when it cannot be confirmed with the
+  remote. `aidlc_refs.py` resolves `<unit>:D<n>` in a split Bolt. The framework
+  number is now 3.
 - **Units have an owner, a repository and what they wait for, and a stage notices changed context.**
   `units --set` takes `owner`, `repo` and `depends_on` (a unit id, or
   `{"unit", "on": "done" | "contract"}`) and refuses a cycle or a repository

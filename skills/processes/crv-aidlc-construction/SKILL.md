@@ -25,7 +25,7 @@ Read `references/core-rules.md` once per session, then ONLY the reference of the
 
 ## Start of a Unit
 
-For each design stage, decide from the Unit's `kind` and the stage's run condition whether it runs: `aidlc_state.py decide --bolt <p> --stage <id> --unit <u> --decision execute|skip --reason "..."`. The approver can override. Cite what the HLA, TDD or an accepted ADR fixed (`D<n>`, ADR id); never re-ask it. Code Generation always runs.
+For each design stage, decide from the Unit's `kind` and the stage's run condition whether it runs: `aidlc_state.py decide --bolt <p> --stage <id> --unit <u> --decision execute|skip --reason "..."`. The approver can override. Cite what the HLA, TDD or an accepted ADR fixed (`D<n>`, ADR id); never re-ask it. Code Generation always runs. Ids: `decision-id --unit`, cite `<u>:D<n>`.
 
 | Kind | Design stages that normally run |
 | --- | --- |

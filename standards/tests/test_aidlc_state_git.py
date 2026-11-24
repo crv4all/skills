@@ -257,3 +257,69 @@ def test_log_names_the_git_user_and_the_local_file_is_never_committed(
     plain.mkdir()
     assert open_demo(plain)[0] == 0
     assert (bolt_of(plain) / "log.md").read_text().split(" | ")[3] == "agent"
+
+
+# --- split Bolts: two engineers, one Bolt ------------------------------------
+
+
+def split_demo(repos: Repos) -> Path:
+    """A split Bolt with units u1 and u2 in ``a``, pushed and pulled into ``b``."""
+    assert open_demo(repos.a, "--units", "split")[0] == 0
+    bolt = bolt_of(repos.a)
+    spec = repos.a.parent / "units.json"
+    spec.write_text(json.dumps({"units": [{"id": "u1"}, {"id": "u2"}]}), encoding="utf-8")
+    assert script("units", "--bolt", str(bolt), "--set", str(spec))[0] == 0
+    assert script("jira", "--bolt", str(bolt), "--off", "--reason", "t")[0] == 0
+    git(repos.b, "pull", "-q")
+    return bolt
+
+
+def decide_unit(root: Path, unit: str, reason: str, *flags: str) -> tuple[int, dict[str, Any], str]:
+    return script(
+        "decide", "--bolt", str(bolt_of(root)), "--stage", "functional-design", "--unit", unit,
+        "--decision", "skip", "--reason", reason, *flags,
+    )  # fmt: skip
+
+
+def test_two_engineers_on_different_units_do_not_conflict(repos: Repos) -> None:
+    split_demo(repos)
+    assert decide_unit(repos.a, "u1", "mine")[0] == 0
+    assert decide_unit(repos.b, "u2", "yours", "--no-git")[0] == 0  # built on a stale base
+    code, out, _ = script("sync", "--bolt", str(bolt_of(repos.b)), "-m", "unit u2")
+    assert code == 0 and out["git"]["pushed"] is True
+    git(repos.a, "pull", "-q", "--rebase")
+    for unit in ("u1", "u2"):
+        text = (bolt_of(repos.a) / "units" / unit / "state.json").read_text()
+        assert '"decision": "skip"' in text
+
+
+def test_two_engineers_on_the_same_unit_get_the_unit_rule(repos: Repos) -> None:
+    split_demo(repos)
+    assert decide_unit(repos.a, "u1", "mine")[0] == 0
+    assert decide_unit(repos.b, "u1", "yours", "--no-git")[0] == 0
+    code, out, _ = script("sync", "--bolt", str(bolt_of(repos.b)), "-m", "unit u1")
+    assert code == 6
+    messages = [f["message"] for f in out["findings"]]
+    assert any(
+        m.startswith("two sessions changed the same unit. Do not take a side") for m in messages
+    )
+    assert git(repos.b, "status", "--porcelain").count("UU") >= 1  # nothing was resolved for them
+
+
+def test_a_decision_counter_race_returns_no_ids(repos: Repos, tmp_path: Path) -> None:
+    assert open_demo(repos.a)[0] == 0
+    git(repos.b, "pull", "-q")
+    rival = tmp_path / "rival"
+    subprocess.run(["git", "clone", "-q", str(repos.remote), str(rival)], check=True)
+    state_file = bolt_of(rival) / "state.json"
+    state_file.write_text(state_file.read_text().replace('"decision_seq": 0', '"decision_seq": 9'))
+    git(rival, "add", "-A")
+    git(rival, "commit", "-q", "-m", "rival takes the counter")
+    hook = repos.b / ".git" / "hooks" / "post-commit"  # the rival pushes while we commit
+    hook.write_text(
+        f"#!/bin/sh\nunset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE\ngit -C {rival} push -q origin main\n"
+    )
+    hook.chmod(0o755)
+    code, out, _ = script("decision-id", "--bolt", str(bolt_of(repos.b)))
+    assert code == 6 and "the ids were not reserved" in out["error"]
+    assert "ids" not in out and "ids" not in out["result"]

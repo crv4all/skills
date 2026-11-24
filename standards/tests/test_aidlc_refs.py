@@ -821,3 +821,25 @@ def test_a_bare_line_ref_after_prose_stays_unresolved_with_the_right_line(refs, 
     )
     (item,) = link(refs, bolt, "--lines", "--dry-run")["unresolved"]
     assert (item["id"], item["line"]) == ("L5", 3)
+
+
+def test_a_split_bolts_unit_decisions_are_cited_as_unit_colon_id(refs, bolt: Path) -> None:
+    before = show(refs, bolt, "D10", "D11")
+    write(bolt, "state.json", json.dumps({"unit_state": "split", "units": [{"id": "u1"}]}))
+    write(bolt, "docs/construction/u1/decisions.md", "# Unit\n\n## D10 Unit wording\nSee D10.\n")
+    cite(bolt, "The unit chose u1:D10, the Bolt chose D10.\n")
+    after = show(refs, bolt, "D10", "D11")  # the Bolt's own ids stay where they were
+    assert [(e["file"], e["line"], e["gloss"]) for e in after] == [
+        (e["file"], e["line"], e["gloss"]) for e in before
+    ]
+    assert after[0]["cited"]["files"] == ["architecture/cites.md"]
+    entry = show(refs, bolt, "u1:D10")[0]
+    assert entry["found"] and entry["file"] == "docs/construction/u1/decisions.md"
+    assert entry["cited"]["count"] == 2  # the qualified citation and the bare one in the unit
+    assert (
+        show(refs, bolt, "D10", extra=("--file", "docs/construction/u1/decisions.md"))[0]["id"]
+        == "u1:D10"
+    )
+    assert refs("index", "--bolt", str(bolt)).json["ids"] == 4
+    assert "| u1:D10 |" in (bolt / "refs.md").read_text(encoding="utf-8")
+    assert refs("link", "--bolt", str(bolt)).json["duplicates"] == []

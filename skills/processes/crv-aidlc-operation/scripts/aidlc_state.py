@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NoReturn, Optional, cast
@@ -82,8 +83,12 @@ exit codes:
 
 LOG = logging.getLogger("aidlc_state")
 
-FRAMEWORK = 2  # bumped when a change to state.json would break an older copy of the skills
+FRAMEWORK = 3  # bumped when a change to state.json would break an older copy of the skills
 LOCAL_FILE = ".aidlc-local.json"  # per machine, never committed; sits at the planning root
+LOCK_NAME = ".aidlc.lock"
+LOCK_STALE = 120  # seconds after which a lock left by a crashed session is taken over
+INDEX_KEYS = ("id", "name", "kind", "slice", "owner", "repo", "depends_on")
+UNIT_MODES = ["split", "inline"]
 PATH_HINT = "set it in .aidlc-local.json or clone it next to the planning repo"
 
 STAGES_PATH = Path(__file__).resolve().parent.parent / "assets" / "stages.json"
@@ -211,7 +216,40 @@ def load_state(bolt: Path) -> dict[str, Any]:
             f"this Bolt was last written by newer skills (framework {written}, installed "
             f"{FRAMEWORK}); update the skills and run the command again",
         )
+    if is_split(state):
+        merge_units(bolt, state)
     return state
+
+
+def is_split(state: dict[str, Any]) -> bool:
+    """True for a Bolt that keeps one state file and one log per unit."""
+    return state.get("unit_state") == "split"
+
+
+def unit_dir(bolt: Path, unit: str) -> Path:
+    return bolt / "units" / unit
+
+
+def merge_units(bolt: Path, state: dict[str, Any]) -> None:
+    """Put each unit's own file back into its entry, so commands see one shape."""
+    catalog: Optional[list[dict[str, Any]]] = None
+    for unit in state.get("units", []):
+        path = unit_dir(bolt, unit["id"]) / "state.json"
+        data: Any = None
+        if path.is_file():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                die(EXIT_MALFORMED, f"{path}: invalid JSON at line {exc.lineno}: {exc.msg}")
+            if not isinstance(data, dict):
+                die(EXIT_MALFORMED, f"{path}: expected an object.")
+            data.pop("updated", None)
+            unit.update(data)
+        if "stages" not in unit:  # no unit file yet: a unit with no progress
+            catalog = catalog or load_catalog()
+            unit["stages"] = unit_stage_records(catalog, state["scope"], kind=bolt_kind(state))
+            unit.setdefault("story", None)
+            unit.setdefault("story_done", None)
 
 
 def backfill_stages(state: dict[str, Any], catalog: list[dict[str, Any]]) -> None:
@@ -355,16 +393,48 @@ def normalise_portable(bolt: Path, state: dict[str, Any]) -> bool:
     return True
 
 
+def save_if_changed(path: Path, content: dict[str, Any], touch: bool) -> None:
+    """Write ``content`` atomically unless the file already holds it (``updated`` aside)."""
+    if path.is_file():
+        try:
+            old = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            old = None
+        if isinstance(old, dict):
+            old.pop("updated", None)
+            if old == {k: v for k, v in content.items() if k != "updated"}:
+                return
+    if touch:
+        content = {**content, "updated": now()}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(".state.json.tmp")
+    tmp.write_text(json.dumps(content, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def write_split(bolt: Path, state: dict[str, Any]) -> None:
+    """Persist a split Bolt: the shared index, and each unit's own file if it changed."""
+    shared = {k: v for k, v in state.items() if k not in ("current", "next_action")}
+    shared["units"] = [{k: u[k] for k in INDEX_KEYS if k in u} for u in state["units"]]
+    save_if_changed(state_path(bolt), shared, touch=False)
+    for unit in state["units"]:
+        own = {k: v for k, v in unit.items() if k not in INDEX_KEYS}
+        save_if_changed(unit_dir(bolt, unit["id"]) / "state.json", own, touch=True)
+
+
 def write_state(bolt: Path, state: dict[str, Any]) -> None:
     """Write state.json atomically: a crash leaves the old file, never half a new one."""
     state["updated"] = now()
     written = state.get("framework")
     state["framework"] = max(written if isinstance(written, int) else 0, FRAMEWORK)
     moved = normalise_portable(bolt, state)
-    path = state_path(bolt)
-    tmp = path.with_name(".state.json.tmp")
-    tmp.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
-    tmp.replace(path)
+    if is_split(state):
+        write_split(bolt, state)
+    else:
+        path = state_path(bolt)
+        tmp = path.with_name(".state.json.tmp")
+        tmp.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+        tmp.replace(path)
     if moved:
         log_event(bolt, "portable", "", "", "machine paths moved to .aidlc-local.json")
 
@@ -389,7 +459,9 @@ def actor(root: Path) -> str:
     return _ACTORS[key]
 
 
-def log_event(bolt: Path, event: str, stage: str = "", by: str = "", note: str = "") -> None:
+def log_event(
+    bolt: Path, event: str, stage: str = "", by: str = "", note: str = "", unit: str = ""
+) -> None:
     def clean(value: str) -> str:
         text = " ".join(value.replace("|", "/").split())
         return text or "-"
@@ -398,7 +470,10 @@ def log_event(bolt: Path, event: str, stage: str = "", by: str = "", note: str =
         who = actor(planning_root(bolt))
         by = f"agent:{who}" if who else ""
     line = " | ".join([now(), clean(event), clean(stage), clean(by or "agent"), clean(note)])
-    with (bolt / "log.md").open("a", encoding="utf-8") as handle:
+    folder = unit_dir(bolt, unit) if unit else bolt
+    with (folder / "log.md" if folder.is_dir() else bolt / "log.md").open(
+        "a", encoding="utf-8"
+    ) as handle:
         handle.write(line + "\n")
 
 
@@ -575,11 +650,21 @@ def slot_next(
     return result
 
 
-def compute_next(state: dict[str, Any], catalog: list[dict[str, Any]]) -> dict[str, Any]:
+def compute_next(
+    state: dict[str, Any], catalog: list[dict[str, Any]], bolt: Optional[Path] = None
+) -> dict[str, Any]:
     for item, unit in slots(state, catalog):
         record = slot_record(state, item, unit)
-        if not is_done(record):
-            return slot_next(state, item, unit, record)
+        if is_done(record):
+            continue
+        if is_split(state) and item["per_unit"] and unit is not None:
+            rows = [
+                next_for_unit(bolt, state, catalog, u["id"])
+                for u in state["units"]
+                if unit_slot(state, catalog, u["id"]) is not None
+            ]
+            return {"done": False, "stage": None, "unit": None, "action": "units", "units": rows}
+        return slot_next(state, item, unit, record)
     return {"done": True, "stage": None, "unit": None, "action": "close"}
 
 
@@ -626,7 +711,7 @@ def unit_slot(
 
 
 def next_for_unit(
-    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], unit_id: str
+    bolt: Optional[Path], state: dict[str, Any], catalog: list[dict[str, Any]], unit_id: str
 ) -> dict[str, Any]:
     """``next`` for one unit: its own first open stage, with what it waits for."""
     find_unit(state, unit_id)
@@ -661,7 +746,8 @@ def cmd_next(
         mine = [u["id"] for u in state["units"] if same_person(u.get("owner") or "", who)]
         rows = [next_for_unit(bolt, state, catalog, uid) for uid in mine]
         return {"ok": True, "actor": who, "units": rows}
-    return {"ok": True, **with_context(bolt, state, catalog, compute_next(state, catalog))}
+    nxt = compute_next(state, catalog, bolt)
+    return {"ok": True, **with_context(bolt, state, catalog, nxt)}
 
 
 def cmd_brief(
@@ -721,6 +807,24 @@ def cmd_brief(
     return result
 
 
+def guard_owner(bolt: Path, state: dict[str, Any], unit_id: Optional[str], takeover: Any) -> str:
+    """Refuse to change a unit someone else owns; return the log suffix for a takeover."""
+    if unit_id is None:
+        return ""
+    owner = find_unit(state, unit_id).get("owner")
+    who = actor(planning_root(bolt))
+    if not owner or not who or same_person(owner, who):
+        return ""
+    why = " ".join(str(takeover or "").split())
+    if not why:
+        raise Fail(
+            EXIT_FINDINGS,
+            f"unit {unit_id} belongs to {owner} and you are {who}. "
+            'Ask them, or pass --takeover "<why>"',
+        )
+    return f" takeover by {who}: {why}"
+
+
 def cmd_assign(
     bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], args: argparse.Namespace
 ) -> dict[str, Any]:
@@ -731,7 +835,7 @@ def cmd_assign(
     old = unit.get("owner") or "-"
     unit["owner"] = owner
     nxt = commit(bolt, state, catalog)
-    log_event(bolt, "assign", "", "", f"[{args.unit}] {old} -> {owner}")
+    log_event(bolt, "assign", "", "", f"[{args.unit}] {old} -> {owner}", args.unit)
     previous = None if old == "-" else old
     return {"ok": True, "unit": args.unit, "owner": owner, "previous": previous, "next": nxt}
 
@@ -739,6 +843,17 @@ def cmd_assign(
 def describe_next(nxt: dict[str, Any]) -> str:
     if nxt["done"]:
         return "all stages done; close the bolt"
+    if nxt["action"] == "units":
+        parts = [
+            f"{r['unit']} "
+            + (
+                "waits for " + ", ".join(w["unit"] for w in r["blocked_by"])
+                if r["blocked_by"]
+                else r["stage"]
+            )
+            for r in nxt["units"]
+        ]
+        return "units in progress: " + ", ".join(parts)
     where = nxt["stage"] + (f" [{nxt['unit']}]" if nxt["unit"] else "")
     if nxt["action"] == "load-units":
         return f"load units before {where}"
@@ -850,6 +965,7 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
     if bolt.exists():
         raise Fail(EXIT_FINDINGS, f"{bolt}: bolt already exists. Resume it with `status`.")
     parent = resolve_parent(root, args.parent) if args.parent else None
+    mode = args.units or units_mode(root)
 
     base = root.resolve()
     targets: list[dict[str, Any]] = []
@@ -924,6 +1040,8 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
     }
     if parent is not None:
         state["parent"] = parent
+    if mode == "split":
+        state["unit_state"] = "split"
 
     for name, path in places:
         remember_repo(base, name, path)
@@ -1325,6 +1443,8 @@ def cmd_status(
         lines.append(git_status_line(git_block))
     if nxt["done"]:
         lines.append("Current: none")
+    elif nxt["action"] == "units":
+        lines.append("Current: per-unit stages (see the units above)")
     else:
         where = nxt["stage"] + (f" [{nxt['unit']}]" if nxt["unit"] else "")
         lines.append(f"Current: {where}, step {nxt['step']}")
@@ -1538,10 +1658,13 @@ def context_changed(
 
 
 def with_context(
-    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], result: dict[str, Any]
+    bolt: Optional[Path],
+    state: dict[str, Any],
+    catalog: list[dict[str, Any]],
+    result: dict[str, Any],
 ) -> dict[str, Any]:
     """Add ``context_changed`` to a ``next`` result for its slot, when not empty."""
-    if result.get("stage"):
+    if result.get("stage") and bolt is not None:
         stage = stage_def(catalog, result["stage"])
         changed = context_changed(bolt, state, catalog, stage, result.get("unit"))
         if changed:
@@ -1960,7 +2083,7 @@ def cmd_gate(
         record["recorded_by"] = None
         record["channel"] = None
         nxt = commit(bolt, state, catalog)
-        log_event(bolt, "gate-request-changes", label, args.by or "", args.note + via)
+        log_event(bolt, "gate-request-changes", label, args.by or "", args.note + via, unit or "")
         return {"ok": True, "stage": label, "unit": unit, "step": record["step"], "next": nxt}
     if not (args.by or "").strip():
         die(EXIT_USAGE, "--approve needs --by NAME.")
@@ -2000,6 +2123,7 @@ def cmd_gate(
         label,
         args.by,
         (unit or "") + via + (f" context acknowledged: {ack}" if ack else ""),
+        unit or "",
     )
     suggestion = (
         "A fresh session for the next stage is cheapest but optional. "
@@ -2232,6 +2356,7 @@ def cmd_jira(
     for key in (args.epic, args.story):
         if key is not None and not JIRA_KEY.match(key):
             die(EXIT_USAGE, f"'{key}' is not a Jira key (expected PROJ-123).")
+    suffix = guard_owner(bolt, state, args.unit, getattr(args, "takeover", None))
     if args.epic is not None:
         jira["epic"], jira["mode"] = args.epic, "on"
         note = f"epic {args.epic}"
@@ -2257,7 +2382,7 @@ def cmd_jira(
         jira["mode"], jira["reason"] = "on", ""
         note = "on"
     nxt = commit(bolt, state, catalog)
-    log_event(bolt, "jira", "", "", note)
+    log_event(bolt, "jira", "", "", note + suffix, args.unit or "")
     return {"ok": True, "jira": jira_facts(state), "next": nxt}
 
 
@@ -2413,6 +2538,21 @@ def run_git(
         return subprocess.CompletedProcess(cmd, 127, "", str(exc))
 
 
+def units_mode(root: Path) -> str:
+    """``units`` in the planning repo's aidlc.json: ``split`` or ``inline`` (default)."""
+    path = root / "aidlc.json"
+    if not path.is_file():
+        return "inline"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        die(EXIT_MALFORMED, f"{path}: invalid JSON at line {exc.lineno}: {exc.msg}")
+    mode = data.get("units", "inline") if isinstance(data, dict) else "inline"
+    if mode not in UNIT_MODES:
+        die(EXIT_MALFORMED, f'{path}: "units" must be one of {", ".join(UNIT_MODES)}.')
+    return str(mode)
+
+
 def load_git_config(root: Path) -> dict[str, Any]:
     path = root / "aidlc.json"
     if not path.is_file():
@@ -2479,6 +2619,8 @@ def scope_match(ctx: GitCtx, path: str, bolt_rel: Optional[str]) -> bool:
     if not path.startswith(ctx.prefix):
         return False
     rel = path[len(ctx.prefix) :]
+    if rel.rsplit("/", 1)[-1] == LOCK_NAME:
+        return False  # a session's lock is local; it is never committed
     if bolt_rel and rel.startswith(bolt_rel.rstrip("/") + "/"):
         return True
     return rel in SHARED_FILES or any(rel.startswith(d) for d in SHARED_DIRS)
@@ -2588,6 +2730,13 @@ def unmerged(ctx: GitCtx) -> list[str]:
 def conflict_rule(ctx: GitCtx, path: str) -> str:
     rel = path[len(ctx.prefix) :] if path.startswith(ctx.prefix) else path
     name = rel.rsplit("/", 1)[-1]
+    if re.fullmatch(r"bolts/[^/]+/units/[^/]+/state\.json", rel):
+        return (
+            "two sessions changed the same unit. Do not take a side automatically: compare "
+            "both versions, keep the stage steps that match the artifacts that exist, ask the "
+            "unit's owner when unsure, then `git add <file>` and `git rebase --continue`, and "
+            "run your command again."
+        )
     if name == "state.json" and rel.startswith("bolts/"):
         return (
             "take the team's version (`git checkout --ours -- <file>`, then `git add <file>`), "
@@ -2915,6 +3064,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--approver", help="Default approver (optional).")
     sp.add_argument("--date", help="Override the date part of the id, YYYY-MM-DD.")
     sp.add_argument(
+        "--units",
+        choices=UNIT_MODES,
+        help="split: one state file and log per unit, so engineers do not collide "
+        '(default: "units" in aidlc.json, else inline).',
+    )
+    sp.add_argument(
         "--parent", help="Parent bolt id or path under the same root; its HLA frames this one."
     )
 
@@ -2930,13 +3085,20 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--stage", required=True)
     sp.add_argument("--unit")
 
+    def takeover(parser: argparse.ArgumentParser) -> None:
+        parser.add_argument(
+            "--takeover", help="Why you change a unit that someone else owns (it is logged)."
+        )
+
     sp = add("decide", "Record EXECUTE or SKIP for a stage.")
+    takeover(sp)
     sp.add_argument("--stage", required=True)
     sp.add_argument("--decision", required=True, choices=["execute", "skip"])
     sp.add_argument("--reason", required=True)
     sp.add_argument("--unit")
 
     sp = add("step", "Move a stage forward.")
+    takeover(sp)
     sp.add_argument("--stage", required=True)
     sp.add_argument("--to", required=True, choices=["asked", "analysed", "produced"])
     sp.add_argument("--unit")
@@ -2973,7 +3135,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     sp = add("decision-id", "Reserve the next decision ids.")
+    takeover(sp)
     sp.add_argument("--count", type=int, default=1)
+    sp.add_argument("--unit", help="Number from this unit's own counter; cite as <unit>:D<n>.")
+    sp.add_argument(
+        "--provisional",
+        action="store_true",
+        help="Reserve even when the shared counter cannot be confirmed (the ids may clash).",
+    )
 
     add("codekb-status", "Is each target's shared code knowledge fresh, stale or missing.")
 
@@ -3004,6 +3173,7 @@ def build_parser() -> argparse.ArgumentParser:
     add("unpark", "Clear the hand-over note.")
 
     sp = add("jira", "Record Jira keys: one epic per bolt, one story per unit.")
+    takeover(sp)
     sp.add_argument("--epic", help="The bolt's Epic key; turns Jira on.")
     sp.add_argument("--unit", help="With --story or --done.")
     sp.add_argument("--story", help="The unit's Story key.")
@@ -3045,21 +3215,91 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         return run_command(args)
     event = git_event(args)
     before = sync_git(ctx, rel, slug, f"save work before {event}")
+    shared_counter = args.command == "decision-id" and not args.unit
+    provisional = False
+    if shared_counter and any(w.startswith("push: failed") for w in before["warnings"]):
+        if not args.provisional:
+            raise Fail(
+                EXIT_GIT,
+                "cannot confirm the shared decision counter; fix the connection or pass "
+                "--provisional",
+                extra={"git": before},
+            )
+        provisional = True
     result = run_command(args)
+    if provisional:
+        result["provisional"] = True
     if args.command == "open":
         _root, rel, slug = git_scope(Path(result["bolt"]))
+    not_reserved = "the ids were not reserved: resolve the conflict, then run decision-id again"
     try:
         after = sync_git(ctx, rel, slug, git_event(args, result))
     except Fail as exc:
+        if shared_counter:
+            result = {k: v for k, v in result.items() if k != "ids"}
+            exc.message = f"{not_reserved}. {exc.message}"
         exc.extra.setdefault("result", result)
         raise
+    if (
+        shared_counter
+        and not provisional
+        and any(w.startswith("push: failed") for w in after["warnings"])
+    ):
+        raise Fail(
+            EXIT_GIT,
+            not_reserved,
+            extra={"git": after, "result": {k: v for k, v in result.items() if k != "ids"}},
+        )
     result["git"] = after
     if before["commit"] or before["rebuild_adr_index"] or before["warnings"]:
         result["git_before"] = before
     return result
 
 
+def take_lock(bolt: Path) -> list[str]:
+    """Create ``<bolt>/.aidlc.lock`` or refuse; return a warning when a stale one is taken."""
+    path = bolt / LOCK_NAME
+    warnings: list[str] = []
+    if not bolt.is_dir():
+        return warnings  # run_locked reports the missing Bolt
+    for _attempt in range(2):
+        try:
+            handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            try:
+                age = time.time() - path.stat().st_mtime
+            except FileNotFoundError:
+                continue  # released a moment ago: try again
+            if age < LOCK_STALE:
+                raise Fail(
+                    EXIT_FINDINGS,
+                    "another session is changing this Bolt; run the command again",
+                ) from None
+            warnings.append(f"took over a lock left {int(age)} s ago by a session that stopped")
+            path.unlink(missing_ok=True)
+            continue
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            stream.write(f"{os.getpid()} {now()}\n")
+        return warnings
+    raise Fail(EXIT_FINDINGS, "another session is changing this Bolt; run the command again")
+
+
 def run_command(args: argparse.Namespace) -> dict[str, Any]:
+    """Run a command; one that changes a Bolt holds the Bolt's local lock while it does."""
+    if args.command == "open" or not changes_state(args):
+        return run_locked(args)
+    bolt = Path(args.bolt)
+    warnings = take_lock(bolt)
+    try:
+        result = run_locked(args)
+    finally:
+        (bolt / LOCK_NAME).unlink(missing_ok=True)
+    if warnings:
+        result["warnings"] = [*result.get("warnings", []), *warnings]
+    return result
+
+
+def run_locked(args: argparse.Namespace) -> dict[str, Any]:
     catalog = load_catalog()
     if args.command == "open":
         return cmd_open(args, catalog)
@@ -3067,6 +3307,8 @@ def run_command(args: argparse.Namespace) -> dict[str, Any]:
     bolt = Path(args.bolt)
     state = load_state(bolt)
     backfill_stages(state, catalog)
+    if is_split(state):
+        refresh(state, catalog)  # current and next_action are not stored in a split Bolt
     cmd = args.command
     if cmd == "codekb-status":
         return {
@@ -3100,6 +3342,7 @@ def run_command(args: argparse.Namespace) -> dict[str, Any]:
             return cmd_gate(bolt, state, catalog, stage, args.unit, args)
         if cmd in {"decide", "step"}:
             require_story(state, stage, args.unit)
+            suffix = guard_owner(bolt, state, args.unit, args.takeover)
         if cmd == "decide":
             cmd_decide(state, stage, args.unit, args.decision, args.reason)
             event, note = "decide", f"{args.decision}: {args.reason}"
@@ -3110,19 +3353,25 @@ def run_command(args: argparse.Namespace) -> dict[str, Any]:
                 record["relied_on"] = relied_on(bolt, state, catalog, stage, args.unit)
             event, note = "step", f"to {args.to}"
         nxt = commit(bolt, state, catalog)
-        log_event(bolt, event, stage["id"], "", (f"[{args.unit}] " if args.unit else "") + note)
+        prefix = f"[{args.unit}] " if args.unit else ""
+        log_event(bolt, event, stage["id"], "", prefix + note + suffix, args.unit or "")
         return {"ok": True, "stage": stage["id"], "unit": args.unit, "next": nxt}
     if cmd == "units":
         return cmd_units(bolt, state, catalog, Path(args.file))
     if cmd == "decision-id":
         if args.count < 1:
             die(EXIT_USAGE, "--count must be at least 1.")
-        start = int(state["decision_seq"])
+        suffix = guard_owner(bolt, state, args.unit, args.takeover)
+        holder = find_unit(state, args.unit) if args.unit else state
+        start = int(holder.get("decision_seq") or 0)
         ids = [f"D{start + i}" for i in range(1, args.count + 1)]
-        state["decision_seq"] = start + args.count
+        holder["decision_seq"] = start + args.count
         write_state(bolt, state)
-        log_event(bolt, "decision-id", "", "", ",".join(ids))
-        return {"ok": True, "ids": ids}
+        log_event(bolt, "decision-id", "", "", ",".join(ids) + suffix, args.unit or "")
+        result: dict[str, Any] = {"ok": True, "ids": ids}
+        if args.unit:
+            result["cite_as"] = [f"{args.unit}:{i}" for i in ids]
+        return result
     if cmd == "park":
         state["parked"] = {"note": args.note, "at": now()}
         write_state(bolt, state)
