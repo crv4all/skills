@@ -15,9 +15,10 @@ description has to separate from.
 | --- | --- | --- |
 | T1 | "Start construction on unit U2 of the billing Bolt." | Names a Unit and a Bolt. |
 | T2 | "Write the code plan for the export unit before we touch any code." | The checkbox plan is this skill's core output. |
-| T3 | "Generate the code for U1 now that the plan is approved." | Execution of an approved plan. |
-| T4 | "Run build and test for the whole Bolt and tell me what is Met." | Build and Test for a Bolt. |
+| T3 | "Generate the code for U1, I said go to the plan." | Execution of a plan the engineer said go to. |
+| T4 | "Run build and test for Slice 1 and tell me what is Met." | Build and Test for a Slice. |
 | T5 | "Slice 2 covers U3 and U4. Build it." | A Slice of a Bolt. |
+| T6 | "Continue my Unit; has anything changed under it?" | Resuming a Unit and reading its context. |
 
 ## Should not fire
 

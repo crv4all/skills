@@ -12,7 +12,7 @@ Every skill runs in a subagent and states its model tier before starting. See
 | Skill | Layer | Maturity | Runs as | Tier | Owner | Summary |
 | --- | --- | --- | --- | --- | --- | --- |
 | [`crv-aidlc`](skills/processes/crv-aidlc/SKILL.md) | processes | draft | subagent | economy | cloudforce-team-data | Opens, resumes and closes a Bolt (the folder for one piece of work in a planning repo), routes to the next AI-DLC stage and runs the checkpoints with… |
-| [`crv-aidlc-construction`](skills/processes/crv-aidlc-construction/SKILL.md) | processes | draft | subagent | balanced | cloudforce-team-data | Builds a Bolt's Units in code: per-Unit design stages when they apply, an approved checkbox code plan, code in the target repositories, then Build and Test. |
+| [`crv-aidlc-construction`](skills/processes/crv-aidlc-construction/SKILL.md) | processes | draft | subagent | balanced | cloudforce-team-data | Builds a Bolt's Units in code: per-Unit design stages when they apply, a checkbox code plan, code in the target repositories with a recorded Verdict, then… |
 | [`crv-aidlc-hla`](skills/processes/crv-aidlc-hla/SKILL.md) | processes | draft | subagent | frontier | cloudforce-team-data | Produces the High-Level Architecture (HLA) for a Bolt before Inception, shared by every engineer on it: one hla.md and one decision record, a contribution… |
 | [`crv-aidlc-inception`](skills/processes/crv-aidlc-inception/SKILL.md) | processes | draft | subagent | balanced | cloudforce-team-data | Runs the AI-DLC Inception stages for a Bolt: requirements that reconcile the HLA, user stories, a domain design, units of work, contracts between units and a… |
 | [`crv-aidlc-operation`](skills/processes/crv-aidlc-operation/SKILL.md) | processes | draft | subagent | balanced | cloudforce-team-data | Prepares and records the release of a Bolt's change: a release plan, a runbook with named people, a rollback runbook and verification checks, then an… |
@@ -53,7 +53,7 @@ Opens, resumes and closes a Bolt (the folder for one piece of work in a planning
 
 ### [`crv-aidlc-construction`](skills/processes/crv-aidlc-construction/SKILL.md)
 
-Builds a Bolt's Units in code: per-Unit design stages when they apply, an approved checkbox code plan, code in the target repositories, then Build and Test. Use when someone wants to build or implement a Unit or Slice of a Bolt, write its code plan, or run its build and test. Not for ordinary code edits outside a Bolt, nor for routing, inception, HLA, TDD or repo scans (crv-aidlc, -inception, -hla, -tdd, -reverse-engineering).
+Builds a Bolt's Units in code: per-Unit design stages when they apply, a checkbox code plan, code in the target repositories with a recorded Verdict, then Build and Test per Slice. Use when someone wants to build, implement or continue a Unit or Slice, write its code plan, run build and test, ask what blocks it, or whether a changed contract affects their work. Not for code edits outside a Bolt, nor routing, inception, HLA, TDD or repo scans (crv-aidlc, -inception, -hla, -tdd, -reverse-engineering).
 
 **Owner:** cloudforce-team-data · **Maturity:** draft · **Runs as:** subagent · **Model tier:** balanced
 
