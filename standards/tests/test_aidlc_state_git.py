@@ -339,14 +339,14 @@ def test_a_change_to_an_approved_artifact_warns_once_and_is_logged(repos: Repos)
     assert script("step", *common, "--to", "produced")[0] == 0
     code, out, _ = script("gate", *common, "--approve", "--by", "Ada")
     assert code == 0, out
-    assert not any("approved artifact changed" in w for w in out["git"]["warnings"])  # the approval
+    assert not any("changed after the checkpoint" in w for w in out["git"]["warnings"])
     write(bolt / "knowledge" / "_digest.md", "# Notes\n\n## Digest\n- two\n")
     code, out, _ = script("sync", "--bolt", str(bolt), "-m", "edit the digest")
     assert code == 0 and out["git"]["commit"]
-    warnings = [w for w in out["git"]["warnings"] if w.startswith("approved artifact changed")]
+    warnings = [w for w in out["git"]["warnings"] if w.startswith("changed after the checkpoint")]
     assert warnings == [
-        "approved artifact changed: knowledge/_digest.md (stage document-knowledge is approved; "
-        "reopen it with gate --request-changes)"
+        "changed after the checkpoint: knowledge/_digest.md (stage document-knowledge is passed; "
+        "Bolt-level stages are not reopened, so tell the Units that rely on it)"
     ]
     log = (bolt / "log.md").read_text(encoding="utf-8")
     assert log.count("| approved-change | document-knowledge |") == 1

@@ -2298,6 +2298,18 @@ def decision_status_findings(
     return found
 
 
+BOLT_LEVEL_RULE = (
+    "Bolt-level stages are not reopened: change the document (the edit is logged as a change "
+    "to a passed checkpoint) and the Units that rely on it are told"
+)
+
+
+def is_bolt_level(stage: dict[str, Any]) -> bool:
+    """True for a stage that belongs to the whole Bolt. Rework on any other stage (today
+    the per-Unit stages) is real, so it can be reopened."""
+    return not stage["per_unit"]
+
+
 def cmd_gate(
     bolt: Path,
     state: dict[str, Any],
@@ -2313,11 +2325,12 @@ def cmd_gate(
     if args.request_changes:
         if not note:
             die(EXIT_USAGE, "--request-changes needs --note.")
-        if record["step"] == "approved":
-            raise Fail(EXIT_FINDINGS, f"stage '{label}' is already approved.")
+        if record["step"] == "approved" and is_bolt_level(stage):
+            raise Fail(EXIT_FINDINGS, f"stage '{label}' is already passed. {BOLT_LEVEL_RULE}.")
         record["step"] = "changes-requested"
         record["approved_at"] = None
         record["approved_by"] = None
+        record.pop("verdict", None)
         nxt = commit(bolt, state, catalog)
         log_event(bolt, "gate-request-changes", label, who, note, unit or "")
         return {"ok": True, "stage": label, "unit": unit, "step": record["step"], "next": nxt}
@@ -2927,22 +2940,27 @@ def warn_approved_changes(
     except Fail:
         return False
     head = f"{ctx.prefix}{bolt_rel}/"
-    watched: dict[str, tuple[str, Optional[str]]] = {}
+    watched: dict[str, tuple[dict[str, Any], Optional[str]]] = {}
     for item, unit in slots(state, catalog):
         record = slot_record(state, item, unit)
         if record and record.get("step") == "approved":
             for template in item["artifacts"]:
                 for rel in expand(template, brownfield_repos(state), unit_ids(state, item, unit)):
-                    watched.setdefault(rel, (item["id"], unit))
+                    watched.setdefault(rel, (item, unit))
     logged = False
     for path in changed:
         found = watched.get(path[len(head) :]) if path.startswith(head) else None
-        if found is None or head_step(ctx, bolt_rel, found[0], found[1]) != "approved":
+        if found is None or head_step(ctx, bolt_rel, found[0]["id"], found[1]) != "approved":
             continue
         rel = path[len(head) :]
-        text = f"approved artifact changed: {rel} (stage {found[0]} is approved; "
-        result["warnings"].append(text + "reopen it with gate --request-changes)")
-        log_event(bolt, "approved-change", found[0], "", rel, found[1] or "")
+        stage_id, unit = found[0]["id"], found[1]
+        text = f"changed after the checkpoint: {rel} (stage {stage_id} is passed; "
+        if is_bolt_level(found[0]):
+            text += "Bolt-level stages are not reopened, so tell the Units that rely on it)"
+        else:
+            text += f'reopen it with gate --request-changes --unit {unit} --note "<why>")'
+        result["warnings"].append(text)
+        log_event(bolt, "approved-change", stage_id, "", rel, unit or "")
         logged = True
     return logged
 

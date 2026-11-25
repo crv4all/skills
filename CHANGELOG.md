@@ -584,6 +584,16 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `status` and `overview` show such a stage as not verified. The build-and-test
   and code-generation references tell the agent to write the line.
 
+- **A passed Unit stage can be reopened.** Nothing could reopen a passed stage,
+  and the warning for an edited artifact advised `gate --request-changes`, which
+  was refused. `gate --request-changes --unit <u> --note "<why>"` now works on a
+  passed Unit stage: the step becomes `changes-requested`, who and when it passed
+  (and its verdict) are cleared and the note is logged. The Unit's later stages
+  keep their records; `next --unit` returns to the reopened stage. Bolt-level
+  stages stay closed to it, with a message that says why: change the document
+  (the edit is logged) and the Units that rely on it are told. The warning for an
+  edited artifact now says which of the two applies.
+
 ### Removed
 
 - **Parent and child Bolts, and the frame kind of Bolt, are gone.** A Bolt is one

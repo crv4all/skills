@@ -1461,3 +1461,68 @@ def test_only_stages_with_a_verdict_key_check_one(bolt: Bolt) -> None:
     code, data, _ = bolt.run("gate", "--stage", "workspace-detection", "--approve")
     assert code == 0 and "verdict" not in data
     assert "verdict" not in bolt.state["stages"]["workspace-detection"]
+
+
+# --- reopening finished work where rework is real ------------------------------
+
+
+def passed_unit_stage(p: Bolt) -> str:
+    """u1's code-generation passed; return its folder."""
+    unit_stage_ready(p, verdict_doc())
+    gate = ("gate", "--stage", "code-generation", "--unit", "u1", "--approve")
+    assert p.run(*gate)[0] == 0
+    assert p.state["units"][0]["stages"]["code-generation"]["step"] == "approved"
+    return "docs/construction/u1/code-generation/"
+
+
+def test_a_passed_unit_stage_can_be_reopened_and_later_stages_keep_their_records(
+    bolt: Bolt,
+) -> None:
+    passed_unit_stage(bolt)
+    stages = bolt.state["units"][0]["stages"]
+    later = {k: dict(v) for k, v in stages.items() if k != "code-generation"}
+    code, data, _ = bolt.run(
+        "gate", "--stage", "code-generation", "--unit", "u1", "--request-changes",
+        "--note", "the mapper drops a field",
+    )  # fmt: skip
+    assert code == 0, data
+    after = bolt.state["units"][0]["stages"]
+    record = after["code-generation"]
+    assert record["step"] == "changes-requested"
+    assert record["approved_at"] is None and record["approved_by"] is None
+    assert "verdict" not in record
+    assert {k: v for k, v in after.items() if k != "code-generation"} == later
+    log = (bolt.path / "log.md").read_text(encoding="utf-8")
+    assert "gate-request-changes" in log
+    assert "the mapper drops a field" in log
+
+
+def test_next_unit_returns_to_the_reopened_stage(bolt: Bolt) -> None:
+    passed_unit_stage(bolt)
+    before = bolt.run("next", "--unit", "u1")[1]
+    assert before["stage"] != "code-generation"
+    bolt.run("gate", "--stage", "code-generation", "--unit", "u1", "--request-changes",
+             "--note", "rework")  # fmt: skip
+    again = bolt.run("next", "--unit", "u1")[1]
+    assert again["stage"] == "code-generation"
+    assert (
+        bolt.run("step", "--stage", "code-generation", "--unit", "u1", "--to", "produced")[0] == 0
+    )
+    assert bolt.run("gate", "--stage", "code-generation", "--unit", "u1", "--approve")[0] == 0
+
+
+def test_a_bolt_level_stage_is_not_reopened(bolt: Bolt) -> None:
+    assert bolt.run("gate", "--stage", "workspace-detection", "--approve")[0] == 0
+    code, data, _ = bolt.run(
+        "gate", "--stage", "workspace-detection", "--request-changes", "--note", "again"
+    )
+    assert code == 1 and "Bolt-level stages are not reopened" in data["error"]
+    assert "Units that rely on it are told" in data["error"]
+    assert bolt.state["stages"]["workspace-detection"]["step"] == "approved"
+
+
+def test_request_changes_on_an_unfinished_unit_stage_still_works(bolt: Bolt) -> None:
+    unit_stage_ready(bolt, verdict_doc())
+    code = bolt.run("gate", "--stage", "code-generation", "--unit", "u1", "--request-changes",
+                    "--note", "x")[0]  # fmt: skip
+    assert code == 0
