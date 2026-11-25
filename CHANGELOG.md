@@ -37,6 +37,24 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   baseline is reported only for open per-Unit and per-Slice work, and `deployment-pipeline`
   reads `hla.md` and `tdd.md` without tracking them as files (it tracks the decision
   records by id).
+- **Work saved here but not shared no longer turns into a manual conflict.** A push that
+  failed (offline, or rejected three times) left local commits; when the team then changed
+  the same Bolt `state.json`, the next command stopped in `state.json` and `log.md` and
+  its advice dropped only one of the commits. Now the next command and `sync` set the
+  clashing commands aside, keep every other unshared commit (artifacts, a Unit's own
+  file) by applying it again in order, and list the undone commands by their commit
+  subjects so the engineer can repeat them. If a clashing commit also holds other files,
+  or a kept commit does not apply, it stops with exit 6 and the branch exactly as it
+  was; it never uses `reset --hard` and uncommitted work stays. The race check
+  recognises the command's own commit by its hash, the checkout lock waits 200 s (a git
+  step can take 120 s) and sits in the git directory even with `--no-git`, and only the
+  script's own temp file pattern is left out of a commit.
+- **A Bolt or Slice whose Units are all cancelled can be closed.** The "no Units yet"
+  placeholder appears only when no Unit exists; a Slice whose Units are all cancelled
+  derives the status `cancelled` and has no Build and Test. A new Unit without a `slice`
+  is refused when the Bolt has Slices (it would never be covered), and a units file with
+  a `slice`, `name` or `units` of the wrong type fails with the malformed-input exit
+  code instead of a traceback.
 
 ### Added
 

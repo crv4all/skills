@@ -73,10 +73,14 @@ def test_a_slice_record_is_small_and_never_lists_its_units(bolt: Bolt) -> None:
 
 def test_the_older_slice_shape_is_accepted_and_dropped_at_the_next_write(bolt: Bolt) -> None:
     code, _, _ = put(
-        bolt, {"units": [{"id": "u1"}, {"id": "u2"}], "slices": [{"id": "s1", "units": ["u1"]}]}
-    )
+        bolt,
+        {
+            "units": [{"id": "u1"}, {"id": "u2", "slice": "s2"}],
+            "slices": [{"id": "s1", "units": ["u1"]}, {"id": "s2"}],
+        },
+    )  # a new Unit needs a Slice once the Bolt has Slices, so u2 names one
     assert code == 0 and "units" not in slice_of(bolt, "s1")
-    assert [u.get("slice") for u in bolt.state["units"]] == ["s1", None]
+    assert [u.get("slice") for u in bolt.state["units"]] == ["s1", "s2"]
     state = bolt.state
     state["slices"] = [{"id": "s1", "units": ["u1", "u2"], "status": "todo"}]
     state["units"][1]["slice"] = None

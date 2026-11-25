@@ -359,7 +359,6 @@ def test_a_change_to_an_approved_artifact_warns_once_and_is_logged(repos: Repos)
 def test_a_temp_file_left_by_a_killed_write_is_never_committed(repos: Repos) -> None:
     assert open_demo(repos.a)[0] == 0
     bolt = bolt_of(repos.a)
-    write(bolt / ".state.json.tmp", "{half")
     write(bolt / ".state.json.4242.tmp", "{half")
     write(bolt / "units" / "u1" / ".state.json.7.tmp", "{half")
     code, out, _ = script("park", "--bolt", str(bolt), "--note", "n")
@@ -367,7 +366,7 @@ def test_a_temp_file_left_by_a_killed_write_is_never_committed(repos: Repos) -> 
     assert not [f for f in git(repos.a, "ls-files").splitlines() if f.endswith(".tmp")]
     assert not [f for f in git(repos.remote, "ls-tree", "-r", "--name-only", "main").splitlines()
                 if f.endswith(".tmp")]  # fmt: skip
-    assert git(repos.a, "status", "--porcelain", "-uall").count(".tmp") == 3  # left where they were
+    assert git(repos.a, "status", "--porcelain", "-uall").count(".tmp") == 2  # left where they were
 
 
 def test_the_temp_name_of_a_state_write_is_unique_per_process(

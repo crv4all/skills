@@ -90,21 +90,26 @@ other Slices do. A new Slice adds records; it never reopens or rewrites anything
 Git: a command that changes a bolt first brings in the team's work, then commits the
 bolt and pushes it. `aidlc.json` at the planning root may hold
 {"git": {"branch": "..", "remote": "origin", "commit": true, "push": true}}.
-AIDLC_GIT=off or --no-git turns git writes off; a folder outside git is skipped. A leftover
-`*.tmp` file is never committed, and neither is a file that still holds git conflict markers
-(exit 6, the files are named).
+AIDLC_GIT=off or --no-git turns git writes off; a folder outside git is skipped. A temp
+file this script left behind (`.state.json.<pid>.tmp`) is never committed, and neither is a
+file that still holds git conflict markers (exit 6, the files are named).
 
 State is never merged: when the team pushed a change to a state.json that your command
 also changed, your command's commit is dropped (`git reset --keep`), your clone is brought
 up to date and the command runs again on the new state, up to 3 times (the result says
 `reruns`). `open` and `close` are not run twice on their own; a conflict on a Bolt's
-state file then tells you to drop your last commit, pull and run the command again. When
-a push did not happen the result has `not_shared: true`, and `status` and `overview` say
-how many changes are saved here but not shared yet.
+state file then tells you to drop your command's commit and run `sync`. When a push did
+not happen the result has `not_shared: true`, and `status` and `overview` say how many
+changes are saved here but not shared yet. If the team then changed the Bolt's own
+state.json (not a Unit's) that those unshared commits also changed, the next command (or
+`sync`) does not rebase them: it sets those commits aside, keeps every other unshared
+commit, and the result lists the undone commands in `undone` and in a warning; repeat
+them. If that cannot be done cleanly it stops with exit 6 and the branch exactly as it was.
 
 Lock: a command that changes a bolt (and `sync`) holds one lock per planning checkout for
 its whole run, git steps included, so two sessions in one checkout queue instead of
-colliding. It waits up to 60 s, then stops and names the lock file. The lock is freed by
+colliding. It waits up to 200 s (a git step may take 120 s), then stops and names the lock
+file; the lock is in the git directory even with --no-git. The lock is freed by
 the operating system if the session dies. Reads (status, next, overview) never wait.
 
 examples:
@@ -129,7 +134,7 @@ LOG = logging.getLogger("aidlc_state")
 FRAMEWORK = 4  # bumped when a change to state.json would break an older copy of the skills
 LOCAL_FILE = ".aidlc-local.json"  # per machine, never committed; sits at the planning root
 LOCK_NAME = ".aidlc.lock"
-LOCK_WAIT = 60.0  # seconds a command waits for another session of the same checkout
+LOCK_WAIT = 200.0  # longer than the longest git step (120 s) the holder can be inside
 LOCK_POLL = 0.2
 LOCK_WAIT_ENV = "AIDLC_LOCK_WAIT"  # test only: seconds to wait instead of LOCK_WAIT
 LOCK_STALE = 120  # fallback lock only: seconds after which a lock left by a crash is taken over
@@ -684,8 +689,12 @@ def slots(state: dict[str, Any], catalog: list[dict[str, Any]]) -> list[Slot]:
         elif kind not in expanded:
             expanded.add(kind)
             group = [sub for sub in catalog if sub.get(kind)]
-            owners = live_units(state) if kind == "per_unit" else state["slices"]
-            if not owners:
+            if kind == "per_unit":
+                owners, empty = live_units(state), not state["units"]
+            else:  # a Slice whose Units are all cancelled has nothing left to build or test
+                owners = [s for s in state["slices"] if not slice_cancelled(state, s["id"])]
+                empty = not state["slices"]
+            if not owners and empty:  # the "no Units yet" placeholder: only when none exist
                 result.append((group[0], None))
             for owner in owners:
                 for sub in group:
@@ -859,7 +868,7 @@ def slice_dep_waits(state: dict[str, Any], catalog: list[dict[str, Any]], sid: s
     return [
         f"waits for slice {dep} (verified)"
         for dep in find_slice(state, sid).get("depends_on") or []
-        if slice_status(state, catalog, dep) not in ("verified", "released")
+        if slice_status(state, catalog, dep) not in ("verified", "released", "cancelled")
         and not verification_skipped(catalog, find_slice(state, dep).get("stages"), True)
     ]
 
@@ -883,6 +892,8 @@ def next_for_slice(
     """``next`` for one Slice: its first open stage and what it waits for."""
     find_slice(state, sid)
     item = slice_slot(state, catalog, sid)
+    if slice_cancelled(state, sid):
+        item = None  # nothing is left to do for it
     if item is None:
         return {
             "done": True,
@@ -3354,6 +3365,12 @@ def find_slice(state: dict[str, Any], sid: str) -> dict[str, Any]:
     die(EXIT_USAGE, f"unknown slice '{sid}' (slices: {known}). Add one with `slice --add`.")
 
 
+def slice_cancelled(state: dict[str, Any], sid: str) -> bool:
+    """True for a Slice that had Units and has none left alive."""
+    members = [u for u in state["units"] if u.get("slice") == sid]
+    return bool(members) and all(is_cancelled(u) for u in members)
+
+
 def slice_units(state: dict[str, Any], sid: str) -> list[dict[str, Any]]:
     """The Units that are in this Slice and not cancelled: the Unit's own ``slice`` key is
     the only record of membership."""
@@ -3364,7 +3381,7 @@ def check_unit_entry(file: Path, unit: Any, seen: set[str]) -> str:
     uid = unit.get("id") if isinstance(unit, dict) else None
     if not isinstance(uid, str) or not ID_PATTERN.match(uid) or uid in seen:
         die(EXIT_MALFORMED, f"{file}: each unit needs a unique lower-case id; saw {uid!r}.")
-    for key in ("owner", "repo"):
+    for key in ("owner", "repo", "name", "slice"):
         if unit.get(key) is not None and not isinstance(unit[key], str):
             die(EXIT_MALFORMED, f"{file}: unit {uid} {key} must be a string.")
     kind = unit.get("kind")
@@ -3414,7 +3431,13 @@ def cmd_units(
         if not isinstance(sid, str) or not ID_PATTERN.match(sid) or sid in seen_slices:
             die(EXIT_MALFORMED, f"{file}: each slice needs a unique id; saw {sid!r}.")
         seen_slices.add(sid)
-        for member in entry.get("units", []):  # the older shape: a slice that lists its units
+        for key in ("name", "owner"):
+            if entry.get(key) is not None and not isinstance(entry[key], str):
+                die(EXIT_MALFORMED, f"{file}: slice {sid} {key} must be a string.")
+        listed = entry.get("units", [])
+        if not isinstance(listed, list) or not all(isinstance(m, str) for m in listed):
+            die(EXIT_MALFORMED, f"{file}: slice {sid} units must be a list of unit ids.")
+        for member in listed:  # the older shape: a slice that lists its units
             if member not in seen and member not in old:
                 die(EXIT_MALFORMED, f"{file}: slice {sid} names unknown unit {member!r}.")
     known_slices = set(old_slices) | seen_slices
@@ -3441,6 +3464,13 @@ def cmd_units(
                 EXIT_MALFORMED,
                 f"{file}: unit {uid} has repo {repo!r}; "
                 f"this bolt's repositories are {', '.join(known_repos)}.",
+            )
+        if previous is None and not updates.get("slice") and known_slices:
+            raise Fail(
+                EXIT_FINDINGS,
+                f"{file}: new unit {uid} has no slice, and this Bolt has slices "
+                f"({', '.join(sorted(known_slices))}): no Slice's Build and Test would cover it. "
+                'Add "slice" to the entry. Nothing was changed.',
             )
         if previous is None:
             merged[uid] = {
@@ -3517,9 +3547,11 @@ def merge_slices(
 
 
 def slice_status(state: dict[str, Any], catalog: list[dict[str, Any]], sid: str) -> str:
-    """planning, ready, building, built, verified or released: derived, never stored."""
+    """planning, ready, building, built, verified, released or cancelled: derived, never stored."""
     record = find_slice(state, sid)
     units = slice_units(state, sid)
+    if slice_cancelled(state, sid):
+        return "cancelled"
     if not units or not record.get("ready"):
         return "planning"
     stages = record.get("stages") or {}
@@ -3861,6 +3893,9 @@ CHANGED_NOTE = "the Bolt changed while you were working"
 RERUN_ROUNDS = 3  # times a command is run again on the team's newer state before it gives up
 NO_RERUN = {"open", "close"}  # create a Bolt or end one: never run twice on their own
 STATE_FILE = re.compile(r"(?:units/[^/]+/)?state\.json")
+OWN_TEMP = re.compile(r"\.[\w.-]+\.\d+\.tmp")  # ``.state.json.<pid>.tmp`` of write_json_atomic
+STATE_PATH = re.compile(r"bolts/[^/]+/state\.json")  # a Unit's own file keeps its own rule
+STATE_AND_LOG = re.compile(r"bolts/[^/]+/(?:units/[^/]+/)?(?:state\.json|log\.md)")
 REBASE_STEPS = 50
 UNCOMMITTED_CAP = 50
 SHARED_FILES = ("architecture-index.json", "aidlc.json")
@@ -4012,8 +4047,8 @@ def scope_match(ctx: GitCtx, path: str, bolt_rel: Optional[str]) -> bool:
     rel = path[len(ctx.prefix) :]
     if rel.rsplit("/", 1)[-1] == LOCK_NAME:
         return False  # a session's lock is local; it is never committed
-    if rel.endswith(".tmp"):
-        return False  # a temp file left by a killed write is never committed
+    if OWN_TEMP.fullmatch(rel.rsplit("/", 1)[-1]):
+        return False  # a temp file this script left behind when killed is never committed
     if bolt_rel and rel.startswith(bolt_rel.rstrip("/") + "/"):
         return True
     return rel in SHARED_FILES or any(rel.startswith(d) for d in SHARED_DIRS)
@@ -4245,8 +4280,9 @@ def conflict_rule(ctx: GitCtx, path: str) -> str:
     if name == "state.json" and rel.startswith("bolts/"):
         return (
             "a Bolt's state file is never merged and never settled by taking one side. Abort the "
-            "rebase (`git rebase --abort`), drop your last local commit with "
-            "`git reset --keep HEAD~1`, pull (`git pull --rebase`), and run your command again."
+            "rebase (`git rebase --abort`), drop your command's commit with "
+            "`git reset --keep HEAD~1`, run `sync` (it sets aside older unshared commits that "
+            "changed the file and lists them), then run your command again."
         )
     if name == "log.md" and rel.startswith("bolts/"):
         return (
@@ -4306,6 +4342,8 @@ def rebase_onto(ctx: GitCtx, ref: str, result: dict[str, Any]) -> None:
             "Your uncommitted changes (kept in `git stash`, drop it when done) clash with the "
             "team's work:",
         )
+    if result.get("commit"):
+        result["commit"] = short_head(ctx)  # the commit was rewritten onto the team's work
 
 
 def count_commits(ctx: GitCtx, spec: str) -> Optional[int]:
@@ -4316,8 +4354,7 @@ def count_commits(ctx: GitCtx, spec: str) -> Optional[int]:
 def state_race(ctx: GitCtx, ref: str, bolt_rel: str, result: dict[str, Any]) -> list[str]:
     """The ``state.json`` paths of this Bolt that the tip (command) commit and the upstream
     both changed since they diverged; a state file is never merged, so any hit means rerun."""
-    subject = run_git(ctx.top, "log", "-1", "--format=%s").stdout.strip()
-    if not result.get("commit") or subject != result.get("message"):
+    if not result.get("commit") or short_head(ctx) != result.get("commit"):
         return []  # the tip is not this command's commit
     mine = run_git(
         ctx.top, "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "-z", "HEAD"
@@ -4336,8 +4373,112 @@ def state_race(ctx: GitCtx, ref: str, bolt_rel: str, result: dict[str, Any]) -> 
     return [p for p in theirs.stdout.split("\0") if p in names]
 
 
+def commit_paths(ctx: GitCtx, sha: str) -> list[str]:
+    done = run_git(
+        ctx.top, "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "-z",
+        "--no-renames", sha,
+    )  # fmt: skip
+    return [p for p in done.stdout.split("\0") if p]
+
+
+def under_root(ctx: GitCtx, path: str) -> str:
+    """``path`` relative to the planning root, or ``""`` when it is outside it."""
+    return path[len(ctx.prefix) :] if path.startswith(ctx.prefix) else ""
+
+
+def unshared_stop(ctx: GitCtx, result: dict[str, Any], paths: list[str], why: str) -> Fail:
+    return Fail(
+        EXIT_GIT,
+        f"{why} Nothing was changed: your branch is exactly as it was. Save the files you "
+        "want to keep, then run `sync` again or ask the engineer who changed the same state.",
+        findings=[{"code": "conflict", "path": p, "message": conflict_rule(ctx, p)} for p in paths],
+        extra={"git": result},
+    )
+
+
+def settle_unshared(
+    ctx: GitCtx, ref: str, result: dict[str, Any], own_tip: bool = False
+) -> list[str]:
+    """Do not rebase unshared commands onto state the team changed meanwhile.
+
+    A command saved while offline (or after three rejected pushes) is a local commit on a
+    state file. If the team changed that file too, rebasing it conflicts in ``state.json``
+    and ``log.md`` and only a person could settle it. So the commits that touch such a file
+    are left out: the branch is rebuilt on ``ref`` and every other unshared commit
+    (artifacts, a Unit's own file) is applied again, in order. Never ``reset --hard``:
+    uncommitted work stays, and any surprise puts the branch back and stops. Returns the
+    subjects of the undone commits and warns with them. ``own_tip`` marks the tip as the
+    commit of the command that just ran: that one is never set aside (the command would
+    report a change that is not there), so the ordinary rebase stops on it as before."""
+    base = run_git(ctx.top, "merge-base", "HEAD", ref).stdout.strip()
+    listing = run_git(ctx.top, "rev-list", "--reverse", "--parents", f"{base}..HEAD")
+    commits = [line.split() for line in listing.stdout.splitlines()] if base else []
+    if not commits or any(len(c) != 2 for c in commits):
+        return []  # nothing unshared, or a merge among it: the ordinary rebase decides
+    theirs = run_git(ctx.top, "diff", "--name-only", "-z", "--no-renames", base, ref)
+    changed = set(theirs.stdout.split("\0"))
+    plan = []
+    for sha, _parent in commits:
+        paths = commit_paths(ctx, sha)
+        clash = [p for p in paths if STATE_PATH.fullmatch(under_root(ctx, p)) and p in changed]
+        plan.append((sha, paths, clash))
+    undone = [item for item in plan if item[2]]
+    if not undone or (own_tip and plan[-1][2] and short_head(ctx) == result.get("commit")):
+        return []
+    for sha, paths, clash in undone:
+        if not all(STATE_AND_LOG.fullmatch(under_root(ctx, p)) for p in paths):
+            subject = run_git(ctx.top, "log", "-1", "--format=%s", sha).stdout.strip()
+            raise unshared_stop(
+                ctx, result, clash,
+                f"The commit '{subject}' changed a state file the team changed too, together "
+                "with other files, so it cannot be set aside on its own.",
+            )  # fmt: skip
+    origin = run_git(ctx.top, "rev-parse", "HEAD").stdout.strip()
+    moved = run_git(ctx.top, "reset", "--keep", ref)
+    if moved.returncode != 0:
+        raise unshared_stop(
+            ctx, result, [],
+            "Your uncommitted changes would be overwritten by the team's work "
+            f"({(moved.stderr or moved.stdout).strip()[:200]}).",
+        )  # fmt: skip
+    env = {"GIT_EDITOR": "true"}
+    for sha, _paths, clash in plan:
+        if clash:
+            continue
+        picked = run_git(ctx.top, "cherry-pick", sha, env=env)
+        if picked.returncode == 0:
+            continue
+        files = unmerged(ctx)
+        if not files and "empty" in (picked.stderr + picked.stdout):
+            run_git(ctx.top, "cherry-pick", "--skip", env=env)  # the team already has it
+            continue
+        run_git(ctx.top, "cherry-pick", "--abort", env=env)
+        back = run_git(ctx.top, "reset", "--keep", origin)
+        subject = run_git(ctx.top, "log", "-1", "--format=%s", sha).stdout.strip()
+        note = "" if back.returncode == 0 else f" Put it back with `git reset --keep {origin}`."
+        raise unshared_stop(
+            ctx, result, files,
+            f"The unshared commit '{subject}' does not apply on the team's work.{note}",
+        )  # fmt: skip
+    subjects = [
+        run_git(ctx.top, "log", "-1", "--format=%s", sha).stdout.strip() for sha, *_ in undone
+    ]
+    result["undone"] = subjects
+    if result.get("commit"):  # the tip was applied again under a new hash, or set aside
+        result["commit"] = None if plan[-1][2] else short_head(ctx)
+    result["warnings"].append(
+        "these changes were made while not shared and the team changed the same state since; "
+        "they were undone: repeat them: " + "; ".join(subjects)
+    )
+    return subjects
+
+
 def push_branch(
-    ctx: GitCtx, branch: Optional[str], result: dict[str, Any], race_bolt: Optional[str] = None
+    ctx: GitCtx,
+    branch: Optional[str],
+    result: dict[str, Any],
+    race_bolt: Optional[str] = None,
+    own_tip: bool = False,
 ) -> None:
     """Fetch, rebase onto the team's work and push; ``race_bolt`` names the Bolt whose
     state a just-committed command changed, so the command can be run again instead of
@@ -4372,7 +4513,9 @@ def push_branch(
                 if (count_commits(ctx, f"HEAD..{ref}") or 0) > 0:
                     if race_bolt is not None and state_race(ctx, ref, race_bolt, result):
                         raise StateRace
-                    rebase_onto(ctx, ref, result)
+                    settle_unshared(ctx, ref, result, own_tip)
+                    if (count_commits(ctx, f"HEAD..{ref}") or 0) > 0:
+                        rebase_onto(ctx, ref, result)
                 if count_commits(ctx, f"{ref}..HEAD") == 0:
                     return  # nothing to push
             args = ["push"]
@@ -4392,7 +4535,12 @@ def push_branch(
 
 
 def sync_git(
-    ctx: GitCtx, bolt_rel: Optional[str], slug: str, event: str, rerunnable: bool = False
+    ctx: GitCtx,
+    bolt_rel: Optional[str],
+    slug: str,
+    event: str,
+    rerunnable: bool = False,
+    after_command: bool = False,
 ) -> dict[str, Any]:
     """Bring in the team's work, commit this bolt's changes and push them.
 
@@ -4437,7 +4585,9 @@ def sync_git(
     if ctx.commit:
         commit_scope(ctx, bolt_rel, message, result)
     if ctx.push:
-        push_branch(ctx, ctx.branch or current, result, bolt_rel if rerunnable else None)
+        push_branch(
+            ctx, ctx.branch or current, result, bolt_rel if rerunnable else None, after_command
+        )
     for text in result["warnings"]:
         LOG.warning("%s", text)
     return result
@@ -4834,7 +4984,9 @@ def run_changing(args: argparse.Namespace) -> dict[str, Any]:
         if args.command == "open":
             _root, rel, slug = git_scope(Path(result["bolt"]))
         try:
-            after = sync_git(ctx, rel, slug, git_event(args, result), rerunnable=can_rerun)
+            after = sync_git(
+                ctx, rel, slug, git_event(args, result), rerunnable=can_rerun, after_command=True
+            )
             break
         except StateRace:
             drop_and_catch_up(ctx, carry)
@@ -4856,6 +5008,9 @@ def run_changing(args: argparse.Namespace) -> dict[str, Any]:
         after["warnings"].append(f"{CHANGED_NOTE}; the command ran again on the new state")
     if carry["rebuild_adr_index"]:
         after["rebuild_adr_index"] = True
+    if carry.get("undone"):
+        after["undone"] = [*after.get("undone", []), *carry["undone"]]
+    after["warnings"].extend(carry["warnings"])
     if reserving and after["not_shared"]:
         raise Fail(
             EXIT_GIT,
@@ -4908,7 +5063,9 @@ def drop_and_catch_up(ctx: GitCtx, carry: dict[str, Any]) -> None:
     ref = f"refs/remotes/{ctx.remote}/{branch}"
     try:
         if branch and (count_commits(ctx, f"HEAD..{ref}") or 0) > 0:
-            rebase_onto(ctx, ref, carry)
+            settle_unshared(ctx, ref, carry)
+            if (count_commits(ctx, f"HEAD..{ref}") or 0) > 0:
+                rebase_onto(ctx, ref, carry)
     except SoftGitError as exc:
         raise Fail(
             EXIT_GIT,
@@ -4936,7 +5093,7 @@ def lock_busy(path: Path, waited: float) -> Fail:
     return Fail(
         EXIT_FINDINGS,
         f"another session in this checkout is still working (waited {int(waited)} s for "
-        f"{path}). Let it finish, then run the command again.",
+        f"{path}); it may be waiting for the network. Let it finish, then run the command again.",
     )
 
 
@@ -4944,7 +5101,7 @@ def lock_location(args: argparse.Namespace) -> Optional[Path]:
     """The checkout-wide lock file of a command, or ``None`` when there is nothing to lock.
 
     Inside the git directory of the planning checkout, so it is never a work-tree file; at
-    the planning root when git is off or the root is not a git repository."""
+    the planning root only when the root is not inside a git repository."""
     if args.command == "open" or (args.command == "sync" and args.root):
         root = Path(args.root)
     elif getattr(args, "bolt", None):
@@ -4957,13 +5114,13 @@ def lock_location(args: argparse.Namespace) -> Optional[Path]:
     if not root.is_dir():
         return None
     root = root.resolve()
-    git_off = getattr(args, "no_git", False) or os.environ.get("AIDLC_GIT", "").lower() == "off"
-    if not git_off:
-        inside = run_git(root, "rev-parse", "--is-inside-work-tree")
-        found = run_git(root, "rev-parse", "--git-path", "aidlc.lock")
-        if inside.stdout.strip() == "true" and found.returncode == 0:
-            path = Path(found.stdout.strip())
-            return path if path.is_absolute() else root / path
+    # With --no-git or AIDLC_GIT=off nothing is committed, but the lock is still the git
+    # directory's, so a session that commits and one that does not exclude each other.
+    inside = run_git(root, "rev-parse", "--is-inside-work-tree")
+    found = run_git(root, "rev-parse", "--git-path", "aidlc.lock")
+    if inside.stdout.strip() == "true" and found.returncode == 0:
+        path = Path(found.stdout.strip())
+        return path if path.is_absolute() else root / path
     return root / LOCK_NAME
 
 
