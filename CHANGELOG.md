@@ -26,6 +26,9 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `verdict: fail`, `not-run` or `missing` for a produced stage that has not passed.
 - **A Unit added to a Slice already checked ready gives a warning**, in the result and the
   `units` log line: run the readiness check again.
+- **`context` reports no longer answer from a stale clone.** The report forms bring in the
+  team's work first, as a changing command does, and say when the remote cannot be reached;
+  the entry and Construction skills run `sync` first when work resumes after a break.
 - **A digest ends at the next heading, code fence or table row**, so a table that follows
   it is no longer counted as digest lines (`digest-too-long`).
 

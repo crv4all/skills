@@ -112,7 +112,8 @@ write to a Bolt of an older framework adds one `migrate` log line (and a warning
 carries every value it drops: the retired keys and the untouched Bolt-level records of the
 per-Slice stages. `status` shows `verdict: fail|not-run|missing` for a produced stage whose
 verdict file is not a pass; `units --set` warns when a Unit joins a Slice already checked
-ready.
+ready. The report forms of `context` bring in the team's work first (and say so in a
+warning when the remote cannot be reached); `status` and `next` stay read-only.
 
 Lock: a command that changes a bolt (and `sync`) holds one lock per planning checkout for
 its whole run, git steps included, so two sessions in one checkout queue instead of
@@ -4994,10 +4995,36 @@ def build_parser() -> argparse.ArgumentParser:
 def run(args: argparse.Namespace) -> dict[str, Any]:
     """Run a command. One that changes a Bolt (or syncs) holds the checkout lock for its
     whole run, git syncs included; a read takes no lock."""
+    if args.command == "context" and args.note is None:
+        with checkout_lock(lock_location(args)):  # a report must not answer from a stale clone
+            stale = bring_in_team_work(args)
+            result = run_locked(args)
+        if stale:
+            result.setdefault("warnings", []).append(stale)
+        return result
     if args.command != "sync" and not changes_state(args):
         return run_locked(args)
     with checkout_lock(lock_location(args)):
         return run_changing(args)
+
+
+def bring_in_team_work(args: argparse.Namespace) -> str:
+    """The "before" sync of a changing command, for a report that changes nothing. Returns
+    one line when the remote could not be reached, else ``""``."""
+    if getattr(args, "no_git", False):
+        return ""
+    load_state(Path(args.bolt))  # report a missing or broken bolt before any git work
+    root, rel, slug = git_scope(Path(args.bolt))
+    ctx, _why = open_git(root.resolve())
+    if ctx is None:
+        return ""
+    done = sync_git(ctx, rel, slug, "save work before context")
+    if done["not_shared"]:
+        return (
+            "the team's work could not be fetched; this report reflects this clone as of its "
+            "last successful fetch"
+        )
+    return ""
 
 
 def run_changing(args: argparse.Namespace) -> dict[str, Any]:

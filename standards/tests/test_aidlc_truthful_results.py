@@ -99,3 +99,26 @@ def test_a_bolt_with_nothing_to_drop_gets_no_migrate_line(repos: Repos) -> None:
     path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
     assert script("park", "--bolt", str(bolt), "--note", "x", "--no-git")[0] == 0
     assert "| migrate |" not in (bolt / "log.md").read_text(encoding="utf-8")
+
+
+def test_a_context_report_first_brings_in_the_teams_work(repos: Repos) -> None:
+    bolt = base.split_demo(repos)  # b has pulled; now a changes the Bolt and shares it
+    assert script("park", "--bolt", str(bolt), "--note", "from a")[0] == 0
+    theirs = git(repos.a, "rev-parse", "HEAD")
+    mine = bolt_of(repos.b)
+    code, out, _ = script("context", "--unit", "u1", "--bolt", str(mine), "--no-git")
+    assert code == 0 and git(repos.b, "rev-parse", "HEAD") != theirs  # --no-git skips it
+    code, out, _ = script("context", "--unit", "u1", "--bolt", str(mine))
+    assert code == 0, out
+    assert git(repos.b, "rev-parse", "HEAD") == theirs  # fetched and nothing new committed
+    assert "last successful fetch" not in json.dumps(out)
+
+
+def test_a_context_report_says_so_when_the_remote_cannot_be_reached(repos: Repos) -> None:
+    base.split_demo(repos)
+    git(repos.b, "remote", "set-url", "origin", str(repos.b.parent / "gone.git"))
+    head = git(repos.b, "rev-parse", "HEAD")
+    code, out, _ = script("context", "--unit", "u1", "--bolt", str(bolt_of(repos.b)))
+    assert code == 0 and "reports" in out, out
+    assert any("last successful fetch" in w for w in out["warnings"])
+    assert git(repos.b, "rev-parse", "HEAD") == head

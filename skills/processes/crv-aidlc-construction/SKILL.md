@@ -19,15 +19,15 @@ One Unit at a time, then Build and Test per Slice. Code lives in the target repo
 
 **Delegate to a subagent. Do not run this in the main session.**
 
-**Model tier: `balanced`.** Design and code need solid reasoning, not the top tier; Build and Test can use economy. State it, then work; if it or subagents are unavailable, say so and use the session's model.
+**Model tier: `balanced`.** Design and code need solid reasoning, not the top tier; Build and Test can use economy. State it, then work; if unavailable, say so and use the session's model.
 
-Read `references/core-rules.md` once per session, then ONLY the current stage's reference.
+Read `references/core-rules.md` once per session, then only the current stage's reference.
 
 ## Start or resume a Unit
 
-1. `aidlc_state.py next --bolt <p> --unit <u>`: stage and what it waits for. Slice not ready: `slice --bolt <p> --ready <slice>`, explain its gaps. Someone else owns the Unit: say so in one line, carry on.
+1. After a break, `aidlc_state.py sync --bolt <p>`, then `aidlc_state.py next --bolt <p> --unit <u>`: stage and waits. Slice not ready: `slice --bolt <p> --ready <slice>`, explain its gaps. Someone else owns the Unit: say so in a line, carry on.
 2. Read its `context` before editing.
-3. Per design stage, recommend from the Unit's `kind` and the stage's run condition: `decide --bolt <p> --stage <id> --unit <u> --decision execute|skip --reason "..."`. Cite what the HLA, TDD or an ADR fixed (`D<n>`) in each design, never re-ask: that citation carries a later change of the decision to this Unit. Unit ids: `decision-id --unit <u>` (`<u>:D<n>`).
+3. Per design stage, recommend from the Unit's `kind` and the stage's run condition: `decide --bolt <p> --stage <id> --unit <u> --decision execute|skip --reason "..."`. Cite what the HLA, TDD or an ADR fixed (`D<n>`) in each design, never re-ask: the citation carries a later change to this Unit. Unit ids: `decision-id --unit <u>` (`<u>:D<n>`).
 
 | Kind | Design stages that normally run |
 | --- | --- |
