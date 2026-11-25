@@ -761,6 +761,7 @@
       "reference": "references/build-and-test.md",
       "tier": "balanced",
       "per_unit": false,
+      "per_slice": true,
       "scopes": [
         "classic",
         "express",
@@ -784,13 +785,13 @@
       ],
       "questions": null,
       "artifacts": [
-        "docs/construction/build-and-test/build-instructions.md",
-        "docs/construction/build-and-test/build-and-test-summary.md",
-        "docs/construction/build-and-test/test-results.md",
-        "docs/construction/build-and-test/cross-unit-traceability.md"
+        "docs/slices/<slice>/build-and-test/build-instructions.md",
+        "docs/slices/<slice>/build-and-test/build-and-test-summary.md",
+        "docs/slices/<slice>/build-and-test/test-results.md",
+        "docs/slices/<slice>/build-and-test/cross-unit-traceability.md"
       ],
       "order": 17,
-      "verdict": "docs/construction/build-and-test/test-results.md"
+      "verdict": "docs/slices/<slice>/build-and-test/test-results.md"
     },
     {
       "id": "deployment-pipeline",
@@ -799,6 +800,7 @@
       "reference": "references/deployment-pipeline.md",
       "tier": "balanced",
       "per_unit": false,
+      "per_slice": true,
       "scopes": [
         "classic"
       ],
@@ -806,7 +808,7 @@
       "runs_when": "When people must release or cut over the Bolt's change: a data migration, a cut-over, a switch of write master, a retirement, or a release across several repositories. Skip, with the reason, when each target repository's own pipeline releases on merge and nothing else has to happen. Other scopes: only when forced with `decide`.",
       "inputs": [
         {
-          "path": "docs/construction/build-and-test/build-and-test-summary.md",
+          "path": "docs/slices/<slice>/build-and-test/build-and-test-summary.md",
           "mode": "digest"
         },
         {
@@ -838,12 +840,12 @@
           "optional": true
         }
       ],
-      "questions": "docs/operation/deployment-pipeline/deployment-pipeline-questions.md",
+      "questions": "docs/slices/<slice>/deployment-pipeline/deployment-pipeline-questions.md",
       "artifacts": [
-        "docs/operation/deployment-pipeline/release-plan.md",
-        "docs/operation/deployment-pipeline/runbook.md",
-        "docs/operation/deployment-pipeline/rollback-runbook.md",
-        "docs/operation/deployment-pipeline/verification-checks.md"
+        "docs/slices/<slice>/deployment-pipeline/release-plan.md",
+        "docs/slices/<slice>/deployment-pipeline/runbook.md",
+        "docs/slices/<slice>/deployment-pipeline/rollback-runbook.md",
+        "docs/slices/<slice>/deployment-pipeline/verification-checks.md"
       ],
       "order": 18
     },
@@ -854,6 +856,7 @@
       "reference": "references/deployment-execution.md",
       "tier": "economy",
       "per_unit": false,
+      "per_slice": true,
       "scopes": [
         "classic"
       ],
@@ -861,26 +864,26 @@
       "runs_when": "When Deployment Pipeline ran.",
       "inputs": [
         {
-          "path": "docs/operation/deployment-pipeline/release-plan.md",
+          "path": "docs/slices/<slice>/deployment-pipeline/release-plan.md",
           "mode": "full"
         },
         {
-          "path": "docs/operation/deployment-pipeline/runbook.md",
+          "path": "docs/slices/<slice>/deployment-pipeline/runbook.md",
           "mode": "full"
         },
         {
-          "path": "docs/operation/deployment-pipeline/rollback-runbook.md",
+          "path": "docs/slices/<slice>/deployment-pipeline/rollback-runbook.md",
           "mode": "full"
         },
         {
-          "path": "docs/operation/deployment-pipeline/verification-checks.md",
+          "path": "docs/slices/<slice>/deployment-pipeline/verification-checks.md",
           "mode": "full"
         }
       ],
       "questions": null,
       "artifacts": [
-        "docs/operation/deployment-execution/deploy-log.md",
-        "docs/operation/deployment-execution/verification-results.md"
+        "docs/slices/<slice>/deployment-execution/deploy-log.md",
+        "docs/slices/<slice>/deployment-execution/verification-results.md"
       ],
       "order": 19
     }

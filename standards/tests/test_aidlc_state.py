@@ -597,8 +597,8 @@ def test_close_complete_after_everything_is_approved(tmp_path: Path) -> None:
         "build-and-test-summary.md",
         "cross-unit-traceability.md",
     ):
-        p.write("docs/construction/build-and-test/" + name, digest())
-    p.write("docs/construction/build-and-test/test-results.md", verdict_doc())
+        p.write("docs/slices/s1/build-and-test/" + name, digest())  # no --slice: one Slice
+    p.write("docs/slices/s1/build-and-test/test-results.md", verdict_doc())
     p.run("step", "--stage", "build-and-test", "--to", "produced")
     assert p.run("gate", "--stage", "build-and-test", "--approve", "--by", "B")[0] == 0
     code, data, _ = p.run("close", "--status", "complete")
@@ -648,6 +648,12 @@ def test_missing_and_malformed_state(tmp_path: Path) -> None:
 # --- operation stages ----------------------------------------------------------
 
 OPERATION = ("deployment-pipeline", "deployment-execution")
+PER_SLICE = ("build-and-test", *OPERATION)
+
+
+def slice_stages(p: Bolt) -> dict[str, Any]:
+    """The stage records of the Bolt's only Slice."""
+    return p.state["slices"][0]["stages"]
 
 
 def test_operation_stages_follow_build_and_test_in_the_catalogue() -> None:
@@ -658,20 +664,33 @@ def test_operation_stages_follow_build_and_test_in_the_catalogue() -> None:
         item = next(i for i in catalog if i["id"] == stage)
         assert item["phase"] == "operation" and item["skill"] == "crv-aidlc-operation"
         assert item["scopes"] == ["classic"] and item["conditional"] is True
-        assert not item["per_unit"]
+        assert not item["per_unit"] and item["per_slice"]
+    assert next(i for i in catalog if i["id"] == "build-and-test")["per_slice"]
+    for item in catalog:
+        if item.get("per_slice"):
+            paths = [*item["artifacts"], *as_paths(item["questions"])]
+            assert paths and all(path.startswith("docs/slices/<slice>/") for path in paths)
 
 
-def test_operation_stages_are_decided_in_classic_and_skipped_elsewhere(tmp_path: Path) -> None:
+def as_paths(value: Any) -> list[str]:
+    return [value] if isinstance(value, str) else list(value or [])
+
+
+def test_the_slice_stages_are_decided_in_classic_and_skipped_elsewhere(tmp_path: Path) -> None:
     p = Bolt(tmp_path, Path(json.loads(open_bolt(tmp_path).stdout)["bolt"]))
-    assert (p.path / "docs" / "operation").is_dir()
-    assert all(p.state["stages"][s]["decision"] == "pending" for s in OPERATION)
+    assert (p.path / "docs" / "slices").is_dir()
+    assert not any(stage in p.state["stages"] for stage in PER_SLICE)  # Slices hold them
+    load_one_slice(p)
+    assert all(slice_stages(p)[s]["decision"] == "pending" for s in OPERATION)
+    assert slice_stages(p)["build-and-test"]["decision"] == "execute"
     other = tmp_path / "b"
     other.mkdir()
     q = Bolt(other, Path(json.loads(open_bolt(other, "--scope", "bugfix").stdout)["bolt"]))
-    assert all(q.state["stages"][s]["decision"] == "skip" for s in OPERATION)
+    assert all(slice_stages(q)[s]["decision"] == "skip" for s in OPERATION)
 
 
 def test_operation_stages_work_with_every_command(bolt: Bolt) -> None:
+    load_one_slice(bolt)
     assert bolt.run("decide", "--stage", "deployment-pipeline", "--decision", "skip",
                        "--reason", "pipeline releases on merge")[0] == 0  # fmt: skip
     assert bolt.run("inputs", "--stage", "deployment-execution")[0] in (0, 3)
@@ -680,8 +699,9 @@ def test_operation_stages_work_with_every_command(bolt: Bolt) -> None:
 
 
 def test_gate_refuses_an_operation_stage_with_a_missing_artifact(bolt: Bolt) -> None:
+    load_one_slice(bolt)
     stage = "deployment-pipeline"
-    base = "docs/operation/deployment-pipeline/"
+    base = "docs/slices/s1/deployment-pipeline/"
     bolt.write(base + "release-plan.md", digest())
     bolt.write(base + "deployment-pipeline-questions.md", QUESTIONS)
     assert bolt.run("decide", "--stage", stage, "--decision", "execute", "--reason", "x")[0] == 0
@@ -689,23 +709,49 @@ def test_gate_refuses_an_operation_stage_with_a_missing_artifact(bolt: Bolt) -> 
     code, data, _ = bolt.run("gate", "--stage", stage, "--approve", "--by", "Boss")
     assert code == 1
     assert any("runbook.md" in json.dumps(f) for f in data["findings"])
-    assert bolt.state["stages"][stage]["step"] == "produced"
+    assert slice_stages(bolt)[stage]["step"] == "produced"
 
 
-def test_a_state_written_before_the_operation_stages_keeps_working(bolt: Bolt) -> None:
+def old_state(bolt: Bolt, slices: list[str], progress: bool) -> None:
+    """A state written before Build and Test and Operation moved into the Slices."""
     state = bolt.state
-    for stage in OPERATION:
-        del state["stages"][stage]
+    state["slices"] = [{"id": sid, "units": []} for sid in slices]
+    state["units"] = []
+    state["stages"].update({s: {"decision": "execute", "reason": "", "step": "todo",
+                                "approved_at": None, "approved_by": None} for s in PER_SLICE})  # fmt: skip
+    if progress:
+        state["stages"]["build-and-test"]["step"] = "produced"
     (bolt.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
+
+
+def test_a_state_with_no_slice_records_keeps_working(bolt: Bolt) -> None:
+    old_state(bolt, [], progress=False)
     for command in (("status",), ("next",), ("codekb-status",), ("workspace",)):
         assert bolt.run(*command)[0] == 0, command
-    assert bolt.run("inputs", "--stage", "deployment-execution")[0] in (0, 3)
-    assert "deployment-pipeline" not in bolt.state["stages"]  # reads do not write
-    code, _, _ = bolt.run("decide", "--stage", "deployment-pipeline", "--decision", "skip",
-                             "--reason", "old bolt")  # fmt: skip
-    assert code == 0 and bolt.state["stages"]["deployment-pipeline"]["decision"] == "skip"
-    assert bolt.state["stages"]["deployment-execution"]["decision"] == "pending"
+    assert bolt.run("inputs", "--stage", "deployment-execution")[0] == 2  # no Slice to name
+    assert bolt.run("park", "--note", "n")[0] == 0
+    assert not any(stage in bolt.state["stages"] for stage in PER_SLICE)
     assert bolt.run("close", "--status", "archived")[0] == 0
+
+
+def test_bolt_level_progress_moves_into_the_only_slice(bolt: Bolt) -> None:
+    old_state(bolt, ["s1"], progress=True)
+    assert bolt.run("status")[0] == 0 and "build-and-test" in bolt.state["stages"]  # reads keep it
+    assert bolt.run("park", "--note", "n")[0] == 0
+    assert not any(stage in bolt.state["stages"] for stage in PER_SLICE)
+    assert slice_stages(bolt)["build-and-test"]["step"] == "produced"
+    assert slice_stages(bolt)["deployment-pipeline"]["decision"] == "pending"  # seeded new
+
+
+def test_progress_goes_to_the_first_slice_with_one_migrate_line(bolt: Bolt) -> None:
+    old_state(bolt, ["s1", "s2"], progress=True)
+    assert bolt.run("park", "--note", "n")[0] == 0
+    first, second = bolt.state["slices"]
+    assert first["stages"]["build-and-test"]["step"] == "produced"
+    assert second["stages"]["build-and-test"]["step"] == "todo"
+    assert len([line for line in bolt.log_lines() if " | migrate | " in line]) == 1
+    assert bolt.run("park", "--note", "again")[0] == 0
+    assert len([line for line in bolt.log_lines() if " | migrate | " in line]) == 1
 
 
 # --- jira ----------------------------------------------------------------------
@@ -921,6 +967,13 @@ def load_units(p: Bolt, units: list[dict[str, Any]]) -> tuple[int, dict[str, Any
     spec = p.root / "units.json"
     spec.write_text(json.dumps({"units": units}), encoding="utf-8")
     return p.run("units", "--set", str(spec))
+
+
+def load_one_slice(p: Bolt) -> None:
+    """Slice s1 holding unit u1: Build and Test and Operation live in the Slice."""
+    spec = p.root / "units.json"
+    spec.write_text(json.dumps({"slices": [{"id": "s1"}], "units": [{"id": "u1", "slice": "s1"}]}))
+    assert p.run("units", "--set", str(spec))[0] == 0
 
 
 def skip_unit_stages(p: Bolt, unit: str) -> None:
@@ -1336,13 +1389,13 @@ def test_an_old_state_with_a_frame_kind_and_a_parent_loads_and_loses_the_keys(
 
 # --- verdicts: a failed verification is never stored as passed ----------------
 
-BAT = "docs/construction/build-and-test/"
+BAT = "docs/slices/s1/build-and-test/"
 
 
 def build_and_test_produced(p: Bolt, results: str) -> None:
     """Skip everything before Build and Test, then write its files with ``results``."""
     skip_inception(p)
-    load_units(p, [{"id": "u1"}])
+    load_one_slice(p)
     for stage in ("functional-design", "nfr-requirements", "nfr-design", "infrastructure-design"):
         p.run("decide", "--stage", stage, "--unit", "u1", "--decision", "skip", "--reason", "t")
     p.run("decide", "--stage", "code-generation", "--unit", "u1", "--decision", "skip",
@@ -1379,7 +1432,7 @@ def test_a_missing_or_malformed_verdict_refuses_the_gate(bolt: Bolt, text: str) 
     build_and_test_produced(bolt, text)
     code, data, _ = bolt.run(*GATE, "--note", "go on")
     assert code == 1 and verdict_codes(data) == ["verdict-missing"]
-    assert bolt.state["stages"]["build-and-test"]["step"] == "produced"
+    assert bolt.state["slices"][0]["stages"]["build-and-test"]["step"] == "produced"
 
 
 @pytest.mark.parametrize(
@@ -1392,7 +1445,7 @@ def test_a_fail_verdict_cannot_be_passed_with_any_flags(bolt: Bolt, line: str) -
         code, data, _ = bolt.run(*GATE, *extra)
         assert code == 1 and verdict_codes(data) == ["verdict-fail"], extra
         assert "stays open" in data["findings"][0]["message"]
-    record = bolt.state["stages"]["build-and-test"]
+    record = bolt.state["slices"][0]["stages"]["build-and-test"]
     assert record["step"] == "produced" and "verdict" not in record
     assert bolt.run("gate", "--stage", "build-and-test", "--approve", "--channel", "x")[0] == 2
 
@@ -1403,14 +1456,14 @@ def test_a_not_run_verdict_passes_only_with_a_note_and_is_stored(bolt: Bolt) -> 
     assert code == 1 and verdict_codes(data) == ["verdict-not-run"]
     code, data, _ = bolt.run(*GATE, "--note", "nothing to test in this change")
     assert code == 0 and data["verdict"] == "not-run"
-    assert bolt.state["stages"]["build-and-test"]["verdict"] == "not-run"
+    assert bolt.state["slices"][0]["stages"]["build-and-test"]["verdict"] == "not-run"
 
 
 def test_a_pass_verdict_is_stored(bolt: Bolt) -> None:
     build_and_test_produced(bolt, verdict_doc("verdict: Pass"))
     code, data, _ = bolt.run(*GATE)
     assert code == 0 and data["verdict"] == "pass"
-    assert bolt.state["stages"]["build-and-test"]["verdict"] == "pass"
+    assert bolt.state["slices"][0]["stages"]["build-and-test"]["verdict"] == "pass"
     assert "not_verified" in bolt.run("status")[1]
     assert bolt.run("status")[1]["not_verified"] == []
 
@@ -1418,16 +1471,18 @@ def test_a_pass_verdict_is_stored(bolt: Bolt) -> None:
 def test_a_not_run_stage_is_shown_as_not_verified(bolt: Bolt) -> None:
     build_and_test_produced(bolt, verdict_doc("Verdict: not-run"))
     assert bolt.run(*GATE, "--note", "accepted unverified")[0] == 0
-    assert bolt.run("status")[1]["not_verified"] == [{"stage": "build-and-test", "unit": None}]
+    assert bolt.run("status")[1]["not_verified"] == [
+        {"stage": "build-and-test", "unit": None, "slice": "s1"}
+    ]
     assert (
-        "Not verified (verdict not-run): build-and-test"
+        "Not verified (verdict not-run): build-and-test [slice s1]"
         in bolt.run("status", "--format", "text")[2]
     )
     overview = subprocess.run(
         [sys.executable, str(SCRIPT), "overview", "--root", str(bolt.root), "--format", "text"],
         capture_output=True, text=True, timeout=60,
     ).stdout  # fmt: skip
-    assert "not verified: build-and-test" in overview
+    assert "not verified: build-and-test [slice s1]" in overview
 
 
 def unit_stage_ready(p: Bolt, results: str) -> None:

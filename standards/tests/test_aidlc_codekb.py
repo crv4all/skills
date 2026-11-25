@@ -257,6 +257,7 @@ def test_express_and_bugfix_stage_sets(tmp_path: Path, scope: str, running: set[
     live = {k for k, v in decisions(bolt).items() if v != "skip"}
     unit = state["units"][0]
     live |= {k for k, v in unit["stages"].items() if v["decision"] != "skip"}
+    live |= {k for k, v in state["slices"][0]["stages"].items() if v["decision"] != "skip"}
     assert live == running
     assert [u["id"] for u in state["units"]] == ["u1"]
     (only,) = state["slices"]

@@ -395,6 +395,26 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Build and Test and Operation run once per Slice.** They existed once per
+  Bolt, became next only when every Unit was done, and could not be redone for a
+  second Slice. `build-and-test`, `deployment-pipeline` and `deployment-execution`
+  are now `per_slice` in `stages.json`: their records live in the Slice, their
+  files under `docs/slices/<slice>/...` (for example
+  `docs/slices/s1/build-and-test/test-results.md`) and `<unit>` in their inputs
+  covers only that Slice's Units that are not cancelled. `decide`, `step`,
+  `gate` and `inputs` take `--slice ID`; with one Slice the flag is optional,
+  with several it is a usage error that lists them. A Slice's Build and Test is
+  next when its own Units are done, whatever the other Slices do, and `next`
+  says "waits for slice s1 (verified)" for a Slice that depends on one that is
+  not. `next --slice ID` routes one Slice, plain `next` in a split Bolt lists
+  Units and Slices in progress, and `next --mine` includes the Slices you own.
+  A Unit of a Slice that is not ready reports it. `status` and `overview` show
+  one line per Slice, and `close --status complete` needs every executed stage
+  of every Slice and every live Unit passed. A passed Slice stage can be
+  reopened like a Unit stage. A `state.json` written earlier loses its
+  Bolt-level records for these three stages when it is read; progress moves into
+  the only Slice, or the first one, with one `migrate` log line.
+
 - **A Slice is a small record with one readiness checkpoint.** A Slice used to
   store `{id, units, status}` and nothing read the status. Now each Unit's own
   `slice` key is the only record of membership, a Slice stores
