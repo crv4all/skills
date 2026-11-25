@@ -693,6 +693,26 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (the edit is logged) and the Units that rely on it are told. The warning for an
   edited artifact now says which of the two applies.
 
+- **The seven AI-DLC skills teach what the scripts now do.** After six rounds of
+  script changes the skill text still told a session to hand out approver names,
+  `--channel`, `--parent`, `--kind frame` and `--takeover`, to expect three question
+  rounds, and to write Build and Test under `docs/construction/` and Operation under
+  `docs/operation/`. A session following it would have issued commands that no
+  longer exist. The text now matches the scripts and teaches one operating model:
+  one Bolt per initiative with one shared architecture, Slices added over time and
+  Units inside them. The entry skill carries a table that maps plain requests
+  ("Continue my Unit", "What is blocking this implementation?", "Plan the next
+  Slice") to the commands a session runs, so an engineer never needs a flag. A
+  stage ends in a checkpoint the session passes itself when nothing technical or
+  material is open, asks once with a recommendation when a choice is open, and
+  never passes a failed run. Questions follow what is open, with no quota. The
+  HLA skill explains contributions, the merge into `hla.md` and the consistency
+  review; Inception explains additive Slices and readiness; Construction explains
+  the `Verdict:` line, `context` and per-Slice Build and Test; Operation works per
+  Slice. The shared core rules were rewritten once and copied to all seven skills.
+  The evaluation cases for removed behaviour were deleted and cases for the new
+  behaviour were written; none has been run, so no `results.md` exists.
+
 ### Removed
 
 - **Parent and child Bolts, and the frame kind of Bolt, are gone.** A Bolt is one
