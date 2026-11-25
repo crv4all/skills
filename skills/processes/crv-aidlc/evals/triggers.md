@@ -14,8 +14,9 @@ tested is whether the entry skill and the stage skills separate cleanly.
 | --- | --- | --- |
 | T1 | "Start a Bolt for migrating the billing service." | Names the Bolt directly. |
 | T2 | "Resume the Bolt from last week and tell me what is next." | Resume plus the "what is next" routing question. |
-| T3 | "I want AI-DLC applied to this new feature, structured and gated." | Names the method and asks for gates. |
+| T3 | "I want AI-DLC applied to this new feature, structured, with checkpoints." | Names the method and asks for gates. |
 | T4 | "Close the reporting Bolt, it is done." | Closing is the skill's job, and the close refusal is the point. |
+| T5 | "What is blocking my Unit in the billing Bolt?" | A plain question about a Bolt's state; the skill runs the commands. |
 
 ## Should not fire
 
@@ -33,4 +34,4 @@ tested is whether the entry skill and the stage skills separate cleanly.
 | --- | --- | --- | --- |
 | B1 | "Do the requirements analysis for the billing Bolt." | Fire, then hand over | The entry skill finds the Bolt and runs `next`, then routes to `crv-aidlc-inception`. Doing the analysis itself is a failure. |
 | B2 | "Plan this feature properly." | Fire, then ask | "Properly" suggests a staged process, but the user may want only a plan. Ask whether to open a Bolt before creating one. |
-| B3 | "Is the architecture stage approved yet?" | Fire for `status` only | A read-only question about a Bolt; answer from `status` and change nothing. |
+| B3 | "Has the architecture stage passed its checkpoint yet?" | Fire for `status` only | A read-only question about a Bolt; answer from `status` and change nothing. |

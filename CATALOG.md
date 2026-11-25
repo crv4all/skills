@@ -11,7 +11,7 @@ Every skill runs in a subagent and states its model tier before starting. See
 
 | Skill | Layer | Maturity | Runs as | Tier | Owner | Summary |
 | --- | --- | --- | --- | --- | --- | --- |
-| [`crv-aidlc`](skills/processes/crv-aidlc/SKILL.md) | processes | draft | subagent | economy | cloudforce-team-data | Opens, resumes and closes a Bolt (the folder for one piece of work in a planning repo), routes to the next AI-DLC stage and enforces approval gates with… |
+| [`crv-aidlc`](skills/processes/crv-aidlc/SKILL.md) | processes | draft | subagent | economy | cloudforce-team-data | Opens, resumes and closes a Bolt (the folder for one piece of work in a planning repo), routes to the next AI-DLC stage and runs the checkpoints with… |
 | [`crv-aidlc-construction`](skills/processes/crv-aidlc-construction/SKILL.md) | processes | draft | subagent | balanced | cloudforce-team-data | Builds a Bolt's Units in code: per-Unit design stages when they apply, an approved checkbox code plan, code in the target repositories, then Build and Test. |
 | [`crv-aidlc-hla`](skills/processes/crv-aidlc-hla/SKILL.md) | processes | draft | subagent | frontier | cloudforce-team-data | Produces the High-Level Architecture (HLA) for a Bolt before Inception: three file-based question rounds over twelve design layers, opinionated proposals that… |
 | [`crv-aidlc-inception`](skills/processes/crv-aidlc-inception/SKILL.md) | processes | draft | subagent | balanced | cloudforce-team-data | Runs the AI-DLC Inception stages for a Bolt: requirements that reconcile the accepted HLA, user stories, a domain design, units of work, contracts between… |
@@ -47,7 +47,7 @@ End-to-end workflows with a reviewable deliverable.
 
 ### [`crv-aidlc`](skills/processes/crv-aidlc/SKILL.md)
 
-Opens, resumes and closes a Bolt (the folder for one piece of work in a planning repo), routes to the next AI-DLC stage and enforces approval gates with deterministic scripts. Use when someone wants to start, open, resume or close a Bolt, asks what is next, mentions AI-DLC, asks whether they are ready to use AI-DLC or how to get started, or wants a structured, staged delivery of a feature, migration or bug fix. Not for the stage work itself: crv-aidlc-reverse-engineering, crv-aidlc-hla, crv-aidlc-tdd, crv-aidlc-inception, crv-aidlc-construction and crv-aidlc-operation own that, and the crv-create-jira-* skills file tickets.
+Opens, resumes and closes a Bolt (the folder for one piece of work in a planning repo), routes to the next AI-DLC stage and runs the checkpoints with deterministic scripts, so an engineer works in plain requests and never needs a command. Use when someone wants to start, open, resume or close a Bolt, asks what is next, what is blocking a Unit, what changed under their work or what has happened in a Bolt, mentions AI-DLC, asks whether they are ready to use AI-DLC or how to get started, or wants a structured, staged delivery of a feature, migration or bug fix. Not for the stage work itself: crv-aidlc-reverse-engineering, crv-aidlc-hla, crv-aidlc-tdd, crv-aidlc-inception, crv-aidlc-construction and crv-aidlc-operation own that, and the crv-create-jira-* skills file tickets.
 
 **Owner:** cloudforce-team-data · **Maturity:** draft · **Runs as:** subagent · **Model tier:** economy
 
