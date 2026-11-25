@@ -1089,7 +1089,7 @@ def test_a_command_holds_the_checkout_lock_and_leaves_no_file_behind(
     assert bolt.run("park", "--note", "n")[0] == 0
 
 
-def test_the_owner_guard_needs_a_takeover_but_not_for_a_gate(
+def test_a_step_on_someone_elses_unit_runs_and_warns(
     bolt: Bolt, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     skip_inception(bolt)
@@ -1097,15 +1097,39 @@ def test_the_owner_guard_needs_a_takeover_but_not_for_a_gate(
     step = ("step", "--stage", "code-generation", "--unit", "u1", "--to", "asked")
     monkeypatch.setenv("AIDLC_ACTOR", "Grace Hopper")
     code, data, _ = bolt.run(*step)
-    assert code == 1 and "belongs to Ada Lovelace and you are Grace Hopper" in data["error"]
-    assert bolt.run(*step, "--takeover", "Ada is away")[0] == 0
-    assert bolt.log_lines()[-1].endswith("takeover by Grace Hopper: Ada is away")
-    gate = bolt.run("gate", "--stage", "code-generation", "--unit", "u1", "--approve", "--by", "X")
-    assert gate[0] == 1 and "belongs to" not in gate[1]["error"]
+    assert code == 0, data
+    assert data["warnings"] == ["unit u1 is owned by Ada Lovelace; you are Grace Hopper"]
+    assert "owned by Ada Lovelace" in bolt.log_lines()[-1]
+    assert bolt.state["units"][0]["stages"]["code-generation"]["step"] == "asked"
     monkeypatch.setenv("AIDLC_ACTOR", "ada  lovelace")
-    assert (
-        bolt.run("step", "--stage", "code-generation", "--unit", "u1", "--to", "analysed")[0] == 0
+    code, data, _ = bolt.run(
+        "step", "--stage", "code-generation", "--unit", "u1", "--to", "analysed"
     )
+    assert code == 0 and "warnings" not in data
+
+
+def test_the_owner_warning_covers_decide_decision_id_and_jira(
+    bolt: Bolt, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    skip_inception(bolt)
+    load_units(bolt, [{"id": "u1", "owner": "Ada Lovelace"}])
+    monkeypatch.setenv("AIDLC_ACTOR", "Grace Hopper")
+    for args in (
+        ("decide", "--stage", "nfr-requirements", "--unit", "u1", "--decision", "skip",
+         "--reason", "none"),
+        ("decision-id", "--unit", "u1"),
+        ("jira", "--unit", "u1", "--story", "AB-1"),
+    ):  # fmt: skip
+        code, data, _ = bolt.run(*args)
+        assert code == 0 and len(data["warnings"]) == 1, (args, data)
+    assert bolt.run("assign", "--unit", "u1", "--owner", "Grace Hopper")[0] == 0
+
+
+def test_the_takeover_flag_is_gone(bolt: Bolt) -> None:
+    skip_inception(bolt)
+    load_units(bolt, [{"id": "u1"}])
+    step = ("step", "--stage", "code-generation", "--unit", "u1", "--to", "asked")
+    assert bolt.run(*step, "--takeover", "x")[0] == 2
 
 
 def test_decision_ids_are_numbered_per_unit(bolt: Bolt) -> None:

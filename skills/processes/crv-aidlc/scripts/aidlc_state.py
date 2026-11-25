@@ -832,22 +832,21 @@ def cmd_brief(
     return result
 
 
-def guard_owner(bolt: Path, state: dict[str, Any], unit_id: Optional[str], takeover: Any) -> str:
-    """Refuse to change a unit someone else owns; return the log suffix for a takeover."""
+def owner_warning(state: dict[str, Any], unit_id: Optional[str], who: str) -> str:
+    """One line when the unit belongs to someone else; empty otherwise. It never refuses:
+    the engineer may well be the right person to move the Unit on, so the owner is told."""
     if unit_id is None:
         return ""
     owner = find_unit(state, unit_id).get("owner")
-    who = actor(planning_root(bolt))
     if not owner or not who or same_person(owner, who):
         return ""
-    why = " ".join(str(takeover or "").split())
-    if not why:
-        raise Fail(
-            EXIT_FINDINGS,
-            f"unit {unit_id} belongs to {owner} and you are {who}. "
-            'Ask them, or pass --takeover "<why>"',
-        )
-    return f" takeover by {who}: {why}"
+    return f"unit {unit_id} is owned by {owner}; you are {who}"
+
+
+def guard_owner(bolt: Path, state: dict[str, Any], unit_id: Optional[str]) -> tuple[str, list[str]]:
+    """The log suffix and the ``warnings`` for a step on a Unit owned by someone else."""
+    text = owner_warning(state, unit_id, actor(planning_root(bolt)))
+    return (f" ({text})", [text]) if text else ("", [])
 
 
 def cmd_assign(
@@ -2442,7 +2441,7 @@ def cmd_jira(
     for key in (args.epic, args.story):
         if key is not None and not JIRA_KEY.match(key):
             die(EXIT_USAGE, f"'{key}' is not a Jira key (expected PROJ-123).")
-    suffix = guard_owner(bolt, state, args.unit, getattr(args, "takeover", None))
+    suffix, warnings = guard_owner(bolt, state, args.unit)
     if args.epic is not None:
         jira["epic"], jira["mode"] = args.epic, "on"
         note = f"epic {args.epic}"
@@ -2469,7 +2468,10 @@ def cmd_jira(
         note = "on"
     nxt = commit(bolt, state, catalog)
     log_event(bolt, "jira", "", "", note + suffix, args.unit or "")
-    return {"ok": True, "jira": jira_facts(state), "next": nxt}
+    result: dict[str, Any] = {"ok": True, "jira": jira_facts(state), "next": nxt}
+    if warnings:
+        result["warnings"] = warnings
+    return result
 
 
 def require_story(state: dict[str, Any], stage: dict[str, Any], unit: Optional[str]) -> None:
@@ -3319,20 +3321,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--stage", required=True)
     sp.add_argument("--unit")
 
-    def takeover(parser: argparse.ArgumentParser) -> None:
-        parser.add_argument(
-            "--takeover", help="Why you change a unit that someone else owns (it is logged)."
-        )
-
     sp = add("decide", "Record EXECUTE or SKIP for a stage.")
-    takeover(sp)
     sp.add_argument("--stage", required=True)
     sp.add_argument("--decision", required=True, choices=["execute", "skip"])
     sp.add_argument("--reason", required=True)
     sp.add_argument("--unit")
 
     sp = add("step", "Move a stage forward.")
-    takeover(sp)
     sp.add_argument("--stage", required=True)
     sp.add_argument("--to", required=True, choices=["asked", "analysed", "produced"])
     sp.add_argument("--unit")
@@ -3367,7 +3362,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     sp = add("decision-id", "Reserve the next decision ids.")
-    takeover(sp)
     sp.add_argument("--count", type=int, default=1)
     sp.add_argument("--unit", help="Number from this unit's own counter; cite as <unit>:D<n>.")
 
@@ -3397,7 +3391,6 @@ def build_parser() -> argparse.ArgumentParser:
     add("unpark", "Clear the hand-over note.")
 
     sp = add("jira", "Record Jira keys: one epic per bolt, one story per unit.")
-    takeover(sp)
     sp.add_argument("--epic", help="The bolt's Epic key; turns Jira on.")
     sp.add_argument("--unit", help="With --story or --done.")
     sp.add_argument("--story", help="The unit's Story key.")
@@ -3736,12 +3729,12 @@ def run_locked(args: argparse.Namespace) -> dict[str, Any]:
         return cmd_assign(bolt, state, catalog, args)
     if cmd in {"decide", "step", "gate"}:
         stage = stage_def(catalog, args.stage)
-        suffix = ""
+        suffix, warnings = "", []
         if cmd == "gate":
             return cmd_gate(bolt, state, catalog, stage, args.unit, args)
         if cmd in {"decide", "step"}:
             require_story(state, stage, args.unit)
-            suffix = guard_owner(bolt, state, args.unit, args.takeover)
+            suffix, warnings = guard_owner(bolt, state, args.unit)
         if cmd == "decide":
             cmd_decide(state, stage, args.unit, args.decision, args.reason)
             event, note = "decide", f"{args.decision}: {args.reason}"
@@ -3754,13 +3747,16 @@ def run_locked(args: argparse.Namespace) -> dict[str, Any]:
         nxt = commit(bolt, state, catalog)
         prefix = f"[{args.unit}] " if args.unit else ""
         log_event(bolt, event, stage["id"], "", prefix + note + suffix, args.unit or "")
-        return {"ok": True, "stage": stage["id"], "unit": args.unit, "next": nxt}
+        done: dict[str, Any] = {"ok": True, "stage": stage["id"], "unit": args.unit, "next": nxt}
+        if warnings:
+            done["warnings"] = warnings
+        return done
     if cmd == "units":
         return cmd_units(bolt, state, catalog, Path(args.file))
     if cmd == "decision-id":
         if args.count < 1:
             die(EXIT_USAGE, "--count must be at least 1.")
-        suffix = guard_owner(bolt, state, args.unit, args.takeover)
+        suffix, warnings = guard_owner(bolt, state, args.unit)
         holder = find_unit(state, args.unit) if args.unit else state
         start = int(holder.get("decision_seq") or 0)
         if not args.unit:  # never hand out an id the Bolt's decision records already hold
@@ -3772,6 +3768,8 @@ def run_locked(args: argparse.Namespace) -> dict[str, Any]:
         result: dict[str, Any] = {"ok": True, "ids": ids}
         if args.unit:
             result["cite_as"] = [f"{args.unit}:{i}" for i in ids]
+        if warnings:
+            result["warnings"] = warnings
         return result
     if cmd == "park":
         state["parked"] = {"note": args.note, "at": now()}

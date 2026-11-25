@@ -565,6 +565,13 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   that changed since the stage was produced are listed as `context` in the gate
   result and never refuse. Everything technical still refuses as before.
 
+- **A step on someone else's Unit warns instead of refusing.** The owner guard
+  stopped a step, `decide`, `jira` or `decision-id` on a Unit owned by another
+  person unless `--takeover "<why>"` was given, which made the engineer argue with
+  the tool. The command now runs, the result's `warnings` names the owner and the
+  actor, and the log line says the same. `assign`, `next --mine` and the
+  unowned-Unit problem are unchanged.
+
 ### Removed
 
 - **Parent and child Bolts, and the frame kind of Bolt, are gone.** A Bolt is one
@@ -583,6 +590,8 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   with the `context-changed` finding are removed: they made a checkpoint look
   like an approval workflow while the engineer's own call is what matters. Old
   records that hold these fields load and lose them at the next write.
+- **`--takeover` is gone** from `decide`, `step`, `jira` and `decision-id`: the
+  owner guard no longer refuses, so there is nothing to take over.
 
 ## [0.1.0] — 2026-08-18
 
