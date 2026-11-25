@@ -1039,17 +1039,19 @@ def test_a_changed_input_is_reported_by_the_gate_and_never_refuses(bolt: Bolt) -
     reach_produced(bolt)
     ra_files(bolt)
     stage = "requirements-analysis"
-    assert list(bolt.state["stages"][stage]["relied_on"]) == ["knowledge/_digest.md"]
-    assert "context_changed" not in bolt.run("next")[1]
+    files = bolt.state["stages"][stage]["relied_on"]["files"]
+    assert len(files["knowledge/_digest.md"]) == 16 and files["architecture/tdd.md"] is None
+    assert "context" not in bolt.run("next")[1]
     bolt.write("knowledge/_digest.md", digest(3))
-    assert bolt.run("next")[1]["context_changed"] == ["knowledge/_digest.md"]
-    assert bolt.run("status")[1]["stale"][0]["stage"] == stage
+    changed = [{"path": "knowledge/_digest.md", "what": "changed"}]
+    assert bolt.run("next")[1]["context"] == {"inputs": changed}
+    assert bolt.run("status")[1]["context"][0]["stage"] == stage
     code, data, _ = bolt.run("gate", "--stage", stage, "--approve", "--by", "Ada")
-    assert code == 0 and data["context"] == ["knowledge/_digest.md"]
-    assert bolt.run("status")[1]["stale"] == []
+    assert code == 0 and data["context"] == {"inputs": changed}
+    assert bolt.run("status")[1]["context"] == []
 
 
-def test_a_record_without_relied_on_is_never_flagged(bolt: Bolt) -> None:
+def test_a_record_without_a_baseline_is_reported_as_missing_and_still_passes(bolt: Bolt) -> None:
     bolt.write("knowledge/_digest.md", digest())
     reach_produced(bolt)
     ra_files(bolt)
@@ -1057,8 +1059,10 @@ def test_a_record_without_relied_on_is_never_flagged(bolt: Bolt) -> None:
     del state["stages"]["requirements-analysis"]["relied_on"]
     (bolt.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
     bolt.write("knowledge/_digest.md", digest(3))
-    assert "context_changed" not in bolt.run("next")[1]
-    assert bolt.run("gate", "--stage", "requirements-analysis", "--approve", "--by", "Ada")[0] == 0
+    assert bolt.run("next")[1]["context"] == {"baseline": "missing"}
+    code, data, _ = bolt.run("gate", "--stage", "requirements-analysis", "--approve", "--by", "Ada")
+    assert code == 0 and data["context"] == {"baseline": "missing"}
+    assert "context" not in bolt.run("next")[1]
 
 
 def test_brief_has_five_sections_and_can_be_written(bolt: Bolt) -> None:

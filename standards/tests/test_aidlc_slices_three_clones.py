@@ -29,6 +29,15 @@ BAT_FILES = ("build-instructions.md", "build-and-test-summary.md", "cross-unit-t
 RELEASE_FILES = ("release-plan.md", "runbook.md", "rollback-runbook.md", "verification-checks.md")
 
 
+UOW = "docs/inception/units-generation/unit-of-work.md"
+REQS = "docs/inception/requirements-analysis/requirements.md"
+DECISIONS = "architecture/hla-decisions.md"
+
+
+def table(head: str, *rows: str) -> str:
+    return "# Doc\n\n## Digest\n- one\n- two\n\n## Body\n\n" + head + "\n" + "\n".join(rows) + "\n"
+
+
 def digest(verdict: str = "") -> str:
     return (verdict + "\n\n" if verdict else "") + "# Title\n\n## Digest\n- one\n- two\n\n## Body\n"
 
@@ -137,6 +146,19 @@ def test_three_engineers_add_a_slice_while_two_others_build(
         },
     )
     team.run("Ana", "slice", "--ready", "s1")
+    # The shared documents: u1 relies on FR-1 and D10, u2 on FR-2 and D11.
+    names = "| Id | Name |\n| --- | --- |"
+    write(
+        team.bolt("Ana") / UOW,
+        table(names, "| U-1 | Needs FR-1 under D10 |", "| U-2 | Needs FR-2 under D11 |"),
+    )
+    write(
+        team.bolt("Ana") / REQS, table(names, "| FR-1 | Pay by card |", "| FR-2 | Send a receipt |")
+    )
+    write(team.bolt("Ana") / DECISIONS, table("| Id | Decision | Status |\n| --- | --- | --- |",
+                                              "| D10 | Use queues | accepted |",
+                                              "| D11 | Use retries | accepted |"))  # fmt: skip
+    assert team.run("Ana", "sync", "-m", "plan documents")["git"]["pushed"] is True
     team.pull("Ben")
     for who, unit in (("Ana", "u1"), ("Ben", "u2")):
         team.skip_unit_stages(who, unit, ("functional-design",))
@@ -166,6 +188,14 @@ def test_three_engineers_add_a_slice_while_two_others_build(
     team.run("Ben", "step", "--stage", "code-generation", "--unit", "u2", "--to", "produced")
     ben_file = team.unit_file("Ben", "u2")
     team.run("Cleo", "slice", "--ready", "s2")
+    for rel, row in (
+        (UOW, "| U-3 | Needs FR-3 |\n| U-4 | Needs FR-3 too |"),
+        (REQS, "| FR-3 | Export a statement |"),
+        (DECISIONS, "| D12 | Use caching | accepted |"),
+    ):
+        text = (team.bolt("Cleo") / rel).read_text(encoding="utf-8")
+        write(team.bolt("Cleo") / rel, text + row + "\n")
+    assert team.run("Cleo", "sync", "-m", "add slice 2 to the documents")["git"]["pushed"] is True
 
     # 3. Nothing that existed was touched, and everything is shared.
     team.pull()
@@ -185,6 +215,24 @@ def test_three_engineers_add_a_slice_while_two_others_build(
     }  # fmt: skip
     assert team.run("Ana", "decision-id", "--unit", "u1")["ids"] == ["D2"]  # the counter goes on
     assert [s["id"] for s in state["slices"]] == ["s1", "s2"]
+
+    # Cleo's additions to the shared documents are news to nobody who does not cite them.
+    for who, unit in (("Ana", "u1"), ("Ben", "u2")):
+        assert team.run(who, "context", "--unit", unit)["reports"] == []
+        assert "context" not in team.run(who, "next", "--unit", unit)
+    # A change Cleo makes to D10 reaches u1, which cites it, and not u2.
+    text = (team.bolt("Cleo") / DECISIONS).read_text(encoding="utf-8")
+    write(team.bolt("Cleo") / DECISIONS, text.replace("Use queues", "Use streams"))
+    assert team.run("Cleo", "sync", "-m", "change D10")["git"]["pushed"] is True
+    team.pull()
+    reported = team.run("Ana", "context", "--unit", "u1")["reports"]
+    assert [(r["stage"], c["id"], c["what"]) for r in reported for c in r["changed"]] == [
+        ("code-generation", "D10", "changed")
+    ]
+    assert team.run("Ben", "context", "--unit", "u2")["reports"] == []
+    who_relies = team.run("Cleo", "context", "--id", "D10")
+    assert [u["id"] for u in who_relies["units"]] == ["u1"] and who_relies["slices"] == ["s1"]
+    assert who_relies["units_not_relying"] == 3  # u2, u3 and u4
 
     # 4. s1 finishes and passes Build and Test while s2 is still building.
     team.pull()

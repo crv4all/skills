@@ -60,8 +60,9 @@ EPILOG = """commands:
   slice       add a slice, check ready   --bolt P --add S [--name N] [--owner O] [--depends-on a,b]
                                          | --ready S [--note "direction"]
   brief       a unit's starting page     --bolt P --unit U [--write]
-  context     what a unit or slice relies on, or who relies on an id
-                                         --bolt P --unit U | --slice S [--stage X] | --id D63
+  context     what changed under a unit  --bolt P --unit U | --slice S [--stage X]
+              or slice, what it relies   | --id D63
+              on, who relies on an id
   decision-id reserve decision ids       --bolt P [--count n]
   codekb-status is the code knowledge fresh --bolt P
   workspace   workspace file, checkouts  --bolt P [--extra name=path]... [--fetch] [--out F]
@@ -961,9 +962,9 @@ def cmd_brief(
     out += ["", f"Resolve any id with `aidlc_refs.py show --bolt {bolt} <id>`", ""]
     out += ["## Changed since you last produced", ""]
     changed = [
-        f"- {sub['id']}: {', '.join(paths)}"
+        f"- {sub['id']}: {report_text(report)}"
         for sub in catalog
-        if sub["per_unit"] and (paths := context_changed(bolt, state, catalog, sub, uid))
+        if sub["per_unit"] and (report := context_report(bolt, state, catalog, sub, uid))
     ]
     out += changed or ["nothing"]
     out += ["", "## Next", ""]
@@ -1580,11 +1581,12 @@ def cmd_status(
         "jira": jira_facts(state),
     }
     details = [unit_detail(bolt, state, catalog, u["id"]) for u in live_units(state)]
-    stale = stale_rows(bolt, state, catalog)
+    changes, completed = context_rows(bolt, state, catalog)
     facts["unit_details"] = details
     slice_rows = [slice_row(state, catalog, s["id"]) for s in state["slices"]]
     facts["slice_details"] = slice_rows
-    facts["stale"] = stale
+    facts["context"] = changes
+    facts["completed_affected"] = completed
     unverified = not_verified(state, catalog)
     facts["not_verified"] = unverified
     git_block = git_status_block(bolt)
@@ -1607,9 +1609,10 @@ def cmd_status(
         waits = f" | {waits_sentence(row['blocked_by'])}" if row["blocked_by"] else ""
         lines.append(f"  {row['id']} | {row['owner'] or '-'} | {step}{waits}")
     lines.extend(slice_line(row) for row in slice_rows)
-    for row in stale:
-        where = where_text(row)
-        lines.append(f"Context changed for {where}: {', '.join(row['changed'])}")
+    for row in changes:
+        lines.append(f"Context changed for {where_text(row)}: {report_text(row)}")
+    for row in completed:
+        lines.append(f"Completed work affected, {where_text(row)}: {report_text(row)}")
     if unverified:
         names = [where_text(r) for r in unverified]
         lines.append(f"Not verified (verdict not-run): {', '.join(names)}")
@@ -1626,7 +1629,12 @@ def cmd_status(
     if state["parked"]:
         note = str(state["parked"].get("note", "")).replace("\n", " ")
         lines.append(f"Parked: {note[:300]}")
-    return {"text": "\n".join(lines[: 21 + len(details) + len(stale) + len(slice_rows)]) + "\n"}
+    return {
+        "text": "\n".join(
+            lines[: 21 + len(details) + len(changes) + len(completed) + len(slice_rows)]
+        )
+        + "\n"
+    }
 
 
 def log_rows(bolt: Path) -> list[dict[str, str]]:
@@ -1672,12 +1680,10 @@ def overview_row(bolt: Path, catalog: list[dict[str, Any]]) -> dict[str, Any]:
     )
     units: list[dict[str, Any]] = []
     problems: list[dict[str, str]] = []
-    stale = stale_rows(bolt, state, catalog)
-    for row in stale:
-        where = where_text(row)
-        problems.append(
-            {"code": "stale-context", "where": where, "message": ", ".join(row["changed"])}
-        )
+    changes, completed = context_rows(bolt, state, catalog)
+    for code, found in (("context-changed", changes), ("completed-work-affected", completed)):
+        for row in found:
+            problems.append({"code": code, "where": where_text(row), "message": report_text(row)})
     for unit in live_units(state):
         nxt = next_for_unit(bolt, state, catalog, unit["id"])
         open_unit = not nxt["done"]
@@ -1714,7 +1720,8 @@ def overview_row(bolt: Path, catalog: list[dict[str, Any]]) -> dict[str, Any]:
         "next": describe_next(compute_next(state, catalog, bolt)),
         "units": units,
         "slices": [slice_row(state, catalog, s["id"]) for s in state["slices"]],
-        "stale": stale,
+        "context": changes,
+        "completed_affected": completed,
         "not_verified": not_verified(state, catalog),
         "last": last,
         "problems": problems,
@@ -1918,6 +1925,10 @@ def cmd_inputs(
 
 
 # --- context a stage relied on ------------------------------------------------
+#
+# What a Unit (or Slice) relies on is the ids it cites, and what those cite, two hops out,
+# restricted to the ids its stage reads from documents tracked by ``id``. The baseline keeps
+# hashes and ids only; the report says what changed since, and who is affected.
 
 
 def fingerprint(row: dict[str, Any]) -> str:
@@ -1930,62 +1941,8 @@ def fingerprint(row: dict[str, Any]) -> str:
     return hashlib.sha256(raw).hexdigest()[:16]
 
 
-def relied_on(
-    bolt: Path,
-    state: dict[str, Any],
-    catalog: list[dict[str, Any]],
-    stage: dict[str, Any],
-    unit: Optional[str],
-) -> dict[str, str]:
-    rows, _ = input_rows(bolt, state, catalog, stage, unit)
-    return {row["path"]: fingerprint(row) for row in rows if row["exists"]}
-
-
-def context_changed(
-    bolt: Path,
-    state: dict[str, Any],
-    catalog: list[dict[str, Any]],
-    stage: dict[str, Any],
-    unit: Optional[str],
-) -> list[str]:
-    """Inputs that differ from, or vanished since, the record's ``relied_on``."""
-    record = slot_record(state, stage, unit)
-    stored = (record or {}).get("relied_on")
-    if not stored:
-        return []
-    now_hashes = relied_on(bolt, state, catalog, stage, unit)
-    return [path for path, digest in stored.items() if now_hashes.get(path) != digest]
-
-
-def with_context(
-    bolt: Optional[Path],
-    state: dict[str, Any],
-    catalog: list[dict[str, Any]],
-    result: dict[str, Any],
-) -> dict[str, Any]:
-    """Add ``context_changed`` to a ``next`` result for its slot, when not empty."""
-    if result.get("stage") and bolt is not None:
-        stage = stage_def(catalog, result["stage"])
-        changed = context_changed(
-            bolt, state, catalog, stage, result.get("slice") or result.get("unit")
-        )
-        if changed:
-            result["context_changed"] = changed
-    return result
-
-
-def stale_rows(
-    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for item, unit in slots(state, catalog):
-        changed = context_changed(bolt, state, catalog, item, unit)
-        if changed:
-            rows.append({"stage": item["id"], **subject(item, unit), "changed": changed})
-    return rows
-
-
-# --- what a unit relies on --------------------------------------------------
+def short_hash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
 
 
 def load_refs_module() -> Any:
@@ -2020,10 +1977,26 @@ class RefIndex:
             except (ValueError, OSError) as exc:
                 LOG.warning("ids are not tracked: %s", exc)
                 self.bolt = self.refs.Bolt(bolt)
+        self.hashes: dict[str, str] = {}
         self.closures: dict[str, set[str]] = {}
+        self._decisions: Optional[list[tuple[int, Any]]] = None
 
     def decl(self, ident: str) -> Any:
         return self.bolt.winners.get(ident) if self.bolt is not None else None
+
+    def digest(self, ident: str) -> Optional[str]:
+        if ident not in self.hashes and (found := self.decl(ident)) is not None:
+            self.hashes[ident] = short_hash(self.refs.section(self.bolt, found))
+        return self.hashes.get(ident)
+
+    def decisions(self) -> list[tuple[int, Any]]:
+        """The Bolt-level ``D<n>`` declared in the decision records, with their numbers."""
+        if self._decisions is None:
+            self._decisions = []
+            for ident, found in self.bolt.winners.items() if self.bolt is not None else []:
+                if found.file in DECISION_RECORDS and re.fullmatch(r"D\d+", ident):
+                    self._decisions.append((int(ident[1:]), found))
+        return self._decisions
 
     def closure(self, unit: str) -> set[str]:
         """Ids a Unit relies on: its own declaration and what its files cite, then what those
@@ -2093,11 +2066,176 @@ def relied_ids(
     return {i for i in wanted if (found := index.decl(i)) is not None and found.file in tracked}
 
 
+def deps_hash(state: dict[str, Any], stage: dict[str, Any], key: Optional[str]) -> str:
+    if stage["per_unit"]:
+        deps: Any = find_unit(state, cast(str, key)).get("depends_on") or []
+    else:
+        deps = [find_slice(state, cast(str, key)).get("depends_on") or []] + [
+            [u["id"], u.get("depends_on") or []] for u in slice_units(state, cast(str, key))
+        ]
+    return short_hash(json.dumps(deps, sort_keys=True))
+
+
+def file_hashes(rows: list[dict[str, Any]]) -> dict[str, Optional[str]]:
+    return {r["path"]: fingerprint(r) if r["exists"] else None for r in rows if r["track"] != "ids"}
+
+
+def baseline(
+    bolt: Path,
+    state: dict[str, Any],
+    catalog: list[dict[str, Any]],
+    stage: dict[str, Any],
+    key: Optional[str],
+) -> dict[str, Any]:
+    """What the slot relies on now: hashes and ids, never text."""
+    rows = input_rows(bolt, state, catalog, stage, key)[0]
+    taken: dict[str, Any] = {"at": now(), "files": file_hashes(rows)}
+    if stage["per_unit"] or is_slice_stage(stage):
+        index = ref_index(bolt)
+        ids = relied_ids(bolt, state, catalog, stage, key, rows)
+        taken["ids"] = {i: index.digest(i) for i in sorted(ids)}
+        taken["decisions_upto"] = max((n for n, _ in index.decisions()), default=0)
+        taken["deps"] = deps_hash(state, stage, key)
+    return taken
+
+
+def start_baseline(
+    bolt: Path,
+    state: dict[str, Any],
+    catalog: list[dict[str, Any]],
+    stage: dict[str, Any],
+    key: Optional[str],
+) -> None:
+    """Take the baseline when work on a slot starts, unless it has one."""
+    record = get_record(state, stage, key)
+    if record["decision"] == "execute" and not record.get("relied_on"):
+        record["relied_on"] = baseline(bolt, state, catalog, stage, key)
+
+
 def described(index: RefIndex, ident: str) -> dict[str, Any]:
     found = index.decl(ident)
     if found is None:
         return {"id": ident}
     return {"id": ident, "file": found.file, "line": found.line, "gloss": found.gloss}
+
+
+def context_report(
+    bolt: Path,
+    state: dict[str, Any],
+    catalog: list[dict[str, Any]],
+    stage: dict[str, Any],
+    key: Optional[str],
+) -> dict[str, Any]:
+    """What changed under a slot since its baseline; empty when nothing it relies on did.
+
+    Keys, present only when not empty: ``changed`` (relied-on ids that changed, were
+    superseded or removed), ``new_related`` (later decisions that cite a relied-on id),
+    ``new_constraints`` (later Bolt-wide constraints, for work still open), ``inputs`` (files
+    that changed, appeared or vanished), ``dependencies`` and ``baseline`` (``missing``)."""
+    record = slot_record(state, stage, key)
+    if record is None or record["decision"] != "execute":
+        return {}
+    stored = record.get("relied_on")
+    if not stored:
+        return {"baseline": "missing"} if record["step"] != "todo" else {}
+    new_shape = isinstance(stored.get("files"), dict)
+    then_files = stored["files"] if new_shape else stored
+    rows = input_rows(bolt, state, catalog, stage, key)[0]
+    now_files = file_hashes(rows)
+    report: dict[str, Any] = {}
+    inputs: list[dict[str, str]] = []
+    for path in sorted(set(then_files) | (set(now_files) if new_shape else set())):
+        before, after = then_files.get(path), now_files.get(path)
+        if before == after:
+            continue
+        what = "appeared" if before is None else "vanished" if after is None else "changed"
+        inputs.append({"path": path, "what": what})
+    if inputs:
+        report["inputs"] = inputs
+    if not new_shape or not (stage["per_unit"] or is_slice_stage(stage)):
+        return report
+    index = ref_index(bolt)
+    changed: list[dict[str, Any]] = []
+    for ident, before_hash in sorted((stored.get("ids") or {}).items()):
+        found = index.decl(ident)
+        if found is None:
+            changed.append({"id": ident, "what": "removed"})
+        elif index.digest(ident) != before_hash:
+            status = (found.cells.get("status") or "").lower()
+            what = "superseded" if status == "superseded" else "changed"
+            changed.append({**described(index, ident), "what": what})
+    if changed:
+        report["changed"] = changed
+    if stored.get("deps") != deps_hash(state, stage, key):
+        report["dependencies"] = True
+    upto = int(stored.get("decisions_upto") or 0)
+    later = [(n, found) for n, found in sorted(index.decisions(), key=lambda p: p[0]) if n > upto]
+    if later:
+        mine = set(stored.get("ids") or {}) | relied_ids(bolt, state, catalog, stage, key, rows)
+        related = []
+        for _n, found in later:
+            cites = [c for c in index.refs.cited_in(index.bolt, found) if c in mine]
+            if cites:
+                related.append({**described(index, found.ident), "cites": cites})
+        if related:
+            report["new_related"] = related
+        if not is_done(record):
+            constraints = [
+                described(index, found.ident)
+                for _n, found in later
+                if (found.cells.get("status") or "").lower() == "constraint"
+            ]
+            if constraints:
+                report["new_constraints"] = constraints
+    return report
+
+
+def report_text(report: dict[str, Any]) -> str:
+    """One line for a report, for logs and text output."""
+    parts: list[str] = []
+    if report.get("baseline"):
+        parts.append("no baseline recorded")
+    if report.get("changed"):
+        parts.append("; ".join(f"{c['id']} {c['what']}" for c in report["changed"]))
+    if report.get("new_related"):
+        parts.append("later decisions on it: " + ", ".join(c["id"] for c in report["new_related"]))
+    if report.get("new_constraints"):
+        parts.append("new constraints: " + ", ".join(c["id"] for c in report["new_constraints"]))
+    if report.get("inputs"):
+        parts.append("; ".join(f"{i['path']} {i['what']}" for i in report["inputs"]))
+    if report.get("dependencies"):
+        parts.append("dependencies changed")
+    return "; ".join(parts)
+
+
+def with_context(
+    bolt: Optional[Path],
+    state: dict[str, Any],
+    catalog: list[dict[str, Any]],
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    """Add the context report of a ``next`` result's slot as ``context``, when not empty."""
+    if result.get("stage") and bolt is not None:
+        stage = stage_def(catalog, result["stage"])
+        key = result.get("slice") if is_slice_stage(stage) else result.get("unit")
+        report = context_report(bolt, state, catalog, stage, key)
+        if report:
+            result["context"] = report
+    return result
+
+
+def context_rows(
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The slots with something to report: ``(open work, completed work)``."""
+    open_rows: list[dict[str, Any]] = []
+    done_rows: list[dict[str, Any]] = []
+    for item, key in slots(state, catalog):
+        report = context_report(bolt, state, catalog, item, key)
+        if report:
+            row = {"stage": item["id"], **subject(item, key), **report}
+            (done_rows if is_done(slot_record(state, item, key)) else open_rows).append(row)
+    return open_rows, done_rows
 
 
 def relies_on_rows(
@@ -2155,7 +2293,8 @@ def context_of_id(
 def cmd_context(
     bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], args: argparse.Namespace
 ) -> dict[str, Any]:
-    """What a Unit or Slice relies on, or (--id) who relies on one id."""
+    """What changed under a Unit or Slice, and what it relies on; ``--id`` says who relies on
+    one id."""
     if args.id:
         if args.unit or args.slice or args.stage:
             die(EXIT_USAGE, "--id stands alone: drop --unit, --slice and --stage.")
@@ -2176,11 +2315,18 @@ def cmd_context(
                 EXIT_USAGE,
                 f"stage '{stage['id']}' is not run per {'unit' if args.unit else 'slice'}.",
             )
-    return {
+    reports = []
+    for item, k in group:
+        report = context_report(bolt, state, catalog, item, k)
+        if report:
+            reports.append({"stage": item["id"], **report})
+    result: dict[str, Any] = {
         "ok": True,
         "unit" if args.unit else "slice": key,
+        "reports": reports,
         "relies_on": relies_on_rows(bolt, state, catalog, group),
     }
+    return result
 
 
 # --- code knowledge ----------------------------------------------------------
@@ -2748,7 +2894,7 @@ def cmd_gate(
             f"gate refused for '{label}': {len(findings)} finding(s).",
             findings=findings,
         )
-    context = context_changed(bolt, state, catalog, stage, unit)
+    context = context_report(bolt, state, catalog, stage, unit)
     review = review_info(bolt, state, stage, unit)
     passed_by = " ".join((args.by or "").split()) or who
     record["step"] = "approved"
@@ -2758,7 +2904,7 @@ def cmd_gate(
         record["verdict"] = verdict
     else:
         record.pop("verdict", None)
-    record["relied_on"] = relied_on(bolt, state, catalog, stage, unit)
+    record["relied_on"] = baseline(bolt, state, catalog, stage, unit)
     if stage["id"] == "reverse-engineering":
         record_codekb_commits(bolt, state)
     nxt = commit(bolt, state, catalog)
@@ -4217,7 +4363,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--note", help="With --ready: the direction, needed to go on while gaps are open."
     )
 
-    sp = add("context", "What a unit or slice relies on, or who relies on an id.")
+    sp = add("context", "What changed under a unit or slice, and what it relies on.")
     sp.add_argument("--unit")
     sp.add_argument("--slice")
     sp.add_argument("--stage", help="Only this stage of the unit or slice.")
@@ -4626,9 +4772,11 @@ def run_locked(args: argparse.Namespace) -> dict[str, Any]:
         else:
             cmd_step(state, stage, key, args.to)
             if args.to == "produced":
-                record = get_record(state, stage, key)
-                record["relied_on"] = relied_on(bolt, state, catalog, stage, key)
+                get_record(state, stage, key)["relied_on"] = baseline(
+                    bolt, state, catalog, stage, key
+                )
             event, note = "step", f"to {args.to}"
+        start_baseline(bolt, state, catalog, stage, key)  # work has started
         nxt = commit(bolt, state, catalog)
         prefix = f"[{key}] " if key else ""
         log_event(bolt, event, stage["id"], "", prefix + note + suffix, args.unit or "")
