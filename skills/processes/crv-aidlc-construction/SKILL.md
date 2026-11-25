@@ -13,21 +13,21 @@ metadata:
 
 # Construction
 
-One Unit at a time, then Build and Test per Slice. Code lives in the target repo, records in the Bolt.
+One Unit at a time, then Build and Test per Slice. Code is in the target repo, records in the Bolt.
 
 ## Execution
 
-**Delegate to a subagent. Do not run this in the main session.**
+**Delegate to a subagent, never the main session.**
 
-**Model tier: `balanced`.** Design and code need solid reasoning, not the top tier; Build and Test can use economy. State it, then work; if unavailable, say so and use the session's model.
+**Model tier: `balanced`.** Design and code need solid reasoning; Build and Test may use economy. State it; if unavailable, say so and use this model.
 
-Read `references/core-rules.md` once per session, then only the current stage's reference.
+Read `references/core-rules.md` once per session, then the current stage's reference only.
 
 ## Start or resume a Unit
 
-1. After a break, `aidlc_state.py sync --bolt <p>`, then `aidlc_state.py next --bolt <p> --unit <u>`: stage and waits. Slice not ready: `slice --bolt <p> --ready <slice>`, explain its gaps. Someone else owns the Unit: say so in a line, carry on.
+1. After a break, `aidlc_state.py sync --bolt <p>`, then `aidlc_state.py next --bolt <p> --unit <u>`: stage and waits. Slice not ready: `slice --bolt <p> --ready <slice>`, explain the gaps. Another owner: say so, carry on.
 2. Read its `context` before editing.
-3. Per design stage, recommend from the Unit's `kind` and the stage's run condition: `decide --bolt <p> --stage <id> --unit <u> --decision execute|skip --reason "..."`. Cite what the HLA, TDD or an ADR fixed (`D<n>`) in each design, never re-ask: the citation carries a later change to this Unit. Unit ids: `decision-id --unit <u>` (`<u>:D<n>`).
+3. Per design stage, recommend from the Unit's `kind` and run condition: `decide --bolt <p> --stage <id> --unit <u> --decision execute|skip --reason "..."`. Cite what the HLA, TDD or an ADR fixed (`D<n>`) in each design, never re-ask: the citation carries a later change to this Unit. Unit ids: `decision-id --unit <u>` (`<u>:D<n>`).
 
 | Kind | Design stages that normally run |
 | --- | --- |
@@ -38,20 +38,20 @@ Read `references/core-rules.md` once per session, then only the current stage's 
 
 ## Stages
 
-Per Unit in `docs/construction/<unit>/<stage>/`: functional-design, nfr-requirements, nfr-design, infrastructure-design, code-generation, each with `references/<stage>.md`. Per Slice, `docs/slices/<slice>/build-and-test/`: build-and-test.
+Per Unit in `docs/construction/<unit>/<stage>/`: functional-design, nfr-requirements, nfr-design, infrastructure-design, code-generation (`references/<stage>.md` each). Per Slice, `docs/slices/<slice>/build-and-test/`.
 
 ## Runs
 
 `aidlc_state.py inputs --bolt <p> --stage <id> --unit <u>` first (exit 3: name the missing file, stop). Build and Test takes `--slice <s>` instead (one Slice: no flag).
 
 - **Ask:** a question file only if a question matters (else `## Assumed` in the artifact, then produce); lint `--allow-open`; `step --stage <id> --unit <u> --to asked`; stop.
-- **Analyse, produce:** `step ... --to analysed`, `--to produced`.
+- **Analyse, produce:** `step ... --to analysed`, then `produced`.
 - **Code:** show the plan; on go, build; write the summary; `step --to produced`.
 - **Checkpoint:** `gate --bolt <p> --stage <id> --unit <u> --approve`.
 
 ## Verdict
 
-`code-summary.md` (Unit) and `test-results.md` (Slice) hold one line: `Verdict: pass`, `Verdict: fail - <why>` or `Verdict: not-run - <why>`. Run the tests first; never write `pass` for a red or unrun run. `fail` is never passed: fix, rerun; never relabel it `not-run`. `not-run` only on the engineer's word, as the gate `--note`; it shows as not verified. A started verification is finished by a passing run or reopened (`gate --request-changes`), never skipped; skipped before it starts it shows as `verification skipped`.
+`code-summary.md` (Unit) and `test-results.md` (Slice) hold one line: `Verdict: pass`, `fail - <why>` or `not-run - <why>`. Run the tests first. On a failed run write `Verdict: fail - <why>`, report the command and output, leave the stage open, offer a fix or unrelated work; fix on the engineer's word. Never write `pass` for a failed or unrun run, nor relabel `fail` `not-run`. `not-run` only on the engineer's word, as the gate `--note`; it shows as not verified. A started verification ends in a passing run or is reopened (`gate --request-changes`), never skipped; skipped before it starts, it shows as `verification skipped`.
 
 ## When a step fails
 

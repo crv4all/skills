@@ -12,6 +12,7 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Five skill text corrections found by behaviour evaluations.** A failed run now stays open with `Verdict: fail` and is fixed on the engineer's word; a decision's Status changes only on the engineer's stated direction; the HLA merge may also update the decision-range line; an increment that changes an existing entry reports who relies on it; the Unit id example follows the form the Bolt already uses.
 - **A failed reservation of decision ids leaves nothing behind.** When `decision-id` ends
   with "the ids were not reserved", its own commit is first undone (`reset --keep`), so the
   message is true and the next run hands out the same ids; if the commit cannot be undone

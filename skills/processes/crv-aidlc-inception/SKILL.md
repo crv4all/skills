@@ -83,7 +83,7 @@ Each run ends with one line saying what comes next.
 
 Write a JSON file and run `aidlc_state.py units --bolt <p> --set <file.json>`. It merges: new ids are added, an existing Unit or Slice changes only in the keys the file gives, everything else is untouched.
 
-- A Unit: `{"id": "u-1", "name": "...", "kind": "service|spec|ui|packaging|library", "repo": "...", "depends_on": ["u-2", {"unit": "u-3", "on": "contract"}], "slice": "s1"}`. The id is the lower-case form of `U-n`; it names the Unit's construction folder.
+- A Unit: `{"id": "u1", "name": "...", "kind": "service|spec|ui|packaging|library", "repo": "...", "depends_on": ["u2", {"unit": "u3", "on": "contract"}], "slice": "s1"}`. Follow the form the Bolt's existing Units use; the id names the Unit's construction folder.
 - A Slice: `{"id": "s1", "name": "...", "depends_on": ["s0"], "owner": "..."}`. Set a Unit's owner with `assign --bolt <p> --unit <u> --owner <name>`, a Slice's with `assign --bolt <p> --slice <s> --owner <name>`; `--set` refuses to change an existing owner.
 - Add one Slice alone: `slice --bolt <p> --add <id> [--name N] [--owner O] [--depends-on s1,s2]`.
 - A refusal lists the findings; fix the file.
@@ -101,7 +101,8 @@ The Bolt-level stages above run once. Planning the next Slice (for example while
 3. Investigate before asking. Questions only if something material is open, in `docs/slices/<slice>/inception-questions.md` (same format; `lint_questions.py` checks it, and `slice --ready` reads it).
 4. `slice --add`, then `units --set` with only the new or changed Units and their `slice`, then `slice --ready <slice>`.
 5. Changing an existing Unit: `units --set` with only the changed keys (a different owner goes through `assign`). Replacing one: `units --cancel <u> --reason "<why>" [--superseded-by u7,u8]` and add the new Units with `units --set`. A cancelled Unit keeps its record and files and is left out of progress.
-6. File the new Units' Jira stories as `references/jira-handoff.md` says.
+6. When an increment has to change an entry that already exists (a contract, requirement or decision), say so explicitly, then run `aidlc_state.py context --bolt <p> --id <ID>` and tell the engineer which Units and Slices rely on it and who owns them.
+7. File the new Units' Jira stories as `references/jira-handoff.md` says.
 
 Two engineers planning two Slices at once edit the same documents. After `sync`, if the documents conflict, the commit stops and the files are named: show the conflicting entries, keep both people's work and ask who renumbers; never pick a side. If both took the same new id, the later one takes the next free id and fixes its citations.
 

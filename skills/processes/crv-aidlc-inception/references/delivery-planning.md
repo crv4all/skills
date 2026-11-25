@@ -40,7 +40,7 @@ Which units form each Slice, their order and why, definition of done, confidence
 4. Write the artifacts.
 5. Run the traceability check (see the main skill) and fix every gap it reports; do not run the checkpoint while any remains.
 6. Show the verification command to the engineer with your recommendation; it is recorded when they say go.
-7. After the checkpoint, load the Slices: write `{"slices": [{"id": "s1", "name": "...", "depends_on": [], "owner": "..."}], "units": [{"id": "u-1", "slice": "s1"}, {"id": "u-2", "slice": "s1"}]}` to a file and run `aidlc_state.py units --bolt <p> --set <file.json>`. A Unit belongs to the Slice named in its `slice` key. Then run `aidlc_state.py slice --bolt <p> --ready s1` before s1's Units start and explain any gap it lists (see `SKILL.md`, Slice readiness).
+7. After the checkpoint, load the Slices: write `{"slices": [{"id": "s1", "name": "...", "depends_on": [], "owner": "..."}], "units": [{"id": "u1", "slice": "s1"}, {"id": "u2", "slice": "s1"}]}` to a file and run `aidlc_state.py units --bolt <p> --set <file.json>`. A Unit belongs to the Slice named in its `slice` key. Then run `aidlc_state.py slice --bolt <p> --ready s1` before s1's Units start and explain any gap it lists (see `SKILL.md`, Slice readiness).
 
 ## Writes
 

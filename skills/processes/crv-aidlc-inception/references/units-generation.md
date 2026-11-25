@@ -37,7 +37,7 @@ The units and their kinds, the dependency graph, which unit delivers every story
 3. Assign each unit a kind: `service`, `spec`, `ui`, `packaging` or `library`. The kind decides which Construction artifacts it owes later, so ask when it is not obvious.
 4. Write units, graph and story map. The graph must have no cycles; break a cycle by moving the shared part into a unit of its own.
 5. Give no build order or critical path here; that is Delivery Planning's.
-6. After the checkpoint, load the Units: write `{"units": [{"id": "u-1", "name": ..., "kind": ..., "repo": ..., "depends_on": ["u-2", {"unit": "u-3", "on": "contract"}]}]}` to a file (the id is the lower-case form of `U-n`; it names the Unit's construction folder) and run `aidlc_state.py units --bolt <p> --set <file.json>`. It adds new Units and updates only the keys the file gives; Units it does not mention are untouched. Set owners with `assign --unit <u> --owner <name>`. To split or replace a Unit later: `units --cancel <u> --reason "<why>" --superseded-by <new ids>`, then add the new ones. A refusal lists the findings.
+6. After the checkpoint, load the Units: write `{"units": [{"id": "u1", "name": ..., "kind": ..., "repo": ..., "depends_on": ["u2", {"unit": "u3", "on": "contract"}]}]}` to a file (follow the form the Bolt's existing Units use; the id names the Unit's construction folder) and run `aidlc_state.py units --bolt <p> --set <file.json>`. It adds new Units and updates only the keys the file gives; Units it does not mention are untouched. Set owners with `assign --unit <u> --owner <name>`. To split or replace a Unit later: `units --cancel <u> --reason "<why>" --superseded-by <new ids>`, then add the new ones. A refusal lists the findings.
 
 ## Writes
 
