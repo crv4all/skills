@@ -12,6 +12,14 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The HLA check finds contradictions a script can see.** `validate_doc.py` on
+  `hla.md` now reads `hla-decisions.md` next to it and reports a cited `D<n>` the
+  record does not declare (a finding; unit-scoped ids, code fences and appendices
+  are ignored), a cited decision whose Status is `superseded` (a warning), a term
+  or container with two different owners (a finding) and an interface producer or
+  consumer that is no container named in the document (a warning). A table or a
+  record the document does not have is skipped silently. Run on the real frame
+  Bolt HLA it adds no finding and no warning.
 - **Several engineers can contribute to one architecture, each in their own file.**
   One Bolt has one `architecture/hla.md`, but a concern (security, networking, a
   data model) is often investigated by a different person in a different session.

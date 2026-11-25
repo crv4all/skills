@@ -49,6 +49,10 @@ checks (each failure is a finding, exit 1):
               ids come after every id in the HLA and its decision record
   adrs        cited ADR ids exist in --adr-index (non-accepted status is a warning)
   diagrams    every mermaid fence is non-empty and followed by text
+  consistency (hla) every cited D<n> is declared in hla-decisions.md next to the document
+              (decision-unknown; a superseded one is a warning); no term or container has two
+              owners; producers and consumers of interface tables are containers (warning).
+              Appendices, code fences and unit-scoped ids (u3:D2) are ignored
   hla link    (tdd) hla_link resolves to a document whose header status is accepted
   contribution  (contribution) the header concern equals the file name, and every D<n> cited
               exists in the decision record next to hla.md (decision-unknown); the twelve
@@ -840,11 +844,118 @@ def check_contribution(path: Path, doc: Doc, header: dict[str, Any], report: Rep
     check_cited_decisions(doc, declared, report)
 
 
+def tables(doc: Doc, skip: set[int]) -> list[dict[str, Any]]:
+    """Markdown tables outside code fences and ``skip`` lines: lower-case header, rows by line."""
+    found: list[dict[str, Any]] = []
+    index = 0
+    while index < len(doc.lines):
+        if index in doc.in_fence or index in skip or not doc.lines[index].strip().startswith("|"):
+            index += 1
+            continue
+        start = index
+        while (
+            index < len(doc.lines)
+            and index not in doc.in_fence
+            and index not in skip
+            and doc.lines[index].strip().startswith("|")
+        ):
+            index += 1
+        block = doc.lines[start:index]
+        separator = cell_texts(block[1]) if len(block) > 1 else []
+        if not separator or not all(re.fullmatch(r":?-{3,}:?", c) for c in separator if c):
+            continue
+        found.append(
+            {
+                "header": [c.lower() for c in cell_texts(block[0])],
+                "rows": [(start + n + 1, cell_texts(t)) for n, t in enumerate(block) if n > 1],
+            }
+        )
+    return found
+
+
+def name_key(text: str) -> str:
+    return " ".join(text.replace("`", "").replace("*", "").lower().split())
+
+
+def column(header: list[str], *names: str) -> int:
+    for position, cell in enumerate(header):
+        if cell in names or any(cell.startswith(n + " ") for n in names):
+            return position
+    return -1
+
+
+def check_owners(found: list[dict[str, Any]], report: Report) -> None:
+    """One owner per term and per container; a table without an owner column is skipped."""
+    seen: dict[tuple[str, str], list[tuple[str, str, int]]] = {}
+    for table in found:
+        owner = column(table["header"], "owning context", "owner")
+        for kind in ("term", "container"):
+            name = column(table["header"], kind)
+            if name < 0 or owner < 0:
+                continue
+            for line, cells in table["rows"]:
+                if max(name, owner) < len(cells) and cells[name] and cells[owner]:
+                    entry = (name_key(cells[owner]), cells[owner], line)
+                    seen.setdefault((kind, name_key(cells[name])), []).append(entry)
+    for (kind, key), entries in sorted(seen.items(), key=lambda item: item[1][0][2]):
+        owners = {entry[0] for entry in entries}
+        if len(owners) > 1:
+            first = entries[0]
+            other = next(entry for entry in entries if entry[0] != first[0])
+            report.add(
+                "owner-duplicate",
+                other[2],
+                f"{kind} '{key}' has two owners: '{first[1]}' (line {first[2]}) "
+                f"and '{other[1]}' (line {other[2]})",
+            )
+
+
+def check_interface_parties(found: list[dict[str, Any]], report: Report) -> None:
+    """Producers and consumers in interface tables should be containers the document names."""
+    containers: set[str] = set()
+    for table in found:
+        name = column(table["header"], "container")
+        if name >= 0:
+            containers |= {
+                name_key(cells[name]) for _, cells in table["rows"] if name < len(cells)
+            } - {""}
+    if not containers:
+        return
+    reported: set[str] = set()
+    for table in found:
+        if "producer" not in table["header"] or "consumer" not in table["header"]:
+            continue  # e.g. hand-overs between teams name a provider and phases, not containers
+        columns = [table["header"].index("producer"), table["header"].index("consumer")]
+        for line, cells in table["rows"]:
+            for position in (c for c in columns if c < len(cells)):
+                for part in re.split(r"<br\s*/?>|[,;]", cells[position]):
+                    party = name_key(part)
+                    if party in reported or party in {"", "-", "none", "n/a"}:
+                        continue
+                    if any(party in known or known in party for known in containers):
+                        continue
+                    reported.add(party)
+                    report.warn(
+                        "interface-party-unknown",
+                        line,
+                        f"'{part.strip()}' in an interface table is not a container named here",
+                    )
+
+
+def check_consistency(path: Path, doc: Doc, report: Report) -> None:
+    """HLA checks that need no judgement: the decision record and the tables agree with the text."""
+    check_cited_decisions(doc, read_record(path.parent, RECORDS[:1]), report)
+    found = tables(doc, appendix_lines(doc))
+    check_owners(found, report)
+    check_interface_parties(found, report)
+
+
 def kind_rules(path: Path, doc: Doc, kind: str, header: dict[str, Any], report: Report) -> None:
     if kind == "contribution":
         check_contribution(path, doc, header, report)
     if kind != "hla":
         return
+    check_consistency(path, doc, report)
     flags = header.get("impact_flags")
     if isinstance(flags, list) and "none" in flags and len(flags) > 1:
         report.add("impact-flags", 1, "impact_flags lists 'none' together with other flags")
