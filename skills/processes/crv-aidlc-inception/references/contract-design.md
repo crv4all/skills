@@ -17,7 +17,7 @@ As listed by `aidlc_state.py inputs --stage contract-design`:
 
 ## Question categories
 
-Cover all; scale to depth.
+Cover the categories where something material is open; a category the digest, the HLA or earlier answers settle gets no question, and is listed under `## Already answered`. No fixed count; depth scales how much detail the answers need.
 
 - **External API surface**: what outsiders see. "Which operations must an outside consumer be able to call?"
 - **Mechanism per boundary**: REST, events, shared schema, file, RPC. "Is this a request that needs an answer now, or a fact others react to?" Cite an HLA decision when it fixes the mechanism.

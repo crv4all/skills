@@ -16,7 +16,7 @@ As listed by `aidlc_state.py inputs --stage domain-design`:
 
 ## Question categories
 
-Cover all; scale to depth.
+Cover the categories where something material is open; a category the digest, the HLA or earlier answers settle gets no question, and is listed under `## Already answered`. No fixed count; depth scales how much detail the answers need.
 
 - **Component boundaries**: where to cut and why. "Should billing rules sit with orders or in their own component?"
 - **Entity ownership**: exactly one owner per entity. "Which component is the source of truth for a customer account?"

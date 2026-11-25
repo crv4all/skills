@@ -17,7 +17,7 @@ As listed by `aidlc_state.py inputs --stage requirements-analysis`:
 
 ## Question categories
 
-Cover all; scale the count to depth. Skip a category in one line only when the digest and HLA settle it.
+Cover the categories where something material is open. A category the digest, the HLA or earlier answers settle gets no question and one line under `## Already answered`. No fixed count; depth scales the detail.
 
 - **Functional**: what must the system do, for whom, in which order? "Which actions must a customer be able to take in the first release, and which are later?"
 - **Non-functional**: performance, security, scalability, reliability, observability, each with a number. "What P95 latency for search, and what happens above it?" Carry HLA targets forward; ask only for what the HLA left open.

@@ -1,6 +1,6 @@
 # Jira handoff
 
-Read only when filing, after the Delivery Planning gate and before the first unit's Construction. Mapping: one Epic per Bolt, one Story per unit of work. A user story (`US-n`) never becomes a Jira issue. Reason: a unit is what a team builds and tracks; user stories are planning detail inside it.
+Read only when filing, after the Delivery Planning checkpoint (or, for a later Slice, after `slice --ready`) and before the first Unit's Construction. Mapping: one Epic per Bolt, one Story per unit of work. A user story (`US-n`) never becomes a Jira issue. Reason: a unit is what a team builds and tracks; user stories are planning detail inside it.
 
 If the Bolt has no Jira, run `aidlc_state.py jira --bolt <p> --off --reason "<why>"` and stop.
 
