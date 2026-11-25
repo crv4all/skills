@@ -1,10 +1,10 @@
 # Deployment pipeline
 
-**Runs when** people must release or cut over the change: a data migration, a cut-over, a switch of write master, a retirement, or a release across several repositories. **Skipped, with the reason, when** each target repository's own pipeline releases on merge and nothing else has to happen. This stage plans; it designs no pipeline and runs nothing.
+**Runs when**, for a Slice, people must release or cut over its change: a data migration, a cut-over, a switch of write master, a retirement, or a release across several repositories. **Skipped, with the reason, when** each target repository's own pipeline releases on merge and nothing else has to happen. This stage plans; it designs no pipeline and runs nothing.
 
-**Reads** as listed by `aidlc_state.py inputs --stage deployment-pipeline`: the Build and Test summary (what is verified), the Slice plan and dependency graph (order), the HLA and TDD when they exist (tolerances, decision ids), and `technology-stack.md` per repo (how it releases today).
+**Reads** as listed by `aidlc_state.py inputs --stage deployment-pipeline --slice <s>`: the Build and Test summary (what is verified), the Slice plan and dependency graph (order), the HLA and TDD when they exist (tolerances, decision ids), and `technology-stack.md` per repo (how it releases today).
 
-**Questions** (answer from the inputs first; ask only what is open):
+**Questions** (answer from the inputs first; ask only what is critical or material and open; a Slice that reuses an earlier Slice's mechanism and windows cites it instead of asking again; the file is `docs/slices/<slice>/deployment-pipeline/deployment-pipeline-questions.md`):
 - environments and their order;
 - release mechanism per repository (confirm what the code knowledge shows);
 - order across repositories and units;
@@ -25,7 +25,7 @@
 1. Ask, analyse, then write the artifacts. Cite `D<n>` or ADR ids; never re-ask what they fixed.
 2. A step with no named person is not ready: ask.
 
-**Writes** in `docs/operation/deployment-pipeline/`. Each starts with `## Digest`.
+**Writes** in `docs/slices/<slice>/deployment-pipeline/`. Each starts with `## Digest`.
 - `release-plan.md`: environments in order; per repository the existing release mechanism; the order; windows; who is told and when (advance notice to owners outside the team); the support window.
 - `runbook.md`: a preconditions table `| Check | Owner | How verified |`, then numbered checkbox steps, preparation steps first. Each step has: environment, who, the exact action (command or UI action), expected result, evidence to capture, and `Stop if:`. Mark each point of no return and name its component; when there is none, say so. End with `## Do not remove`: the shared artefacts the answers named.
 - `rollback-runbook.md`: triggers as thresholds a person can watch, citing the HLA or TDD decision ids; steps; what rollback means before and after each point of no return (for example a switch back, then a redeploy of the old version, then nothing); until when it is possible; who decides.
