@@ -12,6 +12,15 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`contribution` records where an architecture contribution stands, and the team
+  can see them.** `aidlc_state.py contribution --bolt B --concern C --status
+  draft|proposed|merged [--note "..."]` checks that
+  `architecture/contributions/C.md` exists and that its header carries that status
+  and an owner, then appends one log line. It edits no file and runs no validator.
+  `status` and `overview` list each contribution (concern, owner, status, the
+  sections it touches) read from the headers; a proposed one is shown as open work.
+  Nothing is stored in `state.json`, so two engineers adding two contributions and
+  editing two sections of `hla.md` push without a manual step.
 - **The HLA check finds contradictions a script can see.** `validate_doc.py` on
   `hla.md` now reads `hla-decisions.md` next to it and reports a cited `D<n>` the
   record does not declare (a finding; unit-scoped ids, code fences and appendices

@@ -64,6 +64,8 @@ EPILOG = """commands:
               or slice, what it relies   [--note "conclusion"] | --id D63
               on, who relies on an id
   decision-id reserve decision ids       --bolt P [--count n]
+  contribution record where an architecture contribution stands
+              --bolt P --concern C --status draft|proposed|merged [--note "one line"]
   codekb-status is the code knowledge fresh --bolt P
   workspace   workspace file, checkouts  --bolt P [--extra name=path]... [--fetch] [--out F]
   target      add or drop a target       --bolt P --add name=path | --remove NAME
@@ -72,6 +74,12 @@ EPILOG = """commands:
   park/unpark hand-over note             --bolt P --note N
   close       close the bolt          --bolt P --status complete|superseded|archived
   sync        commit and push your work  --bolt P [-m "what changed"] | --root R
+
+Contributions: architecture/contributions/<concern>.md is a file its owner edits; its yaml
+header holds concern, owner, status (draft, proposed, merged) and touches. `contribution`
+checks that header and appends one log line; it edits no file and runs no validator.
+`status` and `overview` list the contributions from their headers (a proposed one is open
+work for the team); nothing about them is stored in state.json.
 
 Slices: build-and-test, deployment-pipeline and deployment-execution run once per Slice,
 keep their records in the Slice and their files under docs/slices/<slice>/. Pass --slice S
@@ -1585,6 +1593,8 @@ def cmd_status(
     facts["unit_details"] = details
     slice_rows = [slice_row(state, catalog, s["id"]) for s in state["slices"]]
     facts["slice_details"] = slice_rows
+    contributions = contribution_rows(bolt)
+    facts["contributions"] = contributions
     facts["context"] = changes
     facts["completed_affected"] = completed
     unverified = not_verified(state, catalog)
@@ -1609,6 +1619,7 @@ def cmd_status(
         waits = f" | {waits_sentence(row['blocked_by'])}" if row["blocked_by"] else ""
         lines.append(f"  {row['id']} | {row['owner'] or '-'} | {step}{waits}")
     lines.extend(slice_line(row) for row in slice_rows)
+    lines.extend(f"Contribution {contribution_line(row)}" for row in contributions)
     for row in changes:
         lines.append(f"Context changed for {where_text(row)}: {report_text(row)}")
     for row in completed:
@@ -1631,7 +1642,14 @@ def cmd_status(
         lines.append(f"Parked: {note[:300]}")
     return {
         "text": "\n".join(
-            lines[: 21 + len(details) + len(changes) + len(completed) + len(slice_rows)]
+            lines[
+                : 21
+                + len(details)
+                + len(changes)
+                + len(completed)
+                + len(slice_rows)
+                + len(contributions)
+            ]
         )
         + "\n"
     }
@@ -1652,6 +1670,107 @@ def log_rows(bolt: Path) -> list[dict[str, str]]:
                 keys = ("time", "event", "stage", "by", "note")
                 rows.append({**dict(zip(keys, parts[:5])), "bolt": bolt.name, "unit": unit})
     return rows
+
+
+CONTRIBUTION_DIR = "architecture/contributions"
+CONTRIBUTION_STATUS = ("draft", "proposed", "merged")
+
+
+def header_values(path: Path) -> dict[str, Any]:
+    """The first fenced ``yaml`` block of a file as flat keys: scalars and lists of scalars.
+
+    Deliberately small: the state script must not depend on the validator, and a listing
+    must survive a header the validator would refuse. An unreadable header gives ``{}``."""
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return {}
+    values: dict[str, Any] = {}
+    inside, key = False, ""
+    for line in lines:
+        if not inside:
+            if re.match(r"^ {0,3}```\s*yaml\s*$", line):
+                inside = True
+            elif re.match(r"^ {0,3}(```|~~~)", line) or line.startswith("## "):
+                break
+            continue
+        if re.match(r"^ {0,3}```\s*$", line):
+            break
+        text = re.sub(r"(^|\s)#.*$", "", line).rstrip()
+        item = re.match(r"^\s+-\s+(.*)$", text)
+        pair = re.match(r"^([A-Za-z_][\w-]*):(?:\s+(.*))?$", text)
+        if item and key and isinstance(values.get(key), list):
+            values[key].append(unquote(item.group(1)))
+        elif pair:
+            key, raw = pair.group(1), (pair.group(2) or "").strip()
+            if raw.startswith("[") and raw.endswith("]"):
+                inner = raw[1:-1].strip()
+                values[key] = [unquote(p) for p in inner.split(",")] if inner else []
+            else:
+                values[key] = unquote(raw) if raw else []
+    return values
+
+
+def unquote(text: str) -> str:
+    text = text.strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
+        return text[1:-1]
+    return text
+
+
+def contribution_rows(bolt: Path) -> list[dict[str, Any]]:
+    """The Bolt's contributions, read from their headers; a proposed one is open work."""
+    rows: list[dict[str, Any]] = []
+    for path in sorted((bolt / CONTRIBUTION_DIR).glob("*.md")):
+        found = header_values(path)
+        owner, status = found.get("owner"), found.get("status")
+        touches = found.get("touches")
+        rows.append(
+            {
+                "concern": path.stem,
+                "owner": owner if isinstance(owner, str) and owner else None,
+                "status": status if isinstance(status, str) and status else None,
+                "touches": touches if isinstance(touches, list) else [],
+                "open": status == "proposed",
+            }
+        )
+    return rows
+
+
+def contribution_line(row: dict[str, Any]) -> str:
+    touches = f" | touches: {', '.join(row['touches'])}" if row["touches"] else ""
+    flag = " (open)" if row["open"] else ""
+    return (
+        f"{row['concern']} | {row['owner'] or '-'} | {row['status'] or 'no header'}{flag}{touches}"
+    )
+
+
+def cmd_contribution(bolt: Path, args: argparse.Namespace) -> dict[str, Any]:
+    """Log where a contribution stands, after checking its header says so; edits no file."""
+    if not ID_PATTERN.fullmatch(args.concern):
+        die(EXIT_USAGE, f"--concern '{args.concern}' must match {ID_PATTERN.pattern}.")
+    rel = f"{CONTRIBUTION_DIR}/{args.concern}.md"
+    path = bolt / rel
+    if not path.is_file():
+        die(EXIT_INPUT, f"{rel} does not exist in this Bolt; create it from the template first.")
+    found = header_values(path)
+    if not found:
+        die(EXIT_FINDINGS, f"{rel} has no yaml header block at the top.")
+    owner = found.get("owner")
+    if not isinstance(owner, str) or not owner.strip():
+        die(EXIT_FINDINGS, f"{rel}: the header has no owner.")
+    status = found.get("status")
+    if not isinstance(status, str) or not status:
+        die(EXIT_FINDINGS, f"{rel}: the header has no status.")
+    if status != args.status:
+        die(
+            EXIT_FINDINGS,
+            f"{rel}: the header says '{status}', not '{args.status}'. "
+            "Edit the header first, then record it.",
+        )
+    note = f"{args.concern}: {args.status}" + (f" - {args.note}" if args.note else "")
+    log_event(bolt, "contribution", "", "", note)
+    return {"ok": True, "concern": args.concern, "status": args.status, "owner": owner, "file": rel}
 
 
 def decision_problems(bolt: Path, state: dict[str, Any]) -> list[dict[str, str]]:
@@ -1722,6 +1841,7 @@ def overview_row(bolt: Path, catalog: list[dict[str, Any]]) -> dict[str, Any]:
         "slices": [slice_row(state, catalog, s["id"]) for s in state["slices"]],
         "context": changes,
         "completed_affected": completed,
+        "contributions": contribution_rows(bolt),
         "not_verified": not_verified(state, catalog),
         "last": last,
         "problems": problems,
@@ -1741,6 +1861,7 @@ def overview_text(rows: list[dict[str, Any]]) -> str:
             waits = f" | {waits_sentence(unit['blocked_by'])}" if unit["blocked_by"] else ""
             lines.append(f"  unit {unit['id']} | {unit['owner'] or '-'} | {unit['next']}{waits}")
         lines.extend(slice_line(entry) for entry in row["slices"])
+        lines.extend(f"  contribution {contribution_line(c)}" for c in row["contributions"])
         for item in row["not_verified"]:
             lines.append(f"  not verified: {where_text(item)}")
         for problem in row["problems"]:
@@ -4175,6 +4296,8 @@ def git_event(args: argparse.Namespace, result: Optional[dict[str, Any]] = None)
     if cmd == "context":
         what = f"unit {args.unit}" if args.unit else f"slice {args.slice}"
         return f"record a context conclusion on {what}"
+    if cmd == "contribution":
+        return f"record contribution {args.concern}: {args.status}"
     if cmd == "park":
         return "park the bolt"
     if cmd == "unpark":
@@ -4199,7 +4322,7 @@ def changes_state(args: argparse.Namespace) -> bool:
         return args.note is not None
     return args.command in {
         "open", "decide", "step", "gate", "units", "decision-id", "park", "unpark",
-        "jira", "target", "close", "assign", "slice",
+        "jira", "target", "close", "assign", "slice", "contribution",
     }  # fmt: skip
 
 
@@ -4440,6 +4563,11 @@ def build_parser() -> argparse.ArgumentParser:
     group = sp.add_mutually_exclusive_group(required=True)
     group.add_argument("--add", metavar="name=path", help="Add or replace a target.")
     group.add_argument("--remove", metavar="NAME", help="Remove a target by name.")
+
+    sp = add("contribution", "Record where an architecture contribution stands.")
+    sp.add_argument("--concern", required=True, help="File name of the contribution, no .md.")
+    sp.add_argument("--status", required=True, choices=list(CONTRIBUTION_STATUS))
+    sp.add_argument("--note", help="One line for the log.")
 
     sp = add("park", "Leave a hand-over note.")
     sp.add_argument("--note", required=True)
@@ -4787,6 +4915,8 @@ def run_locked(args: argparse.Namespace) -> dict[str, Any]:
         return cmd_assign(bolt, state, catalog, args)
     if cmd == "slice":
         return cmd_slice(bolt, state, catalog, args)
+    if cmd == "contribution":
+        return cmd_contribution(bolt, args)
     if cmd == "context":
         return cmd_context(bolt, state, catalog, args)
     if cmd in {"decide", "step", "gate"}:
