@@ -135,6 +135,7 @@ class Decl:
     gloss: str
     level: int = 0
     rank: int = 0  # 0 heading, 1 exact row of an Id table, 2 exact row, 3 row that starts with it
+    cells: dict[str, str] = field(default_factory=dict)  # a row's cells by lower-case header
 
     def where(self) -> str:
         return f"{self.file}:{self.line}"
@@ -803,9 +804,11 @@ def parse_declarations(scan: FileScan) -> None:
             first_cell = line[offset:].split("|", 1)[0]
             found = START_RE.match(first_cell)
             if found:
-                decl = Decl(
-                    found.group(1), scan.rel, number, "row", row_gloss(split_row(line), headers)
-                )
+                cells = split_row(line)
+                decl = Decl(found.group(1), scan.rel, number, "row", row_gloss(cells, headers))
+                decl.cells = {
+                    strip_markup(h).lower(): strip_markup(c) for h, c in zip(headers, cells)
+                }
                 if strip_markup(first_cell) != decl.ident:
                     decl.rank = 3
                 elif headers and strip_markup(headers[0]).lower() == "id":
@@ -853,22 +856,39 @@ def write_line(text: str) -> None:
     sys.stdout.write(text + "\n")
 
 
-def section(bolt: Bolt, decl: Decl) -> str:
-    lines = bolt.files[decl.file].lines
+def section_end(bolt: Bolt, decl: Decl) -> int:
+    """The last line (1-based) of a declaration: its row, or its heading's section."""
     if decl.kind == "row":
-        return lines[decl.line - 1]
-    out = [lines[decl.line - 1]]
-    fence = False
+        return decl.line
+    lines = bolt.files[decl.file].lines
+    last, fence = decl.line, False
     for line in lines[decl.line :]:
         if FENCE_RE.match(line):
             fence = not fence
         heading = None if fence else HEADING_RE.match(line)
         if heading and len(heading.group(1)) <= decl.level:
             break
-        out.append(line)
-        if len(out) >= 40:
+        last += 1
+        if last - decl.line + 1 >= 40:
             break
-    return "\n".join(out).rstrip("\n")
+    return last
+
+
+def section(bolt: Bolt, decl: Decl) -> str:
+    lines = bolt.files[decl.file].lines
+    return "\n".join(lines[decl.line - 1 : section_end(bolt, decl)]).rstrip("\n")
+
+
+def cited_in(bolt: Bolt, decl: Decl) -> list[str]:
+    """The declared ids cited inside one declaration, as the keys of ``bolt.winners``."""
+    last = section_end(bolt, decl)
+    found: list[str] = []
+    for ref in bolt.file_refs.get(decl.file, []):
+        if ref.kind == "id" and decl.line <= ref.line <= last:
+            target = bolt.winner(ref.ident, decl.file)
+            if target is not None and target.ident not in found:
+                found.append(target.ident)
+    return found
 
 
 # --------------------------------------------------------------------------

@@ -492,23 +492,46 @@
       "inputs": [
         {
           "path": "docs/inception/units-generation/unit-of-work.md",
-          "mode": "full"
+          "mode": "full",
+          "track": "ids"
         },
         {
           "path": "docs/inception/units-generation/unit-of-work-story-map.md",
-          "mode": "digest"
+          "mode": "digest",
+          "track": "ids"
         },
         {
           "path": "docs/inception/requirements-analysis/requirements.md",
-          "mode": "digest"
+          "mode": "digest",
+          "track": "ids"
         },
         {
           "path": "docs/inception/domain-design/components.md",
-          "mode": "digest"
+          "mode": "digest",
+          "track": "ids"
         },
         {
           "path": "docs/inception/contract-design/contract-summary.md",
-          "mode": "digest"
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "architecture/hla-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/tdd-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/domain-design/decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
         },
         {
           "path": "root:docs/presets.md",
@@ -544,15 +567,35 @@
         },
         {
           "path": "docs/inception/requirements-analysis/requirements.md",
-          "mode": "full"
+          "mode": "full",
+          "track": "ids"
         },
         {
           "path": "docs/inception/contract-design/contract-summary.md",
-          "mode": "digest"
+          "mode": "digest",
+          "track": "ids"
         },
         {
           "path": "root:codekb/<repo>/technology-stack.md",
           "mode": "full"
+        },
+        {
+          "path": "architecture/hla-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/tdd-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/domain-design/decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
         },
         {
           "path": "root:docs/presets.md",
@@ -615,11 +658,31 @@
         },
         {
           "path": "docs/inception/contract-design/contract-summary.md",
-          "mode": "digest"
+          "mode": "digest",
+          "track": "ids"
         },
         {
           "path": "docs/inception/domain-design/components.md",
-          "mode": "digest"
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "architecture/hla-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/tdd-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/domain-design/decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
         },
         {
           "path": "root:docs/presets.md",
@@ -666,11 +729,31 @@
         },
         {
           "path": "docs/inception/domain-design/components.md",
-          "mode": "digest"
+          "mode": "digest",
+          "track": "ids"
         },
         {
           "path": "docs/inception/contract-design/contract-summary.md",
-          "mode": "digest"
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "architecture/hla-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/tdd-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/domain-design/decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
         },
         {
           "path": "root:docs/presets.md",
@@ -720,27 +803,50 @@
         },
         {
           "path": "docs/inception/units-generation/unit-of-work.md",
-          "mode": "digest"
+          "mode": "digest",
+          "track": "ids"
         },
         {
           "path": "docs/inception/units-generation/unit-of-work-story-map.md",
-          "mode": "digest"
+          "mode": "digest",
+          "track": "ids"
         },
         {
           "path": "docs/inception/requirements-analysis/requirements.md",
-          "mode": "digest"
+          "mode": "digest",
+          "track": "ids"
         },
         {
           "path": "docs/inception/domain-design/components.md",
-          "mode": "digest"
+          "mode": "digest",
+          "track": "ids"
         },
         {
           "path": "docs/inception/contract-design/contract-summary.md",
-          "mode": "digest"
+          "mode": "digest",
+          "track": "ids"
         },
         {
           "path": "root:codekb/<repo>/code-structure.md",
           "mode": "full"
+        },
+        {
+          "path": "architecture/hla-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/tdd-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/domain-design/decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
         }
       ],
       "questions": null,
@@ -780,7 +886,26 @@
         },
         {
           "path": "docs/inception/delivery-planning/slice-plan.md",
-          "mode": "digest"
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "architecture/hla-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/tdd-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/domain-design/decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
         }
       ],
       "questions": null,
@@ -813,11 +938,13 @@
         },
         {
           "path": "docs/inception/delivery-planning/slice-plan.md",
-          "mode": "digest"
+          "mode": "digest",
+          "track": "ids"
         },
         {
           "path": "docs/inception/units-generation/unit-of-work-dependency.md",
-          "mode": "digest"
+          "mode": "digest",
+          "track": "ids"
         },
         {
           "path": "architecture/hla.md",

@@ -60,6 +60,8 @@ EPILOG = """commands:
   slice       add a slice, check ready   --bolt P --add S [--name N] [--owner O] [--depends-on a,b]
                                          | --ready S [--note "direction"]
   brief       a unit's starting page     --bolt P --unit U [--write]
+  context     what a unit or slice relies on, or who relies on an id
+                                         --bolt P --unit U | --slice S [--stage X] | --id D63
   decision-id reserve decision ids       --bolt P [--count n]
   codekb-status is the code knowledge fresh --bolt P
   workspace   workspace file, checkouts  --bolt P [--extra name=path]... [--fetch] [--out F]
@@ -129,6 +131,11 @@ DECISION_STATUS = (
 )  # fmt: skip
 UNSETTLED = ("open", "assumption", "needs-evidence")
 DECISION_FILES = ("hla-decisions.md", "tdd-decisions.md")
+DECISION_RECORDS = (  # where a Bolt-level D<n> is declared
+    "architecture/hla-decisions.md",
+    "architecture/tdd-decisions.md",
+    "docs/inception/domain-design/decisions.md",
+)
 PATH_HINT = "set it in .aidlc-local.json or clone it next to the planning repo"
 
 STAGES_PATH = Path(__file__).resolve().parent.parent / "assets" / "stages.json"
@@ -1874,6 +1881,7 @@ def input_rows(
                 "produced_by": produced_by,
                 "skipped": skipped and not exists,
                 "optional": optional,
+                "track": entry.get("track", "file"),
             }
             rows.append(row)
             if not exists and not skipped and not optional:
@@ -1975,6 +1983,204 @@ def stale_rows(
         if changed:
             rows.append({"stage": item["id"], **subject(item, unit), "changed": changed})
     return rows
+
+
+# --- what a unit relies on --------------------------------------------------
+
+
+def load_refs_module() -> Any:
+    if "aidlc_state_refs" in sys.modules:
+        return sys.modules["aidlc_state_refs"]
+    path = Path(__file__).resolve().parent / "aidlc_refs.py"
+    if not path.is_file():
+        return None
+    spec = importlib.util.spec_from_file_location("aidlc_state_refs", path)
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["aidlc_state_refs"] = module  # dataclasses look their module up here
+    cast(Any, spec.loader).exec_module(module)
+    return module
+
+
+def unit_key(ident: str) -> str:
+    """The form in which an Inception id (``U-3``) and a state Unit id (``u3``) are equal."""
+    return ident.lower().replace("-", "")
+
+
+class RefIndex:
+    """The ids of one Bolt, parsed once per command: declarations, citations, closures."""
+
+    def __init__(self, bolt: Path) -> None:
+        self.refs = load_refs_module()
+        self.bolt = self.refs.Bolt(bolt) if self.refs else None
+        if self.bolt is not None:
+            try:
+                self.bolt.load()
+            except (ValueError, OSError) as exc:
+                LOG.warning("ids are not tracked: %s", exc)
+                self.bolt = self.refs.Bolt(bolt)
+        self.closures: dict[str, set[str]] = {}
+
+    def decl(self, ident: str) -> Any:
+        return self.bolt.winners.get(ident) if self.bolt is not None else None
+
+    def closure(self, unit: str) -> set[str]:
+        """Ids a Unit relies on: its own declaration and what its files cite, then what those
+        declarations cite, and what those cite (two hops)."""
+        if unit in self.closures or self.bolt is None:
+            return self.closures.setdefault(unit, set())
+        seeds = {
+            ident
+            for ident, found in self.bolt.winners.items()
+            if Path(found.file).name == "unit-of-work.md" and unit_key(ident) == unit_key(unit)
+        }
+        prefix = f"docs/construction/{unit}/"
+        for rel, cited in self.bolt.file_refs.items():
+            if rel.startswith(prefix):
+                for ref in cited:
+                    target = self.bolt.winner(ref.ident, rel) if ref.kind == "id" else None
+                    if target is not None:
+                        seeds.add(target.ident)
+        reached, frontier = set(seeds), seeds
+        for _ in range(2):
+            frontier = {
+                cited
+                for ident in frontier
+                if (found := self.bolt.winners.get(ident)) is not None
+                for cited in self.refs.cited_in(self.bolt, found)
+            } - reached
+            reached |= frontier
+        self.closures[unit] = reached
+        return reached
+
+
+_INDEXES: dict[str, RefIndex] = {}
+
+
+def ref_index(bolt: Path) -> RefIndex:
+    key = str(bolt.resolve())
+    if key not in _INDEXES:
+        _INDEXES[key] = RefIndex(bolt)
+    return _INDEXES[key]
+
+
+def slot_units(state: dict[str, Any], stage: dict[str, Any], key: Optional[str]) -> list[str]:
+    """The Units whose reliance a slot shares: its own, or those of its Slice."""
+    if key is None or not (stage["per_unit"] or is_slice_stage(stage)):
+        return []
+    return [key] if stage["per_unit"] else [u["id"] for u in slice_units(state, key)]
+
+
+def relied_ids(
+    bolt: Path,
+    state: dict[str, Any],
+    catalog: list[dict[str, Any]],
+    stage: dict[str, Any],
+    key: Optional[str],
+    rows: Optional[list[dict[str, Any]]] = None,
+) -> set[str]:
+    """The ids a slot relies on, restricted to the ids declared in its ``track: ids`` inputs."""
+    rows = input_rows(bolt, state, catalog, stage, key)[0] if rows is None else rows
+    tracked = {row["path"] for row in rows if row["track"] == "ids" and row["exists"]}
+    units = slot_units(state, stage, key)
+    if not tracked or not units:
+        return set()
+    index = ref_index(bolt)
+    wanted: set[str] = set()
+    for unit in units:
+        wanted |= index.closure(unit)
+    return {i for i in wanted if (found := index.decl(i)) is not None and found.file in tracked}
+
+
+def described(index: RefIndex, ident: str) -> dict[str, Any]:
+    found = index.decl(ident)
+    if found is None:
+        return {"id": ident}
+    return {"id": ident, "file": found.file, "line": found.line, "gloss": found.gloss}
+
+
+def relies_on_rows(
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], group: list[Slot]
+) -> list[dict[str, Any]]:
+    """The ids the given slots rely on, with where each is declared."""
+    found: set[str] = set()
+    for item, key in group:
+        record = slot_record(state, item, key)
+        if record is not None and record["decision"] != "skip":
+            found |= relied_ids(bolt, state, catalog, item, key)
+    index = ref_index(bolt)
+    ordered = sorted(found, key=index.refs.sort_key) if index.refs else []
+    return [described(index, ident) for ident in ordered]
+
+
+def context_of_id(
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], ident: str
+) -> dict[str, Any]:
+    """Who relies on an id: Units, Slices and the files that cite it, and how many do not."""
+    index = ref_index(bolt)
+    found = index.decl(ident)
+    if found is None:
+        raise Fail(EXIT_FINDINGS, f"{ident} is not declared in this Bolt.")
+    units = live_units(state)
+    stages = [i for i in catalog if i["per_unit"]]
+    relying = [
+        u
+        for u in units
+        if any(
+            ident in relied_ids(bolt, state, catalog, i, u["id"])
+            for i in stages
+            if (slot_record(state, i, u["id"]) or {}).get("decision") != "skip"
+        )
+    ]
+    slice_stages = [i for i in catalog if is_slice_stage(i)]
+    slices = [
+        s["id"]
+        for s in state["slices"]
+        if any(ident in relied_ids(bolt, state, catalog, i, s["id"]) for i in slice_stages)
+    ]
+    cited = sorted({ref.file for ref in index.bolt.refs.get(ident, [])}) if index.bolt else []
+    return {
+        "ok": True,
+        **described(index, ident),
+        "units": [
+            {"id": u["id"], "slice": u.get("slice"), "owner": u.get("owner")} for u in relying
+        ],
+        "slices": slices,
+        "cited_in": cited,
+        "units_not_relying": len(units) - len(relying),
+    }
+
+
+def cmd_context(
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], args: argparse.Namespace
+) -> dict[str, Any]:
+    """What a Unit or Slice relies on, or (--id) who relies on one id."""
+    if args.id:
+        if args.unit or args.slice or args.stage:
+            die(EXIT_USAGE, "--id stands alone: drop --unit, --slice and --stage.")
+        return context_of_id(bolt, state, catalog, args.id)
+    if bool(args.unit) == bool(args.slice):
+        die(EXIT_USAGE, "give --unit or --slice (or --id ID).")
+    key = args.unit or args.slice
+    if args.unit:
+        find_unit(state, key)
+    else:
+        find_slice(state, key)
+    group = [(i, key) for i in catalog if (i["per_unit"] if args.unit else is_slice_stage(i))]
+    if args.stage:
+        stage = stage_def(catalog, args.stage)
+        group = [(i, k) for i, k in group if i["id"] == stage["id"]]
+        if not group:
+            die(
+                EXIT_USAGE,
+                f"stage '{stage['id']}' is not run per {'unit' if args.unit else 'slice'}.",
+            )
+    return {
+        "ok": True,
+        "unit" if args.unit else "slice": key,
+        "relies_on": relies_on_rows(bolt, state, catalog, group),
+    }
 
 
 # --- code knowledge ----------------------------------------------------------
@@ -2910,8 +3116,7 @@ def consequence(code: str) -> str:
 def unit_for_doc_id(state: dict[str, Any], ident: str) -> Optional[dict[str, Any]]:
     """The Unit of the state that an Inception id (``U-3``) names. Inception writes ``U-n``
     and the Unit id in the state is its lower-case form, with or without the hyphen."""
-    key = ident.lower().replace("-", "")
-    return next((u for u in state["units"] if u["id"].lower().replace("-", "") == key), None)
+    return next((u for u in state["units"] if unit_key(u["id"]) == unit_key(ident)), None)
 
 
 def readiness_gaps(
@@ -4012,6 +4217,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--note", help="With --ready: the direction, needed to go on while gaps are open."
     )
 
+    sp = add("context", "What a unit or slice relies on, or who relies on an id.")
+    sp.add_argument("--unit")
+    sp.add_argument("--slice")
+    sp.add_argument("--stage", help="Only this stage of the unit or slice.")
+    sp.add_argument("--id", help="Instead: who relies on this id (a unit, slice and file list).")
+
     sp = add("brief", "A unit's starting page, from state only; --write saves it in the bolt.")
     sp.add_argument("--unit", required=True)
     sp.add_argument("--write", action="store_true", help="Write docs/construction/<unit>/brief.md.")
@@ -4359,6 +4570,7 @@ def checkout_lock(path: Optional[Path]) -> Iterator[None]:
 
 
 def run_locked(args: argparse.Namespace) -> dict[str, Any]:
+    _INDEXES.clear()  # ids are parsed once per command, never carried over to the next
     catalog = load_catalog()
     if args.command == "open":
         return cmd_open(args, catalog)
@@ -4383,6 +4595,8 @@ def run_locked(args: argparse.Namespace) -> dict[str, Any]:
         return cmd_next(bolt, state, catalog, args)
     if cmd == "brief":
         return cmd_brief(bolt, state, catalog, args)
+    if cmd == "context":
+        return cmd_context(bolt, state, catalog, args)
     if cmd == "inputs":
         return cmd_inputs(bolt, state, catalog, args.stage, args.unit, args.slice)
     if cmd == "workspace":

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -843,3 +843,28 @@ def test_a_split_bolts_unit_decisions_are_cited_as_unit_colon_id(refs, bolt: Pat
     assert refs("index", "--bolt", str(bolt)).json["ids"] == 4
     assert "| u1:D10 |" in (bolt / "refs.md").read_text(encoding="utf-8")
     assert refs("link", "--bolt", str(bolt)).json["duplicates"] == []
+
+
+def test_cited_in_names_the_ids_inside_one_declaration_and_rows_keep_their_cells(
+    bolt: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import importlib.util
+    import sys
+
+    cite(
+        bolt,
+        "# Cites\n\n## D20 Wider choice\nBuilds on D10 and A-Q1.\n\n## D21 Other\nSee D12.\n\n"
+        "# Table\n\n| Id | Decision | Status |\n|---|---|---|\n| D22 | Amends D11, not D12 | superseded |\n",
+    )
+    spec = importlib.util.spec_from_file_location("aidlc_refs_under_test", REFS)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, module)  # dataclasses look it up here
+    cast(Any, spec.loader).exec_module(module)
+    index = module.new_bolt(str(bolt))
+    assert module.cited_in(index, index.winners["D20"]) == ["D10"]  # A-Q1 is an answer
+    assert module.cited_in(index, index.winners["D21"]) == ["D12"]
+    row = index.winners["D22"]
+    assert module.cited_in(index, row) == ["D11", "D12"]
+    assert row.cells == {"id": "D22", "decision": "Amends D11, not D12", "status": "superseded"}
+    assert module.section(index, row).startswith("| D22 |")
