@@ -12,6 +12,18 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A verified or released Slice no longer vouches for work it did not cover.** Adding a
+  Unit to a Slice whose Build and Test passed, or sending one of its Units' passed stages
+  back, reopens the Slice's Build and Test and any recorded release stage: the Slice shows
+  as building, a Slice that depends on it waits again, and it is not shown as released until
+  its release is recorded again. The result carries a warning that says why.
+- **Work in a planning repository with no remote is reported as only on this machine.**
+  The result of a changing command has `local_only: true` and a warning, and `status` and
+  `overview` print "no shared remote: this work exists only on this machine and is not
+  shared" instead of staying silent.
+- **Opening a Bolt no longer stops to confirm what the request already says.** The entry
+  skill derives title, intent, target and a proportionate scope, opens the Bolt and says in
+  one line what it chose; it asks only for what it cannot tell.
 - **Five skill text corrections found by behaviour evaluations.** A failed run now stays open with `Verdict: fail` and is fixed on the engineer's word; a decision's Status changes only on the engineer's stated direction; the HLA merge may also update the decision-range line; an increment that changes an existing entry reports who relies on it; the Unit id example follows the form the Bolt already uses.
 - **A failed reservation of decision ids leaves nothing behind.** When `decision-id` ends
   with "the ids were not reserved", its own commit is first undone (`reset --keep`), so the

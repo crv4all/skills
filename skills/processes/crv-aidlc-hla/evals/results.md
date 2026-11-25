@@ -26,6 +26,15 @@ Each case ran once, on 2026-11-25, as a fresh Claude Sonnet agent session inside
 
 Not run: B1, B2, B3, B4, B5, B6, B7, B8, B11, B12, B13, B14.
 
+### Reruns of 2026-11-25 (pilot check)
+
+Same method, on rebuilt fixtures and a copy of the working tree that became the pilot commits (the skill text of `c612670`).
+
+| Case | Result | What happened |
+| --- | --- | --- |
+| B9 | 1 pass, 2 fail, 1 not applicable | Two sessions. Between them the engineer answered one question, left one open and said nothing about the four proposed decisions. Session 2 set the one decision the written answer settles to `accepted` and said so; the other three stayed `proposed` "until you tell me". Only the `hla.md` section named in `touches` changed; no other decision row and no other person's file. Failed: the first commit of the contribution cited its ids one commit before the rows were in `hla-decisions.md`; `contribution --status merged` was never run, because the contribution stays `proposed` while decisions are undecided, which step 4 allows. Not applicable: the listing of three contributions (one engineer). |
+| B10 | 3 of 3 pass | Named the two owners of the consent record with both decision ids and both lines, the consequence, the options, a recommendation and who should talk; chose no side; changed nothing; reported the validator's `owner-duplicate`. |
+
 ## Deterministic checks
 
 | Date | Check | Result |

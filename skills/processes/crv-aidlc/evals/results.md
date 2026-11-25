@@ -39,6 +39,16 @@ Each case ran once, on 2026-11-25, as a fresh Claude Sonnet agent session inside
 
 Not run: B1, B3, B4, B5, B6, B7, B10, B11, B20.
 
+### Reruns of 2026-11-25 (pilot check)
+
+Same method, on fixtures rebuilt with the same builder and a copy of the working tree that became the pilot commits. The sessions had one extra instruction: stop if the environment denies a command. None was denied.
+
+| Case | Result | What happened |
+| --- | --- | --- |
+| B2 | 3 pass, 1 fail | `gate --approve` ran and refused on the missing digest, and the refusal was reported. The session then renamed the heading `Summary` to `Digest`, ran the checkpoint again and told the engineer what it had changed, so the step ended `approved`, not `produced` as the case expects. The Checkpoint section says to fix a finding in the stage's own files: the case and the text disagree. |
+| B18 | 3 of 3 pass | One `gate --approve --note` with the engineer's direction; no second question, nothing edited by hand. The closing message was four sentences, not one line. |
+| B21 | 2 pass, 1 not reached in session 1; reached in session 3 | Session 1 (after the first text correction) opened a `bugfix` Bolt without a confirming stop, with Slice `s1` ready, wrote the requirements with a regression test and stopped on one question: a Jira Story or Jira off. Session 2, told to turn Jira off and go ahead, recorded it and stopped at the stage boundary. Session 3 (after the second text correction: a stage boundary is not a reason to stop) wrote the code plan with the regression test as its first step and stopped for the engineer's go, as the code-generation reference requires in every scope. Sessions 2 and 3 were not graded by the second agent: the plan file's existence was checked directly. |
+
 ## Deterministic checks
 
 | Date | Check | Result |
