@@ -3,7 +3,7 @@
 # requires-python = ">=3.9"
 # dependencies = []
 # ///
-"""Check a high-level architecture (HLA) or technical design (TDD) document.
+"""Check a high-level architecture (HLA), technical design (TDD) or architecture contribution.
 
 Reviewers read these documents to make decisions, and later stages read them to
 build. A missing section, a header field nobody filled in, an ADR id that does
@@ -37,6 +37,7 @@ EPILOG = """examples:
   python3 validate_doc.py --file architecture/hla.md --kind hla \\
       --adr-index ../../architecture-index.json
   python3 validate_doc.py --file architecture/tdd.md --kind tdd
+  python3 validate_doc.py --file architecture/contributions/security.md --kind contribution
 
 checks (each failure is a finding, exit 1):
   header      first ```yaml block parses and matches assets/<kind>-header.schema.json;
@@ -49,6 +50,9 @@ checks (each failure is a finding, exit 1):
   adrs        cited ADR ids exist in --adr-index (non-accepted status is a warning)
   diagrams    every mermaid fence is non-empty and followed by text
   hla link    (tdd) hla_link resolves to a document whose header status is accepted
+  contribution  (contribution) the header concern equals the file name, and every D<n> cited
+              exists in the decision record next to hla.md (decision-unknown); the twelve
+              layers do not apply
 
 exit codes:
   0  valid (warnings allowed)
@@ -74,6 +78,9 @@ FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})\s*([\w-]*)")
 H2 = re.compile(r"^##\s+(.+?)\s*#*\s*$")
 NOT_APPLICABLE = re.compile(r"^Not applicable:(.*)$", re.DOTALL)
 OPTIONAL_MARK = re.compile(r"^\s*<!--\s*Optional\b", re.IGNORECASE)
+CITED_DECISION = re.compile(r"(?<![\w:-])(?<!WP )D(\d+)\b")
+CONCERN_FILE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+RECORDS = ("hla-decisions.md", "tdd-decisions.md")
 DECISIONS_SECTION = "design decisions"
 MODERNIZATION_SECTION = "modernization plan"
 
@@ -756,7 +763,86 @@ def check_hla_link(path: Path, header: dict[str, Any], report: Report) -> int:
     return max(numbers, default=0)
 
 
-def kind_rules(doc: Doc, kind: str, header: dict[str, Any], report: Report) -> None:
+def cell_texts(line: str) -> list[str]:
+    return [c.strip() for c in line.strip().strip("|").replace("\\|", "\0").split("|")]
+
+
+def read_record(folder: Path, names: tuple[str, ...]) -> Optional[dict[int, str]]:
+    """Ids declared in the decision record(s) next to a document, with their Status words.
+
+    ``None`` when no record exists, so a check can stay silent instead of calling every id
+    unknown. A row declares an id in its first cell; the Status column is optional."""
+    declared: dict[int, str] = {}
+    found = False
+    for name in names:
+        record = folder / name
+        if not record.is_file():
+            continue
+        found = True
+        status_column = -1
+        for line in strip_block(record.read_text(encoding="utf-8", errors="replace")).splitlines():
+            if not line.strip().startswith("|"):
+                continue
+            cells = [c.lower() for c in cell_texts(line)]
+            if cells and cells[0] == "id":
+                status_column = cells.index("status") if "status" in cells else -1
+                continue
+            match = RECORD_ROW_ID.match(line)
+            if match:
+                values = cell_texts(line)
+                status = values[status_column] if 0 <= status_column < len(values) else ""
+                declared[int(match.group(1))] = status.lower()
+    return declared if found else None
+
+
+def appendix_lines(doc: Doc) -> set[int]:
+    """Lines of every top-level section whose title starts with "Appendix" (history lives there)."""
+    skip: set[int] = set()
+    for section in doc.sections:
+        if norm(section["title"]).startswith("appendix"):
+            skip.update(range(section["line"], section["end"]))
+    return skip
+
+
+def cited_decisions(doc: Doc, skip: set[int]) -> dict[int, int]:
+    """First line of each bare ``D<n>`` in prose; code fences, appendices and ``u3:D2`` are not."""
+    cited: dict[int, int] = {}
+    for index, line in enumerate(doc.lines):
+        if index in doc.in_fence or index in skip:
+            continue
+        for match in CITED_DECISION.finditer(line):
+            cited.setdefault(int(match.group(1)), index + 1)
+    return cited
+
+
+def check_cited_decisions(doc: Doc, declared: Optional[dict[int, str]], report: Report) -> None:
+    """Every cited D<n> must be in the record; a superseded one is a warning."""
+    if declared is None:
+        return
+    for number, line in sorted(cited_decisions(doc, appendix_lines(doc)).items()):
+        if number not in declared:
+            report.add("decision-unknown", line, f"D{number} is not in the decision record")
+        elif declared[number] == "superseded":
+            report.warn("decision-superseded", line, f"D{number} is superseded in the record")
+
+
+def check_contribution(path: Path, doc: Doc, header: dict[str, Any], report: Report) -> None:
+    concern = header.get("concern")
+    if isinstance(concern, str) and concern.strip() and concern != path.stem:
+        report.add(
+            "concern-name",
+            1,
+            f"header concern '{concern}' must equal the file name '{path.stem}'",
+        )
+    declared = read_record(path.parent.parent, RECORDS)
+    if declared is None and cited_decisions(doc, set()):
+        report.warn("decision-record-missing", 1, "decisions are cited but no record was found")
+    check_cited_decisions(doc, declared, report)
+
+
+def kind_rules(path: Path, doc: Doc, kind: str, header: dict[str, Any], report: Report) -> None:
+    if kind == "contribution":
+        check_contribution(path, doc, header, report)
     if kind != "hla":
         return
     flags = header.get("impact_flags")
@@ -798,7 +884,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     decisions = check_decisions(doc, report, floor)
     adrs = check_adrs(doc, header, index, report)
     check_diagrams(doc, report)
-    kind_rules(doc, args.kind, header, report)
+    kind_rules(path, doc, args.kind, header, report)
     report.findings.sort(key=lambda item: item["line"])
     return {
         "ok": not report.findings,
@@ -814,12 +900,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Validate an HLA or TDD against its template, header schema and ADR index.",
+        description="Validate an HLA, TDD or contribution against its template and header schema.",
         epilog=EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--file", required=True, help="The document to check.")
-    parser.add_argument("--kind", required=True, choices=["hla", "tdd"])
+    parser.add_argument("--kind", required=True, choices=["hla", "tdd", "contribution"])
     parser.add_argument("--adr-index", help="architecture-index.json built by build_adr_index.py.")
     parser.add_argument("--template", help="Override the template (default: assets/).")
     parser.add_argument("--schema", help="Override the header schema (default: assets/).")

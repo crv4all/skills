@@ -12,6 +12,17 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Several engineers can contribute to one architecture, each in their own file.**
+  One Bolt has one `architecture/hla.md`, but a concern (security, networking, a
+  data model) is often investigated by a different person in a different session.
+  A contribution is `architecture/contributions/<concern>.md`: a small file with a
+  yaml header (`concern`, `owner`, `status` draft, proposed or merged, `touches`,
+  `affects`) and six short sections. It has no stage and no lifecycle; its author
+  merges the conclusion into `hla.md`, and the reasoning stays in the file. The HLA
+  skill ships `contribution-template.md` and `contribution-header.schema.json`, and
+  `validate_doc.py --kind contribution` checks the header, the leftover
+  placeholders, the file name against the concern, and that every decision id the
+  file cites exists in the decision record.
 - **Work is told about the changes that matter to it, and only those.**
   Change detection used one hash per input file, taken when a stage was produced
   or passed. A second Slice adding rows to a shared document flagged every Unit of
