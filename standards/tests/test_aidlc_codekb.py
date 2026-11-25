@@ -259,7 +259,10 @@ def test_express_and_bugfix_stage_sets(tmp_path: Path, scope: str, running: set[
     live |= {k for k, v in unit["stages"].items() if v["decision"] != "skip"}
     assert live == running
     assert [u["id"] for u in state["units"]] == ["u1"]
-    assert state["slices"] == [{"id": "s1", "units": ["u1"], "status": "todo"}]
+    (only,) = state["slices"]
+    assert (only["id"], only["owner"], only["depends_on"]) == ("s1", None, [])
+    assert only["ready"]["note"] == "single-Slice Bolt" and only["ready"]["gaps"] == []
+    assert "units" not in only and "status" not in only and state["units"][0]["slice"] == "s1"
     assert state["stages"]["units-generation"]["decision"] == "skip"
     assert state["stages"]["delivery-planning"]["decision"] == "skip"
 

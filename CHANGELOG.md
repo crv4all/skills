@@ -395,6 +395,22 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **A Slice is a small record with one readiness checkpoint.** A Slice used to
+  store `{id, units, status}` and nothing read the status. Now each Unit's own
+  `slice` key is the only record of membership, a Slice stores
+  `{id, name, owner, depends_on, ready, stages}`, and its status (planning,
+  ready, building, built, verified, released) is worked out from what happened,
+  never stored. New `slice --add ID [--name] [--owner] [--depends-on]` adds
+  one, `assign --slice ID --owner NAME` changes its owner and `units --set`
+  merges slice entries by id like units. `slice --ready ID` checks whether
+  enough engineering context exists to start the Slice's Units: it refuses a
+  Slice with no Units or a broken dependency, and lists the gaps it finds (an
+  unfinished Discovery or Inception stage, a failing increment question file,
+  traceability findings about this Slice's Units, an unknown decision status)
+  with what each one costs. With gaps it needs `--note "<direction>"` to go on;
+  the Slice is then ready with the gap codes stored and `status` shows
+  "ready, N open gap(s)". A single-Slice Bolt (express, bugfix) starts ready.
+
 - **Loading units adds and updates; it no longer reloads.** `units --set` used
   to replace every unit, which dropped each unit's decision counter (a unit was
   handed D1 twice), rewrote every unit's state file, silently overwrote owners

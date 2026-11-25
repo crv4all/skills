@@ -56,7 +56,9 @@ EPILOG = """commands:
                                          | --request-changes --note "why"
   units       add or update units, slices --bolt P --set file.json
                                          | --cancel U --reason R [--superseded-by u7,u8]
-  assign      set a unit's owner         --bolt P --unit U --owner NAME
+  assign      set an owner               --bolt P --unit U --owner NAME | --slice S --owner NAME
+  slice       add a slice, check ready   --bolt P --add S [--name N] [--owner O] [--depends-on a,b]
+                                         | --ready S [--note "direction"]
   brief       a unit's starting page     --bolt P --unit U [--write]
   decision-id reserve decision ids       --bolt P [--count n]
   codekb-status is the code knowledge fresh --bolt P
@@ -294,6 +296,13 @@ def backfill_stages(state: dict[str, Any], catalog: list[dict[str, Any]]) -> Non
     for unit in state.get("units", []):
         unit.setdefault("story", None)
         unit.setdefault("story_done", None)
+    for entry in state.get("slices", []):  # older shape: a stored member list and a status
+        for member in entry.pop("units", []):
+            for unit in state["units"]:
+                if unit["id"] == member and not unit.get("slice"):
+                    unit["slice"] = entry["id"]
+        entry.pop("status", None)
+        entry.update({k: v for k, v in new_slice(entry["id"]).items() if k not in entry})
     brownfield = any(t.get("kind") == "brownfield" for t in state.get("targets", []))
     for item in catalog:
         if item["per_unit"] or item["id"] in stages:
@@ -480,7 +489,7 @@ def write_state(bolt: Path, state: dict[str, Any]) -> None:
 
 def drop_retired_fields(state: dict[str, Any]) -> None:
     """Forget who recorded a checkpoint and by which channel: no longer kept."""
-    holders = [state, *state.get("units", [])]
+    holders = [state, *state.get("units", []), *state.get("slices", [])]
     for holder in holders:
         for record in (holder.get("stages") or {}).values():
             if isinstance(record, dict):
@@ -569,6 +578,27 @@ def unit_stage_records(
             decision, reason = initial_decision(item, scope, True)
             records[item["id"]] = new_record(decision, reason)
     return records
+
+
+def new_slice(
+    sid: str,
+    name: str = "",
+    owner: Optional[str] = None,
+    depends_on: Optional[list[str]] = None,
+) -> dict[str, Any]:
+    """A Slice record: who it is, what it waits for and whether it is ready."""
+    return {
+        "id": sid,
+        "name": name,
+        "owner": owner,
+        "depends_on": depends_on or [],
+        "ready": None,
+        "stages": {},
+    }
+
+
+def single_slice_ready() -> dict[str, Any]:
+    return {"at": now(), "note": "single-Slice Bolt", "gaps": []}
 
 
 def find_unit(state: dict[str, Any], unit: str) -> dict[str, Any]:
@@ -868,13 +898,22 @@ def cmd_assign(
     owner = " ".join((args.owner or "").split())
     if not owner:
         die(EXIT_USAGE, "--owner must not be blank.")
-    unit = find_unit(state, args.unit)
-    old = unit.get("owner") or "-"
-    unit["owner"] = owner
+    if bool(args.unit) == bool(args.slice):
+        die(EXIT_USAGE, "give --unit or --slice, not both and not neither.")
+    key = args.unit or args.slice
+    holder = find_unit(state, key) if args.unit else find_slice(state, key)
+    old = holder.get("owner") or "-"
+    holder["owner"] = owner
     nxt = commit(bolt, state, catalog)
-    log_event(bolt, "assign", "", "", f"[{args.unit}] {old} -> {owner}", args.unit)
+    log_event(bolt, "assign", "", "", f"[{key}] {old} -> {owner}", args.unit or "")
     previous = None if old == "-" else old
-    return {"ok": True, "unit": args.unit, "owner": owner, "previous": previous, "next": nxt}
+    return {
+        "ok": True,
+        "unit" if args.unit else "slice": key,
+        "owner": owner,
+        "previous": previous,
+        "next": nxt,
+    }
 
 
 def describe_next(nxt: dict[str, Any]) -> str:
@@ -1034,7 +1073,7 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
                 "story_done": None,
             }
         ]
-        slices = [{"id": "s1", "units": ["u1"], "status": "todo"}]
+        slices = [{**new_slice("s1", args.title), "ready": single_slice_ready()}]
 
     state: dict[str, Any] = {
         "schema": 1,
@@ -1418,6 +1457,8 @@ def cmd_status(
     details = [unit_detail(bolt, state, catalog, u["id"]) for u in live_units(state)]
     stale = stale_rows(bolt, state, catalog)
     facts["unit_details"] = details
+    slice_rows = [slice_row(state, catalog, s["id"]) for s in state["slices"]]
+    facts["slice_details"] = slice_rows
     facts["stale"] = stale
     unverified = not_verified(state, catalog)
     facts["not_verified"] = unverified
@@ -1440,6 +1481,7 @@ def cmd_status(
         step = f"{row['stage']} {row['action']}" if row["stage"] else "done"
         waits = f" | {waits_sentence(row['blocked_by'])}" if row["blocked_by"] else ""
         lines.append(f"  {row['id']} | {row['owner'] or '-'} | {step}{waits}")
+    lines.extend(slice_line(row) for row in slice_rows)
     for row in stale:
         where = row["stage"] + (f" [{row['unit']}]" if row["unit"] else "")
         lines.append(f"Context changed for {where}: {', '.join(row['changed'])}")
@@ -1460,7 +1502,7 @@ def cmd_status(
     if state["parked"]:
         note = str(state["parked"].get("note", "")).replace("\n", " ")
         lines.append(f"Parked: {note[:300]}")
-    return {"text": "\n".join(lines[: 21 + len(details) + len(stale)]) + "\n"}
+    return {"text": "\n".join(lines[: 21 + len(details) + len(stale) + len(slice_rows)]) + "\n"}
 
 
 def log_rows(bolt: Path) -> list[dict[str, str]]:
@@ -1547,6 +1589,7 @@ def overview_row(bolt: Path, catalog: list[dict[str, Any]]) -> dict[str, Any]:
         "owner": state.get("owner") or None,
         "next": describe_next(compute_next(state, catalog, bolt)),
         "units": units,
+        "slices": [slice_row(state, catalog, s["id"]) for s in state["slices"]],
         "stale": stale,
         "not_verified": not_verified(state, catalog),
         "last": last,
@@ -1566,6 +1609,7 @@ def overview_text(rows: list[dict[str, Any]]) -> str:
         for unit in row["units"]:
             waits = f" | {waits_sentence(unit['blocked_by'])}" if unit["blocked_by"] else ""
             lines.append(f"  unit {unit['id']} | {unit['owner'] or '-'} | {unit['next']}{waits}")
+        lines.extend(slice_line(entry) for entry in row["slices"])
         for item in row["not_verified"]:
             where = item["stage"] + (f" [{item['unit']}]" if item["unit"] else "")
             lines.append(f"  not verified: {where}")
@@ -2453,6 +2497,20 @@ def live_units(state: dict[str, Any]) -> list[dict[str, Any]]:
     return [u for u in state["units"] if not is_cancelled(u)]
 
 
+def find_slice(state: dict[str, Any], sid: str) -> dict[str, Any]:
+    for item in state["slices"]:
+        if item["id"] == sid:
+            return item
+    known = ", ".join(s["id"] for s in state["slices"]) or "none yet"
+    die(EXIT_USAGE, f"unknown slice '{sid}' (slices: {known}). Add one with `slice --add`.")
+
+
+def slice_units(state: dict[str, Any], sid: str) -> list[dict[str, Any]]:
+    """The Units that are in this Slice and not cancelled: the Unit's own ``slice`` key is
+    the only record of membership."""
+    return [u for u in live_units(state) if u.get("slice") == sid]
+
+
 def check_unit_entry(file: Path, unit: Any, seen: set[str]) -> str:
     uid = unit.get("id") if isinstance(unit, dict) else None
     if not isinstance(uid, str) or not ID_PATTERN.match(uid) or uid in seen:
@@ -2520,7 +2578,9 @@ def cmd_units(
         uid = unit["id"]
         previous = old.get(uid)
         if previous is not None:
-            refuse_owner_change("unit", uid, unit.get("owner"), previous.get("owner"), "assign")
+            refuse_owner_change(
+                "unit", uid, unit.get("owner"), previous.get("owner"), "assign --unit"
+            )
         updates = {k: unit[k] for k in ("name", "kind", "repo", "slice") if k in unit}
         if "slice" not in updates and uid in membership:
             updates["slice"] = membership[uid]
@@ -2551,7 +2611,7 @@ def cmd_units(
     combined.update(merged)
     check_cycles(file, {uid: unit.get("depends_on") or [] for uid, unit in combined.items()})
 
-    slice_updates = merge_slices(file, state, catalog, slices_in, known_slices)
+    slice_updates = merge_slices(file, state, slices_in)
     state["units"] = list(combined.values())  # existing order first, new Units after
     state["slices"] = slice_updates
     nxt = commit(bolt, state, catalog)
@@ -2574,19 +2634,195 @@ def cmd_units(
     }
 
 
+def check_slice_deps(file: Path, slices: dict[str, dict[str, Any]]) -> None:
+    """Every Slice dependency names a known Slice, and the Slices form no cycle."""
+    for sid, record in slices.items():
+        deps = record.get("depends_on")
+        if not isinstance(deps, list) or not all(isinstance(d, str) for d in deps):
+            die(EXIT_MALFORMED, f"{file}: slice {sid} depends_on must be a list of slice ids.")
+        for dep in deps:
+            if dep not in slices:
+                die(EXIT_MALFORMED, f"{file}: slice {sid} depends on unknown slice {dep!r}.")
+    check_cycles(file, {sid: [{"unit": d} for d in r["depends_on"]] for sid, r in slices.items()})
+
+
 def merge_slices(
-    file: Path,
-    state: dict[str, Any],
-    catalog: list[dict[str, Any]],
-    entries: list[dict[str, Any]],
-    known: set[str],
+    file: Path, state: dict[str, Any], entries: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    """Slices by id: add the new, update the keys given, keep every other slice as it is."""
+    """Slices by id: add the new, update ``name`` and ``depends_on`` where given, keep every
+    other Slice as it is. The owner of an existing Slice changes with ``assign`` only."""
     result = {s["id"]: s for s in state["slices"]}
     for entry in entries:
-        entry.setdefault("status", "todo")
-        result[entry["id"]] = {**result.get(entry["id"], {}), **entry}
+        sid, current = entry["id"], result.get(entry["id"])
+        if current is None:
+            result[sid] = new_slice(sid, entry.get("name", ""), entry.get("owner"))
+            current = result[sid]
+        else:
+            refuse_owner_change(
+                "slice", sid, entry.get("owner"), current.get("owner"), "assign --slice"
+            )
+        current.update({k: entry[k] for k in ("name", "depends_on") if k in entry})
+    check_slice_deps(file, result)
     return list(result.values())
+
+
+def slice_status(state: dict[str, Any], catalog: list[dict[str, Any]], sid: str) -> str:
+    """planning, ready, building, built, verified or released: derived, never stored."""
+    record = find_slice(state, sid)
+    units = slice_units(state, sid)
+    if not units or not record.get("ready"):
+        return "planning"
+    stages = record.get("stages") or {}
+    if is_done(stages.get("build-and-test")):
+        ran = [
+            stages.get(i["id"])
+            for i in catalog
+            if i.get("per_slice") and i["phase"] == "operation"
+            and (stages.get(i["id"]) or {}).get("decision") == "execute"
+        ]  # fmt: skip
+        return "released" if ran and is_done(ran[-1]) else "verified"
+    if all(unit_slot(state, catalog, u["id"]) is None for u in units):
+        return "built"
+    started = any(r.get("step") != "todo" for u in units for r in (u.get("stages") or {}).values())
+    return "building" if started else "ready"
+
+
+def slice_row(state: dict[str, Any], catalog: list[dict[str, Any]], sid: str) -> dict[str, Any]:
+    """One line of facts about a Slice for ``status`` and ``overview``."""
+    record = find_slice(state, sid)
+    units = slice_units(state, sid)
+    return {
+        "id": sid,
+        "name": record.get("name") or "",
+        "owner": record.get("owner"),
+        "status": slice_status(state, catalog, sid),
+        "units_done": sum(1 for u in units if unit_slot(state, catalog, u["id"]) is None),
+        "units_total": len(units),
+        "open_gaps": len((record.get("ready") or {}).get("gaps") or []),
+    }
+
+
+def slice_line(row: dict[str, Any]) -> str:
+    status = row["status"] + (f", {row['open_gaps']} open gap(s)" if row["open_gaps"] else "")
+    parts = [f"slice {row['id']}", row["name"] or "-", row["owner"] or "-", status]
+    parts.append(f"{row['units_done']}/{row['units_total']} units")
+    return "  " + " | ".join(parts)
+
+
+# --- slices: the readiness checkpoint -----------------------------------------
+
+
+CONSEQUENCE = {
+    "stage": "the Units would build on documents that can still change",
+    "questions": "the Slice's scope is not settled, so its Units may build the wrong thing",
+    "traceability": "a requirement or story may never be built or tested",
+    "decision": "a decision with an unknown status cannot be relied on",
+}
+
+
+def consequence(code: str) -> str:
+    return CONSEQUENCE[re.split(r"[-:]", code)[0]]
+
+
+def unit_for_doc_id(state: dict[str, Any], ident: str) -> Optional[dict[str, Any]]:
+    """The Unit of the state that an Inception id (``U-3``) names. Inception writes ``U-n``
+    and the Unit id in the state is its lower-case form, with or without the hyphen."""
+    key = ident.lower().replace("-", "")
+    return next((u for u in state["units"] if u["id"].lower().replace("-", "") == key), None)
+
+
+def readiness_gaps(
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], sid: str
+) -> tuple[list[dict[str, str]], list[str]]:
+    """What is missing before this Slice's Units start, and the findings that concern only
+    Units of other Slices. Built from the checks that already exist."""
+    gaps: list[dict[str, str]] = []
+
+    def add(code: str, message: str) -> None:
+        gaps.append({"code": code, "message": message})
+
+    for item in catalog:
+        open_stage = item["phase"] in ("discovery", "inception") and not item["per_unit"]
+        if open_stage and not is_done(state["stages"].get(item["id"])):
+            add(f"stage-open:{item['id']}", f"stage {item['id']} is not done or skipped")
+    lint = load_lint_module()
+    questions = bolt / "docs" / "slices" / sid / "inception-questions.md"
+    if lint is not None and questions.is_file():
+        for found in lint.lint_text(questions.read_text(encoding="utf-8", errors="replace"))[
+            "findings"
+        ]:
+            add(f"questions-{found['code']}:{found['question']}", found["message"])
+    informational: list[str] = []
+    module = None if state["scope"] in NO_TRACEABILITY_SCOPES else load_traceability_module()
+    for item in module.check(bolt)["findings"] if module else []:
+        code = f"traceability-{item['code']}:{item.get('id', '')}"
+        unit = (
+            unit_for_doc_id(state, item.get("id", "")) if item.get("id", "")[:2] == "U-" else None
+        )
+        if unit is not None and unit.get("slice") != sid:
+            informational.append(code)
+        else:
+            add(code, item["message"])
+    for item in catalog:
+        if any(Path(a).name in DECISION_FILES for a in item["artifacts"]):
+            for found in decision_status_findings(bolt, state, item, None):
+                add(f"decision-status-unknown:{found['message'].split(':')[0]}", found["message"])
+    return gaps, informational
+
+
+def cmd_slice(
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], args: argparse.Namespace
+) -> dict[str, Any]:
+    if args.add:
+        if not ID_PATTERN.match(args.add):
+            die(EXIT_USAGE, "a slice id is lower-case letters, digits and hyphens.")
+        if any(s["id"] == args.add for s in state["slices"]):
+            raise Fail(
+                EXIT_FINDINGS, f"slice {args.add} already exists; update it with `units --set`."
+            )
+        owner = " ".join((args.owner or "").split()) or None
+        deps = [d for d in (args.depends_on or "").split(",") if d]
+        state["slices"] = [*state["slices"], new_slice(args.add, args.name or "", owner, deps)]
+        check_slice_deps(Path(args.bolt), {s["id"]: s for s in state["slices"]})
+        nxt = commit(bolt, state, catalog)
+        log_event(bolt, "slice", "", "", f"added {args.add}")
+        return {"ok": True, "slice": args.add, "next": nxt}
+    sid = args.ready
+    record = next((s for s in state["slices"] if s["id"] == sid), None)
+    if record is None:
+        raise Fail(EXIT_FINDINGS, f"unknown slice '{sid}'.")
+    if not slice_units(state, sid):
+        raise Fail(EXIT_FINDINGS, f"slice {sid} has no Units; add them with `units --set`.")
+    try:
+        check_slice_deps(Path(args.bolt), {s["id"]: s for s in state["slices"]})
+    except Fail as exc:
+        raise Fail(EXIT_FINDINGS, exc.message) from None
+    gaps, informational = readiness_gaps(bolt, state, catalog, sid)
+    note = " ".join((args.note or "").split())
+    if gaps and not note:
+        raise Fail(
+            EXIT_FINDINGS,
+            f"slice {sid} has {len(gaps)} open gap(s). Close them, or run again with "
+            '--note "<direction>" to go on with the gaps open.',
+            findings=[
+                {
+                    "code": g["code"],
+                    "message": f"{g['message']}. Consequence: {consequence(g['code'])}.",
+                }
+                for g in gaps
+            ],
+        )
+    record["ready"] = {"at": now(), "note": note, "gaps": sorted(g["code"] for g in gaps)}
+    nxt = commit(bolt, state, catalog)
+    text = f"[{sid}] {len(gaps)} open gap(s)" + (f": {note}" if note else "")
+    log_event(bolt, "slice-ready", "", "", text)
+    return {
+        "ok": True,
+        "slice": sid,
+        "ready": record["ready"],
+        "informational": informational,
+        "next": nxt,
+    }
 
 
 def cmd_cancel(
@@ -3353,7 +3589,10 @@ def git_event(args: argparse.Namespace, result: Optional[dict[str, Any]] = None)
     if cmd == "units":
         return f"cancel unit {args.cancel}" if args.cancel else "load the units"
     if cmd == "assign":
-        return f"assign unit {args.unit} to {args.owner}"
+        what = f"unit {args.unit}" if args.unit else f"slice {args.slice}"
+        return f"assign {what} to {args.owner}"
+    if cmd == "slice":
+        return f"add slice {args.add}" if args.add else f"mark slice {args.ready} ready"
     if cmd == "brief":
         return f"write the brief of unit {args.unit}"
     if cmd == "park":
@@ -3378,7 +3617,7 @@ def changes_state(args: argparse.Namespace) -> bool:
         return bool(args.write)
     return args.command in {
         "open", "decide", "step", "gate", "units", "decision-id", "park", "unpark",
-        "jira", "target", "close", "assign",
+        "jira", "target", "close", "assign", "slice",
     }  # fmt: skip
 
 
@@ -3546,9 +3785,21 @@ def build_parser() -> argparse.ArgumentParser:
         "With --request-changes: why (required).",
     )
 
-    sp = add("assign", "Set the owner of a unit.")
-    sp.add_argument("--unit", required=True)
+    sp = add("assign", "Set the owner of a unit or a slice.")
+    sp.add_argument("--unit")
+    sp.add_argument("--slice", help="Set the owner of this slice instead.")
     sp.add_argument("--owner", required=True, help="A person's name, as in their git user.name.")
+
+    sp = add("slice", "Add a slice, or check that one is ready for its units to start.")
+    group = sp.add_mutually_exclusive_group(required=True)
+    group.add_argument("--add", metavar="ID", help="Add a slice.")
+    group.add_argument("--ready", metavar="ID", help="The readiness checkpoint of a slice.")
+    sp.add_argument("--name", help="With --add: the slice's name.")
+    sp.add_argument("--owner", help="With --add: who owns the slice.")
+    sp.add_argument("--depends-on", help="With --add: slice ids it waits for, s1,s2.")
+    sp.add_argument(
+        "--note", help="With --ready: the direction, needed to go on while gaps are open."
+    )
 
     sp = add("brief", "A unit's starting page, from state only; --write saves it in the bolt.")
     sp.add_argument("--unit", required=True)
@@ -3933,6 +4184,8 @@ def run_locked(args: argparse.Namespace) -> dict[str, Any]:
         return cmd_jira(bolt, state, catalog, args)
     if cmd == "assign":
         return cmd_assign(bolt, state, catalog, args)
+    if cmd == "slice":
+        return cmd_slice(bolt, state, catalog, args)
     if cmd in {"decide", "step", "gate"}:
         stage = stage_def(catalog, args.stage)
         suffix, warnings = "", []
