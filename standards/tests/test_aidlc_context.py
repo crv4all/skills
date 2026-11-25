@@ -108,11 +108,11 @@ def test_the_baseline_exists_as_soon_as_work_starts_and_holds_no_text(bolt: Bolt
     start(bolt, "u1")
     base = record(bolt, "u1")["relied_on"]
     assert set(base["ids"]) == {"U-1", "FR-1", "D10", "CT-1"}
-    assert base["decisions_upto"] == 11 and set(base) == {
+    assert base["decisions"] == "10-11" and set(base) == {
         "at",
         "files",
         "ids",
-        "decisions_upto",
+        "decisions",
         "deps",
     }
     assert all(len(h) == 12 for h in base["ids"].values())
@@ -238,16 +238,6 @@ def test_work_with_no_baseline_is_reported_as_missing_never_as_fresh(bolt: Bolt)
     assert bolt.run("status")[1]["context"][0]["baseline"] == "missing"
     assert bolt.run("context", "--unit", "u1", "--note", "start from now")[0] == 0
     assert report(bolt, "u1") == {} and "ids" in record(bolt, "u1")["relied_on"]
-
-
-def test_the_old_flat_baseline_still_loads_and_compares_files_only(bolt: Bolt) -> None:
-    write_docs(bolt)
-    start(bolt, "u1")
-    rewrite(bolt, REQS, "Pay by card", "Pay by cash")
-    state = bolt.state
-    state["units"][0]["stages"][STAGE]["relied_on"] = {"root:docs/presets.md": "0123456789abcdef"}
-    (bolt.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
-    assert report(bolt, "u1") == {"inputs": [{"path": "root:docs/presets.md", "what": "vanished"}]}
 
 
 # --- recording a conclusion, the checkpoint, completed work -------------------------
@@ -391,9 +381,9 @@ def test_the_documents_are_parsed_once_per_command(
     calls: list[int] = []
     original = refs.Bolt.load
 
-    def counted(self: Any) -> None:
+    def counted(self: Any, **kwargs: Any) -> None:
         calls.append(1)
-        original(self)
+        original(self, **kwargs)
 
     monkeypatch.setattr(refs.Bolt, "load", counted)
     for command in ("status", "next"):

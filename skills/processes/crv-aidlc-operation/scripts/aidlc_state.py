@@ -25,7 +25,7 @@ import re
 import subprocess
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NoReturn, Optional, cast
@@ -1595,6 +1595,7 @@ def unit_detail(
         "stage": nxt["stage"],
         "action": nxt["action"],
         "verification_skipped": verification_skipped(catalog, unit.get("stages"), False),
+        "context_note": reliance_note(bolt, state, catalog, unit_id),
     }
 
 
@@ -1652,6 +1653,8 @@ def cmd_status(
             step += " (verification skipped)"
         waits = f" | {waits_sentence(row['blocked_by'])}" if row["blocked_by"] else ""
         lines.append(f"  {row['id']} | {row['owner'] or '-'} | {step}{waits}")
+        if row["context_note"]:
+            lines.append(f"    {row['context_note']}")
     lines.extend(slice_line(row) for row in slice_rows)
     lines.extend(f"Contribution {contribution_line(row)}" for row in contributions)
     for row in changes:
@@ -1679,6 +1682,7 @@ def cmd_status(
             lines[
                 : 21
                 + len(details)
+                + sum(1 for row in details if row["context_note"])
                 + len(changes)
                 + len(completed)
                 + len(slice_rows)
@@ -2126,12 +2130,16 @@ class RefIndex:
     def __init__(self, bolt: Path) -> None:
         self.refs = load_refs_module()
         self.bolt = self.refs.Bolt(bolt) if self.refs else None
+        self.unavailable = self.bolt is None  # no index: nothing may be reported as removed
+        self.unreadable: list[str] = []  # Markdown files left out because they are not UTF-8
         if self.bolt is not None:
             try:
-                self.bolt.load()
+                self.bolt.load(skip_unreadable=True)
+                self.unreadable = list(self.bolt.unreadable)
             except (ValueError, OSError) as exc:
                 LOG.warning("ids are not tracked: %s", exc)
                 self.bolt = self.refs.Bolt(bolt)
+                self.unavailable = True
         self.hashes: dict[str, str] = {}
         self.closures: dict[str, set[str]] = {}
         self._decisions: Optional[list[tuple[int, Any]]] = None
@@ -2141,7 +2149,8 @@ class RefIndex:
 
     def digest(self, ident: str) -> Optional[str]:
         if ident not in self.hashes and (found := self.decl(ident)) is not None:
-            self.hashes[ident] = short_hash(self.refs.section(self.bolt, found))
+            text = self.refs.section(self.bolt, found, True)  # the whole section, not the gloss
+            self.hashes[ident] = short_hash(" ".join(text.split()))  # spacing is not a change
         return self.hashes.get(ident)
 
     def decisions(self) -> list[tuple[int, Any]]:
@@ -2153,16 +2162,42 @@ class RefIndex:
                     self._decisions.append((int(ident[1:]), found))
         return self._decisions
 
+    def citing(self, ident: str, own: set[str]) -> set[str]:
+        """The declarations that cite ``ident`` (a story-map row, a story, a contract): the
+        innermost declaration around each citation. Another Unit's own section that merely
+        names this Unit is not about it."""
+        found: set[str] = set()
+        bolt = self.bolt
+        if bolt is None:
+            return found
+        for ref in bolt.refs.get(ident, []):
+            scan = bolt.files.get(ref.file)
+            around = [
+                d
+                for d in (scan.decls if scan else [])
+                if d.line <= ref.line <= self.refs.section_end(bolt, d, True)
+            ]
+            top = max((d.line for d in around), default=0)
+            for decl in around:
+                other_unit = Path(decl.file).name == "unit-of-work.md" and decl.ident not in own
+                if decl.line == top and not other_unit:
+                    found.add(decl.ident)
+        return found
+
     def closure(self, unit: str) -> set[str]:
-        """Ids a Unit relies on: its own declaration and what its files cite, then what those
-        declarations cite, and what those cite (two hops)."""
+        """Ids a Unit relies on, from three seeds: its own declaration, every declaration that
+        cites its id (the story map, the stories, the contracts) and what its own files cite;
+        then what those declarations cite, and what those cite (two hops)."""
         if unit in self.closures or self.bolt is None:
             return self.closures.setdefault(unit, set())
-        seeds = {
+        own = {
             ident
             for ident, found in self.bolt.winners.items()
             if Path(found.file).name == "unit-of-work.md" and unit_key(ident) == unit_key(unit)
         }
+        seeds = set(own)
+        for ident in own:
+            seeds |= self.citing(ident, own)
         prefix = f"docs/construction/{unit}/"
         for rel, cited in self.bolt.file_refs.items():
             if rel.startswith(prefix):
@@ -2232,7 +2267,34 @@ def deps_hash(state: dict[str, Any], stage: dict[str, Any], key: Optional[str]) 
 
 
 def file_hashes(rows: list[dict[str, Any]]) -> dict[str, Optional[str]]:
-    return {r["path"]: fingerprint(r) if r["exists"] else None for r in rows if r["track"] != "ids"}
+    """Fingerprints of the files a slot tracks as whole files (not by id, not at all)."""
+    return {
+        r["path"]: fingerprint(r) if r["exists"] else None for r in rows if r["track"] == "file"
+    }
+
+
+def compact_numbers(numbers: Iterable[int]) -> str:
+    """``{1,2,3,5}`` as ``"1-3,5"``: the decision numbers a baseline has seen, kept short."""
+    parts: list[str] = []
+    ordered = sorted(set(numbers))
+    start = 0
+    while start < len(ordered):
+        end = start
+        while end + 1 < len(ordered) and ordered[end + 1] == ordered[end] + 1:
+            end += 1
+        first, last = ordered[start], ordered[end]
+        parts.append(str(first) if first == last else f"{first}-{last}")
+        start = end + 1
+    return ",".join(parts)
+
+
+def parse_numbers(text: str) -> set[int]:
+    found: set[int] = set()
+    for part in str(text or "").split(","):
+        low, dash, high = part.strip().partition("-")
+        if low.isdigit() and (not dash or high.isdigit()):
+            found.update(range(int(low), int(high or low) + 1))
+    return found
 
 
 def baseline(
@@ -2247,10 +2309,14 @@ def baseline(
     taken: dict[str, Any] = {"at": now(), "files": file_hashes(rows)}
     if stage["per_unit"] or is_slice_stage(stage):
         index = ref_index(bolt)
+        taken["deps"] = deps_hash(state, stage, key)
+        if index.unavailable:  # never replace what was recorded with an empty index
+            kept = (slot_record(state, stage, key) or {}).get("relied_on") or {}
+            taken.update({k: kept[k] for k in ("ids", "decisions") if k in kept})
+            return taken
         ids = relied_ids(bolt, state, catalog, stage, key, rows)
         taken["ids"] = {i: index.digest(i) for i in sorted(ids)}
-        taken["decisions_upto"] = max((n for n, _ in index.decisions()), default=0)
-        taken["deps"] = deps_hash(state, stage, key)
+        taken["decisions"] = compact_numbers(n for n, _ in index.decisions())
     return taken
 
 
@@ -2291,15 +2357,18 @@ def context_report(
     if record is None or record["decision"] != "execute":
         return {}
     stored = record.get("relied_on")
-    if not stored:
-        return {"baseline": "missing"} if record["step"] != "todo" else {}
-    new_shape = isinstance(stored.get("files"), dict)
-    then_files = stored["files"] if new_shape else stored
+    per_slot = bool(stage["per_unit"] or is_slice_stage(stage))
+    if not stored or not isinstance(stored.get("files"), dict):
+        # only open per-Unit and per-Slice work needs a baseline; Bolt-level stages ran before
+        # baselines existed or had one taken at their checkpoint, and nothing can clear a gap
+        open_slot = per_slot and record["step"] != "todo" and not is_done(record)
+        return {"baseline": "missing"} if open_slot else {}
+    then_files = stored["files"]
     rows = input_rows(bolt, state, catalog, stage, key)[0]
     now_files = file_hashes(rows)
     report: dict[str, Any] = {}
     inputs: list[dict[str, str]] = []
-    for path in sorted(set(then_files) | (set(now_files) if new_shape else set())):
+    for path in sorted(set(then_files) | set(now_files)):
         before, after = then_files.get(path), now_files.get(path)
         if before == after:
             continue
@@ -2307,13 +2376,18 @@ def context_report(
         inputs.append({"path": path, "what": what})
     if inputs:
         report["inputs"] = inputs
-    if not new_shape or not (stage["per_unit"] or is_slice_stage(stage)):
+    if not per_slot:
         return report
     index = ref_index(bolt)
+    if index.unavailable:
+        report["index"] = "unavailable"  # nothing below can be told without it
+        return report
     changed: list[dict[str, Any]] = []
     for ident, before_hash in sorted((stored.get("ids") or {}).items()):
         found = index.decl(ident)
-        if found is None:
+        if found is None and index.unreadable:
+            report["unreadable"] = index.unreadable  # it may be declared in a file not read
+        elif found is None:
             changed.append({"id": ident, "what": "removed"})
         elif index.digest(ident) != before_hash:
             status = (found.cells.get("status") or "").lower()
@@ -2323,8 +2397,12 @@ def context_report(
         report["changed"] = changed
     if stored.get("deps") != deps_hash(state, stage, key):
         report["dependencies"] = True
-    upto = int(stored.get("decisions_upto") or 0)
-    later = [(n, found) for n, found in sorted(index.decisions(), key=lambda p: p[0]) if n > upto]
+    seen = parse_numbers(stored.get("decisions", "")) if "decisions" in stored else None
+    later = [
+        (n, found)
+        for n, found in sorted(index.decisions(), key=lambda p: p[0])
+        if seen is not None and n not in seen  # a number reserved early and written late is new
+    ]
     if later:
         mine = set(stored.get("ids") or {}) | relied_ids(bolt, state, catalog, stage, key, rows)
         related = []
@@ -2350,6 +2428,10 @@ def report_text(report: dict[str, Any]) -> str:
     parts: list[str] = []
     if report.get("baseline"):
         parts.append("no baseline recorded")
+    if report.get("index"):
+        parts.append("index: unavailable (ids cannot be checked)")
+    if report.get("unreadable"):
+        parts.append("not read: " + ", ".join(report["unreadable"]))
     if report.get("changed"):
         parts.append("; ".join(f"{c['id']} {c['what']}" for c in report["changed"]))
     if report.get("new_related"):
@@ -2412,6 +2494,8 @@ def context_of_id(
 ) -> dict[str, Any]:
     """Who relies on an id: Units, Slices and the files that cite it, and how many do not."""
     index = ref_index(bolt)
+    if index.unavailable:
+        raise Fail(EXIT_FINDINGS, "index: unavailable; the Bolt's ids could not be read.")
     found = index.decl(ident)
     if found is None:
         raise Fail(EXIT_FINDINGS, f"{ident} is not declared in this Bolt.")
@@ -2443,6 +2527,35 @@ def context_of_id(
         "cited_in": cited,
         "units_not_relying": len(units) - len(relying),
     }
+
+
+def reliance_note(
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], unit: str
+) -> Optional[str]:
+    """One line when a started Unit relies on no requirement or decision, or on no decision:
+    an empty report would look reassuring, but change detection has nothing to watch."""
+    started = [
+        item
+        for item in catalog
+        if item["per_unit"]
+        and (rec := slot_record(state, item, unit)) is not None
+        and rec["decision"] == "execute"
+        and (rec["step"] != "todo" or rec.get("relied_on"))  # work on it has begun
+    ]
+    index = ref_index(bolt)
+    if not started or index.unavailable:
+        return None
+    relied: set[str] = set()
+    for item in started:
+        relied |= relied_ids(bolt, state, catalog, item, unit)
+    has_req = any(re.search(r"(?:^|:)N?FR-\d+$", i) for i in relied)
+    has_dec = any(re.search(r"(?:^|:)D\d+$", i) for i in relied)
+    tail = "; change detection cannot help it"
+    if not has_req and not has_dec:
+        return f"{unit} relies on no recorded requirement or decision{tail}"
+    if not has_dec and index.decisions():
+        return f"{unit} relies on no recorded decision{tail}"
+    return None
 
 
 def cmd_context(
@@ -2481,6 +2594,8 @@ def cmd_context(
         "reports": reports,
         "relies_on": relies_on_rows(bolt, state, catalog, group),
     }
+    if args.unit and (line := reliance_note(bolt, state, catalog, key)):
+        result["note"] = line
     if args.note is None:
         return result
     note = " ".join(args.note.split())
@@ -4995,12 +5110,15 @@ def run_locked(args: argparse.Namespace) -> dict[str, Any]:
             return cmd_gate(bolt, state, catalog, stage, key, args)
         require_story(state, stage, args.unit)
         suffix, warnings = stage_owner(bolt, state, stage, key)
+        changed_since: dict[str, Any] = {}
         if cmd == "decide":
             cmd_decide(state, stage, key, args.decision, args.reason)
             event, note = "decide", f"{args.decision}: {args.reason}"
         else:
             cmd_step(state, stage, key, args.to)
-            if args.to == "produced":
+            if args.to == "produced":  # tell what moved before the baseline takes it in
+                changed_since = context_report(bolt, state, catalog, stage, key)
+                changed_since.pop("baseline", None)
                 get_record(state, stage, key)["relied_on"] = baseline(
                     bolt, state, catalog, stage, key
                 )
@@ -5015,6 +5133,16 @@ def run_locked(args: argparse.Namespace) -> dict[str, Any]:
             **subject(stage, key),
             "next": nxt,
         }
+        if changed_since:
+            done["context"] = changed_since
+            log_event(
+                bolt,
+                "context",
+                stage["id"],
+                "",
+                f"{prefix}changed before produced: {report_text(changed_since)}",
+                args.unit or "",
+            )
         if warnings:
             done["warnings"] = warnings
         return done

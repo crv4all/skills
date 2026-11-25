@@ -199,6 +199,7 @@ class Bolt:
         self.file_refs: dict[str, list[Ref]] = {}
         self.unresolved: list[dict[str, Any]] = []
         self.skipped: list[Skipped] = []
+        self.unreadable: list[str] = []  # files skipped by ``load(skip_unreadable=True)``
         self.digest_last: list[str] = []
         self._outline: Optional[list[str]] = None
         self.config_found = False
@@ -293,7 +294,9 @@ class Bolt:
         unit = self.unit_of(rel)
         return (unit and self.winners.get(f"{unit}:{ident}")) or self.winners.get(ident)
 
-    def load(self) -> None:
+    def load(self, skip_unreadable: bool = False) -> None:
+        """Parse every Markdown file. A file that is not UTF-8 stops the load, or with
+        ``skip_unreadable`` is named in ``unreadable`` and left out."""
         self.load_config()
         self.load_units()
         for path in sorted(self.root.rglob("*.md")):
@@ -303,7 +306,11 @@ class Bolt:
             try:
                 raw = path.read_text(encoding="utf-8")
             except UnicodeDecodeError as exc:
-                raise ValueError(f"{path}: not valid UTF-8 text ({exc.reason})") from exc
+                if not skip_unreadable:
+                    raise ValueError(f"{path}: not valid UTF-8 text ({exc.reason})") from exc
+                self.unreadable.append(rel.as_posix())
+                LOG.warning("%s: not valid UTF-8 text, left out of the ids", rel.as_posix())
+                continue
             if rel.name == GENERATED_NAME or INDEX_MARK in raw.split("\n", 1)[0]:
                 continue
             if rel == Path("log.md"):
@@ -856,8 +863,9 @@ def write_line(text: str) -> None:
     sys.stdout.write(text + "\n")
 
 
-def section_end(bolt: Bolt, decl: Decl) -> int:
-    """The last line (1-based) of a declaration: its row, or its heading's section."""
+def section_end(bolt: Bolt, decl: Decl, full: bool = False) -> int:
+    """The last line (1-based) of a declaration: its row, or its heading's section. The
+    section is cut at 40 lines for display; ``full`` follows it to the next heading."""
     if decl.kind == "row":
         return decl.line
     lines = bolt.files[decl.file].lines
@@ -869,19 +877,19 @@ def section_end(bolt: Bolt, decl: Decl) -> int:
         if heading and len(heading.group(1)) <= decl.level:
             break
         last += 1
-        if last - decl.line + 1 >= 40:
+        if not full and last - decl.line + 1 >= 40:
             break
     return last
 
 
-def section(bolt: Bolt, decl: Decl) -> str:
+def section(bolt: Bolt, decl: Decl, full: bool = False) -> str:
     lines = bolt.files[decl.file].lines
-    return "\n".join(lines[decl.line - 1 : section_end(bolt, decl)]).rstrip("\n")
+    return "\n".join(lines[decl.line - 1 : section_end(bolt, decl, full)]).rstrip("\n")
 
 
 def cited_in(bolt: Bolt, decl: Decl) -> list[str]:
     """The declared ids cited inside one declaration, as the keys of ``bolt.winners``."""
-    last = section_end(bolt, decl)
+    last = section_end(bolt, decl, True)
     found: list[str] = []
     for ref in bolt.file_refs.get(decl.file, []):
         if ref.kind == "id" and decl.line <= ref.line <= last:

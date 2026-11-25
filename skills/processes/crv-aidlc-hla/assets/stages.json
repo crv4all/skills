@@ -516,6 +516,12 @@
           "track": "ids"
         },
         {
+          "path": "docs/inception/user-stories/stories.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
           "path": "architecture/hla-decisions.md",
           "mode": "digest",
           "optional": true,
@@ -578,6 +584,12 @@
         {
           "path": "root:codekb/<repo>/technology-stack.md",
           "mode": "full"
+        },
+        {
+          "path": "docs/inception/user-stories/stories.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
         },
         {
           "path": "architecture/hla-decisions.md",
@@ -667,6 +679,12 @@
           "track": "ids"
         },
         {
+          "path": "docs/inception/user-stories/stories.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
           "path": "architecture/hla-decisions.md",
           "mode": "digest",
           "optional": true,
@@ -735,6 +753,12 @@
         {
           "path": "docs/inception/contract-design/contract-summary.md",
           "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/user-stories/stories.md",
+          "mode": "digest",
+          "optional": true,
           "track": "ids"
         },
         {
@@ -831,6 +855,12 @@
           "mode": "full"
         },
         {
+          "path": "docs/inception/user-stories/stories.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
           "path": "architecture/hla-decisions.md",
           "mode": "digest",
           "optional": true,
@@ -887,6 +917,12 @@
         {
           "path": "docs/inception/delivery-planning/slice-plan.md",
           "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/user-stories/stories.md",
+          "mode": "digest",
+          "optional": true,
           "track": "ids"
         },
         {
@@ -947,14 +983,34 @@
           "track": "ids"
         },
         {
+          "path": "architecture/hla-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/tdd-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/domain-design/decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
           "path": "architecture/hla.md",
           "mode": "digest",
-          "optional": true
+          "optional": true,
+          "track": "none"
         },
         {
           "path": "architecture/tdd.md",
           "mode": "digest",
-          "optional": true
+          "optional": true,
+          "track": "none"
         },
         {
           "path": "root:codekb/<repo>/technology-stack.md",

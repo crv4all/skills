@@ -107,7 +107,7 @@ Two engineers planning two Slices at once edit the same documents. After `sync`,
 
 ## Cross-stage rules
 
-- Read the HLA's `## Digest` and `architecture/hla-decisions.md`. Never re-ask what a decision settles; cite it as `D<n>`. Anything the requirements need that departs from the HLA is raised as an HLA change to the engineer.
+- Read the HLA's `## Digest` and `architecture/hla-decisions.md`. Never re-ask what a decision settles; cite it as `D<n>` in the requirement, component, Unit or contract that follows it (`Source: D12`). That citation is the only way a later change to the decision reaches the Unit's engineer. Anything the requirements need that departs from the HLA is raised as an HLA change to the engineer.
 - Technology choices fixed by the HLA or an accepted ADR are cited, never re-decided.
 - This skill chooses no Construction stages. That is decided per Unit when its construction starts.
 - A document that was not read is named in the question file under `## Already answered`, with the reason.

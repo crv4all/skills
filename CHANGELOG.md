@@ -21,6 +21,22 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   verdict lines of any kind are ambiguous. `gate` warns when the Unit or Slice belongs to
   someone else, as `step` and `decide` do, and the stage texts no longer mention an
   approver.
+- **A Unit's reliance now reaches its stories, requirements and decisions.** In the
+  documents Inception writes, the story map and the stories cite the Unit and the Unit's
+  own section cites only components and contracts, so a changed story, requirement or
+  decision was reported to nobody. The relied-on set now starts from the Unit's own
+  declaration, every declaration that cites the Unit (story-map rows, stories, contracts)
+  and what its own files cite, then follows two hops; per-Unit stages and Build and Test
+  also read `stories.md`. A started Unit that relies on nothing, or on no decision, says
+  so in one line in `context --unit` and `status`. A Markdown file that is not UTF-8 is
+  skipped with a warning instead of dropping the whole index; if the index cannot be built
+  the report says `index: unavailable` and the stored baseline is kept. `step --to
+  produced` returns and logs what changed before it refreshes the baseline. Decisions are
+  tracked as a set of numbers, so one reserved early and written late is seen. Spacing and
+  column padding no longer count as a change, a long section is hashed whole, a missing
+  baseline is reported only for open per-Unit and per-Slice work, and `deployment-pipeline`
+  reads `hla.md` and `tdd.md` without tracking them as files (it tracks the decision
+  records by id).
 
 ### Added
 

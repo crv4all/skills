@@ -13,13 +13,13 @@ metadata:
 
 # Construction
 
-One Unit at a time, then Build and Test per Slice. Code lives in the target repo; plans and records in the Bolt.
+One Unit at a time, then Build and Test per Slice. Code lives in the target repo, records in the Bolt.
 
 ## Execution
 
 **Delegate to a subagent. Do not run this in the main session.**
 
-**Model tier: `balanced`.** Design and code need solid reasoning, not the top tier; Build and Test can use economy. State it, then work. If it or subagents are unavailable, say so and run the session's model.
+**Model tier: `balanced`.** Design and code need solid reasoning, not the top tier; Build and Test can use economy. State it, then work; if it or subagents are unavailable, say so and use the session's model.
 
 Read `references/core-rules.md` once per session, then ONLY the current stage's reference.
 
@@ -27,7 +27,7 @@ Read `references/core-rules.md` once per session, then ONLY the current stage's 
 
 1. `aidlc_state.py next --bolt <p> --unit <u>`: stage and what it waits for. Slice not ready: `slice --bolt <p> --ready <slice>`, explain its gaps. Someone else owns the Unit: say so in one line, carry on.
 2. Read its `context` before editing.
-3. Per design stage, recommend from the Unit's `kind` and the stage's run condition: `decide --bolt <p> --stage <id> --unit <u> --decision execute|skip --reason "..."`. Cite what the HLA, TDD or an ADR fixed (`D<n>`), never re-ask. Code Generation always runs. Unit ids: `decision-id --unit <u>` (`<u>:D<n>`).
+3. Per design stage, recommend from the Unit's `kind` and the stage's run condition: `decide --bolt <p> --stage <id> --unit <u> --decision execute|skip --reason "..."`. Cite what the HLA, TDD or an ADR fixed (`D<n>`) in each design, never re-ask: that citation carries a later change of the decision to this Unit. Code Generation always runs. Unit ids: `decision-id --unit <u>` (`<u>:D<n>`).
 
 | Kind | Design stages that normally run |
 | --- | --- |
@@ -51,7 +51,7 @@ Per Unit in `docs/construction/<unit>/<stage>/`: functional-design, nfr-requirem
 
 ## Verdict
 
-`code-summary.md` (Unit) and `test-results.md` (Slice) hold one line: `Verdict: pass`, `Verdict: fail - <why>` or `Verdict: not-run - <why>`. Run the tests first; never write `pass` for a red or unrun run. `fail` is never passed: fix, rerun; never relabel it `not-run`. `not-run` only on the engineer's word, as the gate `--note`; it shows as not verified. A started verification is finished by a passing run or reopened (`gate --request-changes`), never skipped; skipped before it starts it shows as `verification skipped`. Unit tests, Slice integration and acceptance, and CI/CD differ; add no Bolt-wide step.
+`code-summary.md` (Unit) and `test-results.md` (Slice) hold one line: `Verdict: pass`, `Verdict: fail - <why>` or `Verdict: not-run - <why>`. Run the tests first; never write `pass` for a red or unrun run. `fail` is never passed: fix, rerun; never relabel it `not-run`. `not-run` only on the engineer's word, as the gate `--note`; it shows as not verified. A started verification is finished by a passing run or reopened (`gate --request-changes`), never skipped; skipped before it starts it shows as `verification skipped`.
 
 ## When a step fails
 

@@ -1051,7 +1051,8 @@ def test_a_changed_input_is_reported_by_the_gate_and_never_refuses(bolt: Bolt) -
     assert bolt.run("status")[1]["context"] == []
 
 
-def test_a_record_without_a_baseline_is_reported_as_missing_and_still_passes(bolt: Bolt) -> None:
+def test_a_bolt_level_record_without_a_baseline_is_silent_and_still_passes(bolt: Bolt) -> None:
+    """Stages that ran before baselines existed cannot be given one, so they say nothing."""
     bolt.write("knowledge/_digest.md", digest())
     reach_produced(bolt)
     ra_files(bolt)
@@ -1059,9 +1060,10 @@ def test_a_record_without_a_baseline_is_reported_as_missing_and_still_passes(bol
     del state["stages"]["requirements-analysis"]["relied_on"]
     (bolt.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
     bolt.write("knowledge/_digest.md", digest(3))
-    assert bolt.run("next")[1]["context"] == {"baseline": "missing"}
+    assert "context" not in bolt.run("next")[1]
+    assert bolt.run("status")[1]["context"] == []
     code, data, _ = bolt.run("gate", "--stage", "requirements-analysis", "--approve", "--by", "Ada")
-    assert code == 0 and data["context"] == {"baseline": "missing"}
+    assert code == 0 and "context" not in data
     assert "context" not in bolt.run("next")[1]
 
 
