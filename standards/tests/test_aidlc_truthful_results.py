@@ -122,3 +122,16 @@ def test_a_context_report_says_so_when_the_remote_cannot_be_reached(repos: Repos
     assert code == 0 and "reports" in out, out
     assert any("last successful fetch" in w for w in out["warnings"])
     assert git(repos.b, "rev-parse", "HEAD") == head
+
+
+def test_work_without_any_remote_is_reported_as_only_on_this_machine(repos: Repos) -> None:
+    bolt = base.split_demo(repos)
+    git(repos.a, "remote", "remove", "origin")
+    code, out, _ = script("park", "--bolt", str(bolt), "--note", "local")
+    assert code == 0, out
+    assert out["git"]["local_only"] is True and out["git"]["pushed"] is False
+    assert any("only on this machine" in w for w in out["git"]["warnings"])
+    code, _, raw = script("status", "--bolt", str(bolt), "--format", "text")
+    assert code == 0 and "exists only on this machine" in raw, raw
+    _, _, raw = script("overview", "--root", str(repos.a), "--format", "text")
+    assert "exists only on this machine" in raw, raw

@@ -1977,6 +1977,15 @@ def unshared_commits(root: Path) -> Optional[int]:
     return count_commits(ctx, f"{ref}..HEAD") if ctx and ref else None
 
 
+def is_local_only(root: Path) -> bool:
+    """True when the planning repository has no remote at all."""
+    try:
+        ctx, _why = open_git(root.resolve())
+    except Fail:
+        return False
+    return bool(ctx) and ctx.remote not in run_git(ctx.top, "remote").stdout.split()
+
+
 def cmd_overview(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[str, Any]:
     """Every Bolt of a planning repository in one read-only roll-up."""
     root = Path(args.root)
@@ -1995,11 +2004,14 @@ def cmd_overview(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dic
         logs.extend(log_rows(bolt))
     result: dict[str, Any] = {"ok": True, "root": str(root.resolve()), "bolts": rows}
     result["unshared"] = unshared_commits(root)
+    result["local_only"] = is_local_only(root)
     if args.log:
         result["log"] = sorted(logs, key=lambda r: r["time"])[-args.log :]
     if args.format == "text":
         text = overview_text(rows)
-        if unshared_line(result["unshared"]):
+        if result["local_only"]:
+            text = f"{LOCAL_ONLY_LINE}\n" + text
+        elif unshared_line(result["unshared"]):
             text = f"{unshared_line(result['unshared'])}\n" + text
         for entry in result.get("log", []):
             unit = f" [{entry['unit']}]" if entry["unit"] else ""
@@ -4576,7 +4588,11 @@ def push_branch(
         return
     remotes = run_git(ctx.top, "remote").stdout.split()
     if ctx.remote not in remotes:
-        warnings.append(f"push: skipped, no remote '{ctx.remote}'")
+        result["local_only"] = True
+        warnings.append(
+            f"push: skipped, no remote '{ctx.remote}': this work exists only on this machine "
+            "and is not shared with anyone"
+        )
         return
     if run_git(ctx.top, "rev-parse", "--verify", "-q", "HEAD").returncode != 0:
         return  # nothing committed yet
@@ -4639,6 +4655,7 @@ def sync_git(
         "commit": None,
         "pushed": False,
         "not_shared": False,
+        "local_only": False,
         "warnings": [],
         "uncommitted": [],
         "uncommitted_count": 0,
@@ -4775,6 +4792,9 @@ def upstream_ref(ctx: GitCtx) -> Optional[str]:
     return ref if run_git(ctx.top, "rev-parse", "--verify", "-q", ref).returncode == 0 else None
 
 
+LOCAL_ONLY_LINE = "no shared remote: this work exists only on this machine and is not shared"
+
+
 def unshared_line(count: Optional[int]) -> str:
     """One line for the local commits the team does not have yet; empty when there is none."""
     return f"{count} change(s) saved here, not shared yet" if count else ""
@@ -4802,6 +4822,7 @@ def git_status_block(bolt: Path) -> Optional[dict[str, Any]]:
         block["ahead"] = count_commits(ctx, f"{ref}..HEAD")
         block["behind"] = count_commits(ctx, f"HEAD..{ref}")
     block["unshared"] = block["ahead"]
+    block["local_only"] = ctx.remote not in run_git(ctx.top, "remote").stdout.split()
     mine = ctx.prefix + rel + "/"
     block["uncommitted"] = sum(1 for p in changed_paths(ctx) if p.startswith(mine))
     if block["uncommitted"]:
@@ -4821,7 +4842,9 @@ def git_status_line(block: dict[str, Any]) -> str:
     line = f"Git: {where}, {sync}, {block['uncommitted']} uncommitted in this bolt"
     if block["uncommitted"]:
         line += '; commit them now with `sync --bolt <p> -m "<what changed>"`'
-    if unshared_line(block.get("unshared")):
+    if block.get("local_only"):
+        line += f"\n{LOCAL_ONLY_LINE}"
+    elif unshared_line(block.get("unshared")):
         line += f"\n{unshared_line(block['unshared'])}"
     return line
 

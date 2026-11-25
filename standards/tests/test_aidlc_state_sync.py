@@ -276,15 +276,17 @@ def test_a_push_that_did_not_happen_says_so_and_status_counts_it(
     )
 
 
-def test_without_an_upstream_nothing_is_said_about_unshared_work(tmp_path: Path) -> None:
+def test_without_a_remote_no_count_is_given_and_the_work_is_called_local(tmp_path: Path) -> None:
     subprocess.run(["git", "init", "-q", "-b", "main", str(tmp_path)], check=True)
     assert open_demo(tmp_path)[0] == 0
     text = script("status", "--bolt", str(bolt_of(tmp_path)), "--format", "text")[2]
-    assert "saved here" not in text and "not shared" not in text
-    assert script("status", "--bolt", str(bolt_of(tmp_path)))[1]["git"]["unshared"] is None
+    assert "saved here" not in text and "exists only on this machine" in text
+    block = script("status", "--bolt", str(bolt_of(tmp_path)))[1]["git"]
+    assert block["unshared"] is None and block["local_only"] is True
     text = script("overview", "--root", str(tmp_path), "--format", "text")[2]
-    assert "saved here" not in text
-    assert script("overview", "--root", str(tmp_path))[1]["unshared"] is None
+    assert "saved here" not in text and "exists only on this machine" in text
+    result = script("overview", "--root", str(tmp_path))[1]
+    assert result["unshared"] is None and result["local_only"] is True
 
 
 def test_an_unconfirmed_decision_reservation_hands_out_no_ids(repos: Repos) -> None:
