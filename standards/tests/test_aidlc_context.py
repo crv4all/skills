@@ -164,6 +164,63 @@ def test_a_changed_contract_cited_by_the_units_own_files_is_reported(bolt: Bolt)
     assert report(bolt, "u2") == {}
 
 
+CONTRACT_SPEC = """# Contract summary
+
+## Digest
+- two contracts
+
+## Contracts
+
+| # | Provider | Consumer | Mechanism |
+| --- | --- | --- | --- |
+| CT-1 | export-svc | reporter | event on the bus |
+| CT-2 | export-svc | web | REST |
+
+### Contract CT-1 ExportRequested
+
+The export service publishes it.
+
+```yaml
+event: ExportRequested
+delivery: at-most-once
+```
+
+### Contract CT-2 Export API
+
+Mirrors the style of CT-1.
+
+```yaml
+openapi: 3.0.3
+path: /v1/exports
+```
+"""
+
+
+def test_a_change_inside_a_contracts_section_is_reported_to_its_consumer_only(
+    bolt: Bolt,
+) -> None:
+    write_docs(bolt, **{CONTRACTS: CONTRACT_SPEC})
+    start(bolt, "u1", "u2")
+    assert report(bolt, "u1") == {}
+    rewrite(bolt, CONTRACTS, "delivery: at-most-once", "delivery: at-least-once")
+    assert changed(report(bolt, "u1")) == {"CT-1": "changed"}
+    assert report(bolt, "u2") == {}
+
+
+def test_a_change_in_another_contracts_section_is_not_reported(bolt: Bolt) -> None:
+    write_docs(bolt, **{CONTRACTS: CONTRACT_SPEC})
+    start(bolt, "u1", "u2")
+    rewrite(bolt, CONTRACTS, "path: /v1/exports", "path: /v2/exports")
+    assert report(bolt, "u1") == {} and report(bolt, "u2") == {}
+
+
+def test_a_whitespace_only_change_in_a_contracts_section_reports_nothing(bolt: Bolt) -> None:
+    write_docs(bolt, **{CONTRACTS: CONTRACT_SPEC})
+    start(bolt, "u1", "u2")
+    rewrite(bolt, CONTRACTS, "delivery: at-most-once", "delivery:   at-most-once  ")
+    assert report(bolt, "u1") == {}
+
+
 def test_a_decision_reached_through_the_units_declaration_is_reported(bolt: Bolt) -> None:
     write_docs(bolt)
     start(bolt, "u1", "u2")

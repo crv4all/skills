@@ -31,6 +31,10 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the entry and Construction skills run `sync` first when work resumes after a break.
 - **A digest ends at the next heading, code fence or table row**, so a table that follows
   it is no longer counted as digest lines (`digest-too-long`).
+- **A change to a contract's specification is reported.** The hash of a relied-on id now
+  covers every declaration of it: its table row and each heading section that names it
+  (`### Contract CT-1 Name`, `### U-1 Name`), fenced blocks included. A Bolt's recorded
+  baselines for such ids report one change after this update.
 
 - **A failed verification can no longer be skipped into done, and the verdict line
   cannot hide.** `decide --decision skip` is refused once a stage that records a

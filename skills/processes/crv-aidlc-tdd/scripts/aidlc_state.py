@@ -2201,15 +2201,43 @@ class RefIndex:
         self.hashes: dict[str, str] = {}
         self.closures: dict[str, set[str]] = {}
         self._decisions: Optional[list[tuple[int, Any]]] = None
+        self._headings: Optional[dict[str, list[Any]]] = None
 
     def decl(self, ident: str) -> Any:
         return self.bolt.winners.get(ident) if self.bolt is not None else None
 
     def digest(self, ident: str) -> Optional[str]:
-        if ident not in self.hashes and (found := self.decl(ident)) is not None:
-            text = self.refs.section(self.bolt, found, True)  # the whole section, not the gloss
+        if ident not in self.hashes and self.decl(ident) is not None:
+            text = "\n".join(self.refs.section(self.bolt, d, True) for d in self.spans(ident))
             self.hashes[ident] = short_hash(" ".join(text.split()))  # spacing is not a change
         return self.hashes.get(ident)
+
+    def spans(self, ident: str) -> list[Any]:
+        """Every declaration of ``ident``, whole: each table row and each heading section
+        that names it (``### Contract CT-1 Name`` too), never a section that only cites it."""
+        assert self.bolt is not None
+        found = {(d.file, d.line): d for d in self.bolt.decls.get(ident, [])}
+        for decl in self.headings().get(ident.rpartition(":")[2], []):
+            found.setdefault((decl.file, decl.line), decl)
+        return [found[key] for key in sorted(found)]
+
+    def headings(self) -> dict[str, list[Any]]:
+        """Headings by each id they name anywhere in their text, read once per command."""
+        if self._headings is None:
+            assert self.bolt is not None
+            self._headings = {}
+            for rel, scan in self.bolt.files.items():
+                fence = False
+                for number, line in enumerate(scan.lines, 1):
+                    if self.refs.FENCE_RE.match(line):
+                        fence = not fence
+                    head = None if fence else self.refs.HEADING_RE.match(line)
+                    if head is None:
+                        continue
+                    decl = self.refs.Decl("", rel, number, "heading", "", len(head.group(1)))
+                    for token in dict.fromkeys(m.group(1) for m in self.refs.ID_RE.finditer(line)):
+                        self._headings.setdefault(token, []).append(decl)
+        return self._headings
 
     def decisions(self) -> list[tuple[int, Any]]:
         """The Bolt-level ``D<n>`` declared in the decision records, with their numbers."""
