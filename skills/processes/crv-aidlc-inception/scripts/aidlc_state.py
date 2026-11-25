@@ -61,7 +61,7 @@ EPILOG = """commands:
                                          | --ready S [--note "direction"]
   brief       a unit's starting page     --bolt P --unit U [--write]
   context     what changed under a unit  --bolt P --unit U | --slice S [--stage X]
-              or slice, what it relies   | --id D63
+              or slice, what it relies   [--note "conclusion"] | --id D63
               on, who relies on an id
   decision-id reserve decision ids       --bolt P [--count n]
   codekb-status is the code knowledge fresh --bolt P
@@ -2293,11 +2293,11 @@ def context_of_id(
 def cmd_context(
     bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], args: argparse.Namespace
 ) -> dict[str, Any]:
-    """What changed under a Unit or Slice, and what it relies on; ``--id`` says who relies on
-    one id."""
+    """What changed under a Unit or Slice, and what it relies on; ``--note`` records the
+    conclusion and refreshes the baseline. ``--id`` says who relies on one id."""
     if args.id:
-        if args.unit or args.slice or args.stage:
-            die(EXIT_USAGE, "--id stands alone: drop --unit, --slice and --stage.")
+        if args.unit or args.slice or args.stage or args.note:
+            die(EXIT_USAGE, "--id stands alone: drop --unit, --slice, --stage and --note.")
         return context_of_id(bolt, state, catalog, args.id)
     if bool(args.unit) == bool(args.slice):
         die(EXIT_USAGE, "give --unit or --slice (or --id ID).")
@@ -2326,6 +2326,28 @@ def cmd_context(
         "reports": reports,
         "relies_on": relies_on_rows(bolt, state, catalog, group),
     }
+    if args.note is None:
+        return result
+    note = " ".join(args.note.split())
+    if not note:
+        die(EXIT_USAGE, "--note must not be blank.")
+    suffix, warnings = guard_owner(bolt, state, args.unit)
+    for row in reports:
+        item = stage_def(catalog, row["stage"])
+        get_record(state, item, key)["relied_on"] = baseline(bolt, state, catalog, item, key)
+    commit(bolt, state, catalog)
+    seen = "; ".join(f"{r['stage']}: {report_text(r)}" for r in reports) or "nothing reported"
+    log_event(
+        bolt,
+        "context",
+        args.stage or "",
+        "",
+        f"[{key}] {note} (reported: {seen}){suffix}",
+        args.unit or "",
+    )
+    result["noted"] = True
+    if warnings:
+        result["warnings"] = warnings
     return result
 
 
@@ -4150,6 +4172,9 @@ def git_event(args: argparse.Namespace, result: Optional[dict[str, Any]] = None)
         return f"add slice {args.add}" if args.add else f"mark slice {args.ready} ready"
     if cmd == "brief":
         return f"write the brief of unit {args.unit}"
+    if cmd == "context":
+        what = f"unit {args.unit}" if args.unit else f"slice {args.slice}"
+        return f"record a context conclusion on {what}"
     if cmd == "park":
         return "park the bolt"
     if cmd == "unpark":
@@ -4170,6 +4195,8 @@ def changes_state(args: argparse.Namespace) -> bool:
         return bool(args.extra)
     if args.command == "brief":
         return bool(args.write)
+    if args.command == "context":
+        return args.note is not None
     return args.command in {
         "open", "decide", "step", "gate", "units", "decision-id", "park", "unpark",
         "jira", "target", "close", "assign", "slice",
@@ -4368,6 +4395,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--slice")
     sp.add_argument("--stage", help="Only this stage of the unit or slice.")
     sp.add_argument("--id", help="Instead: who relies on this id (a unit, slice and file list).")
+    sp.add_argument(
+        "--note", help="Record your conclusion in the log; it refreshes what was reported."
+    )
 
     sp = add("brief", "A unit's starting page, from state only; --write saves it in the bolt.")
     sp.add_argument("--unit", required=True)
@@ -4741,7 +4771,7 @@ def run_locked(args: argparse.Namespace) -> dict[str, Any]:
         return cmd_next(bolt, state, catalog, args)
     if cmd == "brief":
         return cmd_brief(bolt, state, catalog, args)
-    if cmd == "context":
+    if cmd == "context" and (args.id or args.note is None):
         return cmd_context(bolt, state, catalog, args)
     if cmd == "inputs":
         return cmd_inputs(bolt, state, catalog, args.stage, args.unit, args.slice)
@@ -4757,6 +4787,8 @@ def run_locked(args: argparse.Namespace) -> dict[str, Any]:
         return cmd_assign(bolt, state, catalog, args)
     if cmd == "slice":
         return cmd_slice(bolt, state, catalog, args)
+    if cmd == "context":
+        return cmd_context(bolt, state, catalog, args)
     if cmd in {"decide", "step", "gate"}:
         stage = stage_def(catalog, args.stage)
         key = scope_key(state, stage, args.unit, args.slice)

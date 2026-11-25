@@ -213,6 +213,11 @@ def test_an_input_that_appears_or_vanishes_is_reported(bolt: Bolt) -> None:
     presets.parent.mkdir(parents=True, exist_ok=True)
     presets.write_text("one rule\n", encoding="utf-8")
     assert report(bolt, "u1")["inputs"] == [{"path": "root:docs/presets.md", "what": "appeared"}]
+    assert bolt.run("context", "--unit", "u1", "--note", "read it")[0] == 0
+    presets.write_text("another rule\n", encoding="utf-8")
+    assert report(bolt, "u1")["inputs"][0]["what"] == "changed"
+    presets.unlink()
+    assert report(bolt, "u1")["inputs"][0]["what"] == "vanished"
 
 
 def test_a_changed_dependency_list_is_reported(bolt: Bolt) -> None:
@@ -231,6 +236,8 @@ def test_work_with_no_baseline_is_reported_as_missing_never_as_fresh(bolt: Bolt)
     (bolt.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
     assert report(bolt, "u1") == {"baseline": "missing"}
     assert bolt.run("status")[1]["context"][0]["baseline"] == "missing"
+    assert bolt.run("context", "--unit", "u1", "--note", "start from now")[0] == 0
+    assert report(bolt, "u1") == {} and "ids" in record(bolt, "u1")["relied_on"]
 
 
 def test_the_old_flat_baseline_still_loads_and_compares_files_only(bolt: Bolt) -> None:
@@ -244,6 +251,18 @@ def test_the_old_flat_baseline_still_loads_and_compares_files_only(bolt: Bolt) -
 
 
 # --- recording a conclusion, the checkpoint, completed work -------------------------
+
+
+def test_a_note_logs_the_conclusion_and_clears_the_report(bolt: Bolt) -> None:
+    write_docs(bolt)
+    start(bolt, "u1")
+    rewrite(bolt, DECISIONS, "Use queues", "Use streams")
+    code, data, _ = bolt.run("context", "--unit", "u1", "--note", "streams change nothing for us")
+    assert code == 0 and data["noted"] and changed(data["reports"][0]) == {"D10": "changed"}
+    assert report(bolt, "u1") == {}
+    line = next(ln for ln in bolt.log_lines() if " | context | " in ln)
+    assert "streams change nothing" in line and "D10 changed" in line and "[u1]" in line
+    assert bolt.run("context", "--unit", "u1", "--note", " ")[0] == 2
 
 
 def test_the_checkpoint_reports_changed_context_and_never_refuses(bolt: Bolt) -> None:

@@ -12,6 +12,28 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Work is told about the changes that matter to it, and only those.**
+  Change detection used one hash per input file, taken when a stage was produced
+  or passed. A second Slice adding rows to a shared document flagged every Unit of
+  the first Slice, while a value changed below a document's digest, an input that
+  appeared later or a changed dependency list went unnoticed, and the architecture
+  decisions were not an input of any Unit stage. Now a Unit (or Slice) relies on
+  the ids it cites, and on the ids those declarations cite, two hops out. The
+  baseline is taken when work starts and keeps hashes and ids only, never text.
+  `stages.json` inputs may say `"track": "ids"`; the architecture and Inception
+  decision records are now optional inputs of every per-Unit stage and of Build and
+  Test. `next`, `brief`, `status`, `overview` and the checkpoint report, by id, what
+  changed, was superseded or removed; later decisions that cite something the work
+  relies on; later Bolt-wide constraints; inputs that changed, appeared or vanished;
+  a changed dependency list; and a missing baseline. An addition that touches none
+  of these reports nothing. Finished work that relied on something that changed is
+  listed apart. The new `context` command shows the report and what a Unit or Slice
+  relies on (`--unit` or `--slice`), who relies on one id (`--id D63`), and records
+  a conclusion with `--note`, the one way a report clears. Nothing waits for it and
+  the checkpoint never refuses on it. `aidlc_refs.py` gains `cited_in` and keeps a
+  table row's cells on the declaration; `status` and `overview` no longer carry
+  `stale` rows.
+
 - **The readiness check warns when logs have no `merge=union` rule.**
   `check_prerequisites.py` reports, as a warning, a planning repo whose
   `.gitattributes` does not merge `bolts/*/log.md` and `bolts/*/units/*/log.md`
