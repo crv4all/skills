@@ -3268,6 +3268,13 @@ def cmd_gate(
         record["approved_at"] = None
         record["approved_by"] = None
         record.pop("verdict", None)
+        if unit and record["decision"] != "skip":
+            owner_unit = next((u for u in state["units"] if u["id"] == unit), None)
+            reopened = reopen_slice_verification(
+                bolt, state, (owner_unit or {}).get("slice"), f"unit {unit} was reopened"
+            )
+            if reopened:
+                warnings.append(reopened)
         nxt = commit(bolt, state, catalog)
         log_event(bolt, "gate-request-changes", label, who, note + suffix, unit_log)
         changed: dict[str, Any] = {
@@ -3578,9 +3585,16 @@ def cmd_units(
     state["units"] = list(combined.values())  # existing order first, new Units after
     state["slices"] = slice_updates
     backfill_stages(state, catalog)  # the stage records of a new Slice
-    nxt = commit(bolt, state, catalog)
     added = [uid for uid in merged if uid not in old]
     warnings: list[str] = []
+    for sid in sorted({str(merged[u]["slice"]) for u in added if merged[u].get("slice")}):
+        late = [u for u in added if merged[u].get("slice") == sid]
+        reopened = reopen_slice_verification(
+            bolt, state, sid, f"{', '.join(late)} {'was' if len(late) == 1 else 'were'} added"
+        )
+        if reopened:
+            warnings.append(reopened)
+    nxt = commit(bolt, state, catalog)
     for entry in state["slices"]:  # a Slice checked ready before a Unit joined it
         late = [u for u in added if merged[u].get("slice") == entry["id"]]
         if late and entry.get("ready"):
@@ -3637,6 +3651,39 @@ def merge_slices(
         current.update({k: entry[k] for k in ("name", "depends_on") if k in entry})
     check_slice_deps(file, result)
     return list(result.values())
+
+
+def reopen_slice_verification(
+    bolt: Path, state: dict[str, Any], sid: Optional[str], why: str
+) -> Optional[str]:
+    """A Slice whose Build and Test passed no longer counts as verified once a Unit is added
+    to it or one of its Units is reopened: the passed run did not cover that work. Neither
+    did a release that was recorded for it. Every passed stage of the Slice goes back to
+    ``changes-requested``, so the Slice shows as building, is tested again and is not shown
+    as released until its release is recorded again."""
+    stages = (find_slice(state, sid).get("stages") or {}) if sid else {}
+    reopened = [
+        stage
+        for stage, record in stages.items()
+        if record.get("decision") != "skip" and record.get("step") == "approved"
+    ]
+    if not reopened:
+        return None
+    for stage in reopened:
+        record = stages[stage]
+        record["step"] = "changes-requested"
+        record["approved_at"] = None
+        record["approved_by"] = None
+        record.pop("verdict", None)
+        log_event(bolt, "gate-request-changes", stage, "", f"[{sid}] {why}", "")
+    release = [stage for stage in reopened if stage != "build-and-test"]
+    if not release:
+        return f"slice {sid} was verified; build and test must run again because {why}"
+    tested = "build and test and " if "build-and-test" in reopened else ""
+    return (
+        f"slice {sid} was released; {tested}its release ({', '.join(release)}) must run again "
+        f"because {why}: the recorded release does not cover that work"
+    )
 
 
 def slice_status(state: dict[str, Any], catalog: list[dict[str, Any]], sid: str) -> str:

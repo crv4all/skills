@@ -357,3 +357,73 @@ def test_a_change_to_a_passed_slice_artifact_warns_and_names_the_slice(repos: Re
         '--note "<why>")'
     ]
     assert git(repos.a, "status", "--porcelain") == ""
+
+
+def verify_s1(p: Bolt) -> None:
+    two_slices(p)
+    finish(p, "u1", "u2")
+    write_bat(p, "s1")
+    p.run("step", "--stage", "build-and-test", "--slice", "s1", "--to", "produced")
+    assert p.run("gate", "--stage", "build-and-test", "--slice", "s1", "--approve")[0] == 0
+    assert row(p, "s1")["status"] == "verified"
+
+
+def test_a_unit_added_to_a_verified_slice_reopens_its_verification(bolt: Bolt) -> None:
+    verify_s1(bolt)
+    code, data, _ = put(bolt, {"units": [{"id": "u9", "slice": "s1", "owner": "Ana"}]})
+    assert code == 0 and any("must run again" in w for w in data["warnings"]), data
+    now = row(bolt, "s1")
+    assert now["status"] != "verified" and now["verdict"] is None and now["units_total"] == 3
+    assert slice_record(bolt, "s1")["stages"]["build-and-test"]["step"] == "changes-requested"
+    assert bolt.run("next", "--slice", "s1")[1]["stage"] == "build-and-test"
+    assert row(bolt, "s2")["waits"] == ["waits for slice s1 (verified)"]  # s2 waits again
+
+
+def test_a_reopened_unit_of_a_verified_slice_reopens_its_verification(bolt: Bolt) -> None:
+    two_slices(bolt)
+    for unit in ("u1", "u2"):
+        bolt.run("decide", "--stage", "functional-design", "--unit", unit, "--decision", "skip",
+                 "--reason", "n")  # fmt: skip
+        bolt.run("decide", "--stage", "code-generation", "--unit", unit, "--decision", "execute",
+                 "--reason", "n")  # fmt: skip
+    skip_unit_stages(bolt, "u1")
+    skip_unit_stages(bolt, "u2")
+    # a Unit stage that really ran can be reopened; reuse the state file to mark one approved
+    state = bolt.state
+    for u in state["units"]:
+        if u["id"] == "u1":
+            rec = u["stages"]["code-generation"]
+            rec["decision"], rec["step"] = "execute", "approved"
+    (bolt.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
+    write_bat(bolt, "s1")
+    bolt.run("step", "--stage", "build-and-test", "--slice", "s1", "--to", "produced")
+    assert bolt.run("gate", "--stage", "build-and-test", "--slice", "s1", "--approve")[0] == 0
+    code, data, _ = bolt.run("gate", "--stage", "code-generation", "--unit", "u1",
+                             "--request-changes", "--note", "redo")  # fmt: skip
+    assert code == 0 and any("must run again" in w for w in data["warnings"]), data
+    assert row(bolt, "s1")["status"] != "verified"
+
+
+def test_a_unit_added_to_a_released_slice_reopens_its_release(bolt: Bolt) -> None:
+    verify_s1(bolt)
+    bolt.run("decide", "--stage", "deployment-pipeline", "--slice", "s1", "--decision", "skip",
+             "--reason", "n")  # fmt: skip
+    bolt.run("decide", "--stage", "deployment-execution", "--slice", "s1", "--decision",
+             "execute", "--reason", "go")  # fmt: skip
+    state = bolt.state
+    state["slices"][0]["stages"]["deployment-execution"]["step"] = "approved"
+    (bolt.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
+    assert row(bolt, "s1")["status"] == "released"
+    code, data, _ = put(bolt, {"units": [{"id": "u9", "slice": "s1", "owner": "Ana"}]})
+    assert code == 0, data
+    assert any("was released" in w and "deployment-execution" in w for w in data["warnings"])
+    stages = slice_record(bolt, "s1")["stages"]
+    assert stages["deployment-execution"]["step"] == "changes-requested"
+    assert stages["deployment-pipeline"]["decision"] == "skip"  # a skipped stage is left alone
+    assert row(bolt, "s1")["status"] not in ("verified", "released")
+    finish(bolt, "u9")
+    write_bat(bolt, "s1")
+    bolt.run("step", "--stage", "build-and-test", "--slice", "s1", "--to", "produced")
+    assert bolt.run("gate", "--stage", "build-and-test", "--slice", "s1", "--approve")[0] == 0
+    assert row(bolt, "s1")["status"] == "verified"  # tested again; the release is still owed
+    assert bolt.run("next", "--slice", "s1")[1]["stage"] == "deployment-execution"
