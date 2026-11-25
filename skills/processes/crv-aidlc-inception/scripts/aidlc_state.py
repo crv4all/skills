@@ -172,8 +172,10 @@ SOURCE_SUFFIXES = {
 SCAFFOLD_NAMES = {"__init__.py", "setup.py", "conftest.py"}
 DIGEST_MAX_LINES = 10
 VERDICT_WORDS = ("pass", "fail", "not-run")
-VERDICT_LINE = re.compile(r"^verdict\s*:", re.IGNORECASE)
-VERDICT_FORM = re.compile(r"^verdict\s*:\s*([A-Za-z-]+)\s*(?:(?:-|:)\s*(.*\S))?\s*$", re.IGNORECASE)
+# Any decoration (indent, quote, bold, heading, list dash) still makes it a verdict line.
+VERDICT_LINE = re.compile(r"^[\s>*_#-]*verdict[\s*_]*:", re.IGNORECASE)
+VERDICT_VALUE = re.compile(r"^\s*([A-Za-z-]+)\s*(?:(?:-|:)\s*(.*\S))?\s*$")
+FENCE = re.compile(r"^\s*(```|~~~)")
 DATE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}-")
 WORKSPACE_SUFFIX = ".code-workspace"
 FETCH_TIMEOUT = 20
@@ -840,12 +842,25 @@ def slice_slot(
     return None
 
 
+def verification_skipped(
+    catalog: list[dict[str, Any]], stages: Optional[dict[str, Any]], per_slice: bool
+) -> bool:
+    """True when a stage that checks a verdict was skipped: the work is done, never verified."""
+    return any(
+        bool(item.get("verdict"))
+        and bool(item.get("per_slice")) == per_slice
+        and (stages or {}).get(item["id"], {}).get("decision") == "skip"
+        for item in catalog
+    )
+
+
 def slice_dep_waits(state: dict[str, Any], catalog: list[dict[str, Any]], sid: str) -> list[str]:
     """The Slices ``sid`` depends on that are not verified yet."""
     return [
         f"waits for slice {dep} (verified)"
         for dep in find_slice(state, sid).get("depends_on") or []
         if slice_status(state, catalog, dep) not in ("verified", "released")
+        and not verification_skipped(catalog, find_slice(state, dep).get("stages"), True)
     ]
 
 
@@ -996,21 +1011,37 @@ def cmd_brief(
     return result
 
 
-def owner_warning(state: dict[str, Any], unit_id: Optional[str], who: str) -> str:
-    """One line when the unit belongs to someone else; empty otherwise. It never refuses:
-    the engineer may well be the right person to move the Unit on, so the owner is told."""
-    if unit_id is None:
+def owner_warning(
+    state: dict[str, Any], unit_id: Optional[str], who: str, slice_id: Optional[str] = None
+) -> str:
+    """One line when the Unit (or Slice) belongs to someone else; empty otherwise. It never
+    refuses: the engineer may well be the right person to move it on, so the owner is told."""
+    if unit_id is not None:
+        what, holder = f"unit {unit_id}", find_unit(state, unit_id)
+    elif slice_id is not None:
+        what, holder = f"slice {slice_id}", find_slice(state, slice_id)
+    else:
         return ""
-    owner = find_unit(state, unit_id).get("owner")
+    owner = holder.get("owner")
     if not owner or not who or same_person(owner, who):
         return ""
-    return f"unit {unit_id} is owned by {owner}; you are {who}"
+    return f"{what} is owned by {owner}; you are {who}"
 
 
-def guard_owner(bolt: Path, state: dict[str, Any], unit_id: Optional[str]) -> tuple[str, list[str]]:
-    """The log suffix and the ``warnings`` for a step on a Unit owned by someone else."""
-    text = owner_warning(state, unit_id, actor(planning_root(bolt)))
+def guard_owner(
+    bolt: Path, state: dict[str, Any], unit_id: Optional[str], slice_id: Optional[str] = None
+) -> tuple[str, list[str]]:
+    """The log suffix and the ``warnings`` for a step on a Unit or Slice owned by someone else."""
+    text = owner_warning(state, unit_id, actor(planning_root(bolt)), slice_id)
     return (f" ({text})", [text]) if text else ("", [])
+
+
+def stage_owner(
+    bolt: Path, state: dict[str, Any], stage: dict[str, Any], key: Optional[str]
+) -> tuple[str, list[str]]:
+    """``guard_owner`` for the Unit or the Slice a stage command is about."""
+    on_slice = is_slice_stage(stage)
+    return guard_owner(bolt, state, None if on_slice else key, key if on_slice else None)
 
 
 def cmd_assign(
@@ -1563,6 +1594,7 @@ def unit_detail(
         "blocked_by": nxt["blocked_by"],
         "stage": nxt["stage"],
         "action": nxt["action"],
+        "verification_skipped": verification_skipped(catalog, unit.get("stages"), False),
     }
 
 
@@ -1616,6 +1648,8 @@ def cmd_status(
     lines.append(f"Units: {len(state['units'])} | Slices: {len(state['slices'])}")
     for row in details:
         step = f"{row['stage']} {row['action']}" if row["stage"] else "done"
+        if row["verification_skipped"]:
+            step += " (verification skipped)"
         waits = f" | {waits_sentence(row['blocked_by'])}" if row["blocked_by"] else ""
         lines.append(f"  {row['id']} | {row['owner'] or '-'} | {step}{waits}")
     lines.extend(slice_line(row) for row in slice_rows)
@@ -2548,6 +2582,12 @@ def cmd_decide(
     record = get_record(state, stage, unit)
     if record["step"] == "approved":
         raise Fail(EXIT_FINDINGS, f"stage '{stage['id']}' is already approved.")
+    if decision == "skip" and stage.get("verdict") and record["step"] != "todo":
+        raise Fail(
+            EXIT_FINDINGS,
+            f"stage '{stage['id']}' has started: a started verification is finished by a "
+            "passing run or reopened (`gate --request-changes`), not skipped.",
+        )
     record["decision"] = decision
     record["reason"] = reason.strip()
 
@@ -2733,11 +2773,20 @@ def gate_findings(
 
 def read_verdict(text: str) -> Optional[str]:
     """The word of the one ``Verdict:`` line, or ``None`` when there is not exactly one
-    valid line. ``pass`` takes no reason; ``fail`` and ``not-run`` may carry one."""
-    lines = [line for line in text.splitlines() if VERDICT_LINE.match(line)]
+    valid line. Fenced lines do not count; any decoration around a line does, so a bold
+    ``fail`` cannot hide behind a plain ``pass``. ``pass`` takes no reason."""
+    lines: list[str] = []
+    fenced = False
+    for line in text.lstrip("\ufeff").splitlines():
+        if FENCE.match(line):
+            fenced = not fenced
+        elif not fenced and VERDICT_LINE.match(line):
+            lines.append(line)
     if len(lines) != 1:
         return None
-    match = VERDICT_FORM.match(lines[0].rstrip())
+    head = VERDICT_LINE.match(lines[0])
+    assert head is not None
+    match = VERDICT_VALUE.match(re.sub(r"[*_`]", "", lines[0][head.end() :]))
     if match is None:
         return None
     word = match.group(1).lower()
@@ -2999,6 +3048,7 @@ def cmd_gate(
     unit_log = "" if is_slice_stage(stage) else (unit or "")
     who = actor(planning_root(bolt))
     note = " ".join((args.note or "").split())
+    suffix, warnings = stage_owner(bolt, state, stage, unit)
     if args.request_changes:
         if not note:
             die(EXIT_USAGE, "--request-changes needs --note.")
@@ -3009,14 +3059,17 @@ def cmd_gate(
         record["approved_by"] = None
         record.pop("verdict", None)
         nxt = commit(bolt, state, catalog)
-        log_event(bolt, "gate-request-changes", label, who, note, unit_log)
-        return {
+        log_event(bolt, "gate-request-changes", label, who, note + suffix, unit_log)
+        changed: dict[str, Any] = {
             "ok": True,
             "stage": label,
             **subject(stage, unit),
             "step": record["step"],
             "next": nxt,
         }
+        if warnings:
+            changed["warnings"] = warnings
+        return changed
     findings = gate_findings(bolt, state, stage, unit, record)
     findings.extend(traceability_findings(bolt, state, catalog, stage))
     findings.extend(decision_status_findings(bolt, state, stage, unit))
@@ -3051,7 +3104,14 @@ def cmd_gate(
     if stage["id"] == "reverse-engineering":
         record_codekb_commits(bolt, state)
     nxt = commit(bolt, state, catalog)
-    log_event(bolt, "gate-approve", label, passed_by, ((unit or "") + " " + note).strip(), unit_log)
+    log_event(
+        bolt,
+        "gate-approve",
+        label,
+        passed_by,
+        ((unit or "") + " " + note).strip() + suffix,
+        unit_log,
+    )
     suggestion = (
         "A fresh session for the next stage is cheapest but optional. "
         f"Next: {state['next_action']}."
@@ -3070,6 +3130,8 @@ def cmd_gate(
         result["review"] = review
     if verdict:
         result["verdict"] = verdict
+    if warnings:
+        result["warnings"] = warnings
     return result
 
 
@@ -3346,14 +3408,18 @@ def slice_status(state: dict[str, Any], catalog: list[dict[str, Any]], sid: str)
     if not units or not record.get("ready"):
         return "planning"
     stages = record.get("stages") or {}
-    if is_done(stages.get("build-and-test")):
+    bat = stages.get("build-and-test")
+    if is_done(bat):
         ran = [
             stages.get(i["id"])
             for i in catalog
             if i.get("per_slice") and i["phase"] == "operation"
             and (stages.get(i["id"]) or {}).get("decision") == "execute"
         ]  # fmt: skip
-        return "released" if ran and is_done(ran[-1]) else "verified"
+        if ran and is_done(ran[-1]):
+            return "released"
+        if bat and bat.get("verdict") == "pass":
+            return "verified"  # a skipped or unverified test run never counts as verified
     if all(unit_slot(state, catalog, u["id"]) is None for u in units):
         return "built"
     started = any(r.get("step") != "todo" for u in units for r in (u.get("stages") or {}).values())
@@ -3373,6 +3439,7 @@ def slice_row(state: dict[str, Any], catalog: list[dict[str, Any]], sid: str) ->
         "units_total": len(units),
         "open_gaps": len((record.get("ready") or {}).get("gaps") or []),
         "waits": slice_dep_waits(state, catalog, sid),
+        "verification_skipped": verification_skipped(catalog, record.get("stages"), True),
         "verdict": ((record.get("stages") or {}).get("build-and-test") or {}).get("verdict"),
     }
 
@@ -3384,6 +3451,8 @@ def slice_line(row: dict[str, Any]) -> str:
     parts.extend(row["waits"])
     if row["verdict"]:
         parts.append(f"verdict {row['verdict']}")
+    if row["verification_skipped"]:
+        parts.append("verification skipped")
     return "  " + " | ".join(parts)
 
 
@@ -4922,12 +4991,10 @@ def run_locked(args: argparse.Namespace) -> dict[str, Any]:
     if cmd in {"decide", "step", "gate"}:
         stage = stage_def(catalog, args.stage)
         key = scope_key(state, stage, args.unit, args.slice)
-        suffix, warnings = "", []
         if cmd == "gate":
             return cmd_gate(bolt, state, catalog, stage, key, args)
-        if cmd in {"decide", "step"}:
-            require_story(state, stage, args.unit)
-            suffix, warnings = guard_owner(bolt, state, args.unit)
+        require_story(state, stage, args.unit)
+        suffix, warnings = stage_owner(bolt, state, stage, key)
         if cmd == "decide":
             cmd_decide(state, stage, key, args.decision, args.reason)
             event, note = "decide", f"{args.decision}: {args.reason}"

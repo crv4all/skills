@@ -488,7 +488,7 @@
         "classic"
       ],
       "conditional": true,
-      "runs_when": "New data models, complex logic or rules. Skip for simple changes. Decided per unit when its construction starts, from the unit's kind and this condition; the approver may override.",
+      "runs_when": "New data models, complex logic or rules. Skip for simple changes. Decided per unit when its construction starts, from the unit's kind and this condition; the engineer may decide otherwise, with the reason recorded.",
       "inputs": [
         {
           "path": "docs/inception/units-generation/unit-of-work.md",
@@ -559,7 +559,7 @@
         "classic"
       ],
       "conditional": true,
-      "runs_when": "When NFRs or stack choices are needed. Decided per unit when its construction starts, from the unit's kind and this condition; the approver may override.",
+      "runs_when": "When NFRs or stack choices are needed. Decided per unit when its construction starts, from the unit's kind and this condition; the engineer may decide otherwise, with the reason recorded.",
       "inputs": [
         {
           "path": "docs/construction/<unit>/functional-design/functional-spec.md",
@@ -626,7 +626,7 @@
         "classic"
       ],
       "conditional": true,
-      "runs_when": "When NFR Requirements ran for the unit. Decided per unit when its construction starts, from the unit's kind and this condition; the approver may override.",
+      "runs_when": "When NFR Requirements ran for the unit. Decided per unit when its construction starts, from the unit's kind and this condition; the engineer may decide otherwise, with the reason recorded.",
       "inputs": [
         {
           "path": "docs/construction/<unit>/nfr-requirements/performance-requirements.md",
@@ -713,7 +713,7 @@
         "classic"
       ],
       "conditional": true,
-      "runs_when": "When services, deployment or cloud resources need design. Decided per unit when its construction starts, from the unit's kind and this condition; the approver may override.",
+      "runs_when": "When services, deployment or cloud resources need design. Decided per unit when its construction starts, from the unit's kind and this condition; the engineer may decide otherwise, with the reason recorded.",
       "inputs": [
         {
           "path": "docs/construction/<unit>/nfr-design/logical-components.md",

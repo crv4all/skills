@@ -10,6 +10,18 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A failed verification can no longer be skipped into done, and the verdict line
+  cannot hide.** `decide --decision skip` is refused once a stage that records a
+  `Verdict:` has started (finish it with a passing run or reopen it). Skipped before it
+  starts, the Slice stays `built` and the Slice and Unit rows say "verification
+  skipped"; `verified` needs a stored `Verdict: pass`. The verdict reader ignores fenced
+  lines and counts a line with any decoration (bold, quote, indent, heading, BOM), so two
+  verdict lines of any kind are ambiguous. `gate` warns when the Unit or Slice belongs to
+  someone else, as `step` and `decide` do, and the stage texts no longer mention an
+  approver.
+
 ### Added
 
 - **`contribution` records where an architecture contribution stands, and the team

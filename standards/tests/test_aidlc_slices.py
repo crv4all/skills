@@ -140,9 +140,9 @@ def test_the_status_of_a_slice_is_derived_from_what_happened(bolt: Bolt) -> None
     bolt.run("decide", "--stage", "functional-design", "--unit", "u1", "--decision", "skip",
              "--reason", "t")  # fmt: skip
     assert row(bolt, "s1")["status"] == "ready"  # a decision is not work
-    bolt.run("decide", "--stage", "code-generation", "--unit", "u1", "--decision", "execute",
+    bolt.run("decide", "--stage", "nfr-requirements", "--unit", "u1", "--decision", "execute",
              "--reason", "t")  # fmt: skip
-    bolt.run("step", "--stage", "code-generation", "--unit", "u1", "--to", "asked")
+    bolt.run("step", "--stage", "nfr-requirements", "--unit", "u1", "--to", "asked")
     assert row(bolt, "s1")["status"] == "building"
     skip_unit_stages(bolt, "u1")
     assert row(bolt, "s1")["status"] == "built"

@@ -1429,7 +1429,6 @@ def verdict_codes(data: dict[str, Any]) -> list[str]:
         verdict_doc("Verdict: passed"),  # another word
         verdict_doc("Verdict:"),  # empty
         verdict_doc("Verdict: pass - all green"),  # pass takes no reason
-        verdict_doc("  Verdict: pass"),  # not at the start of a line
     ],
 )
 def test_a_missing_or_malformed_verdict_refuses_the_gate(bolt: Bolt, text: str) -> None:
