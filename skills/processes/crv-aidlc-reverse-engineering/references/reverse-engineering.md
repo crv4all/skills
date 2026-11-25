@@ -76,7 +76,7 @@ Input: the `stale` verdict with the changed files. Steps:
 2. Run workers only for those areas.
 3. Update only the artifacts the findings touch: edit the affected rows and sections, keep text about untouched areas as it was, and refresh the `## Digest` of every file you edit.
 4. Areas you did not re-read stay as `read deeply` in the scope only if no changed file lies in them; anything you could not re-check is demoted to `skimmed`.
-5. Update the run record and `_meta.json`. If coverage is narrower than before, say so in the gate summary.
+5. Update the run record and `_meta.json`. If coverage is narrower than before, say so in the checkpoint summary.
 
 A `rescan: full` verdict (a manifest or the layout changed, or too many files moved) always runs the full pipeline and replaces all nine artifacts.
 
@@ -88,4 +88,4 @@ When this stage runs or reruns after HLA, requirements, stories or units exist, 
 - [ ] architecture/hla.md: section "Containers" says the export job is stateless; `jobs/export.py:44` writes a local cache. Change: add the cache to the container view and open a decision.
 ```
 
-Find affected artifacts by comparing the changed or new findings with what each later artifact states about the repo (components, interfaces, data stores, versions, test setup). Name the section and the reason, never just the file. The stage is not complete until every box is ticked and the approver has re-approved each listed artifact, in dependency order: HLA, requirements, stories, domain design, units.
+Find affected artifacts by comparing the changed or new findings with what each later artifact states about the repo (components, interfaces, data stores, versions, test setup). Name the section and the reason, never just the file. The stage is not complete until every box is ticked. Update the listed artifacts in dependency order (HLA, requirements, stories, domain design, units), by adding entries with new ids or a new decision; Bolt-level stages are not reopened. For each changed id run `aidlc_state.py context --bolt <p> --id <id>` and tell the engineer which Units and Slices rely on it.

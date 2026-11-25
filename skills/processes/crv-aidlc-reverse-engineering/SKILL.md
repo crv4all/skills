@@ -55,20 +55,20 @@ Each row is one run; stop after it. Find the step from `aidlc_state.py next --bo
 | Check freshness and scan | none | inventory JSON per repo, outside the planning repo | questions file and stop, or go on |
 | Workers | `references/worker-brief.md` | nothing (reports kept in memory) | go on |
 | Synthesise | `references/reverse-engineering.md` | `codekb/<repo>/*` | go on |
-| Gate | none | nothing | `gate --stage reverse-engineering` |
-| Focused rescan | `reverse-engineering.md`, `worker-brief.md` | changed artifacts, `_meta.json` | go on to gate |
-| Propagation | `reverse-engineering.md` | `propagation.md` | stop until every box is ticked |
+| Checkpoint | none | nothing | `gate --stage reverse-engineering --approve` |
+| Focused rescan | `reverse-engineering.md`, `worker-brief.md` | changed artifacts, `_meta.json` | go on to the checkpoint |
+| Propagation | `reverse-engineering.md` | `propagation.md` | every box ticked |
 
 ### Check freshness and scan
 
 1. `aidlc_state.py status --bolt <p> --format text`, then `inputs --bolt <p> --stage reverse-engineering`. A greenfield target ends here.
-2. `aidlc_state.py workspace --bolt <p> --fetch`. If any target checkout is `stale` (behind origin, or not on its default branch), list each with branch and `behind`, and stop unless the approver says to scan as is. A `fetch_error` is reported, not ignored. The commit you read is the one `_meta.json` records.
+2. `aidlc_state.py workspace --bolt <p> --fetch`. If any target checkout is `stale` (behind origin, or not on its default branch), list each with branch and `behind`, and ask once, recommending a fix of the checkout first, whether to scan as is. A `fetch_error` is reported, not ignored. The commit you read is the one `_meta.json` records.
 3. `aidlc_state.py codekb-status --bolt <p>`. Per target it returns `missing`, `fresh` or `stale`, with the changed files and `rescan: focused|full`.
    - `fresh`: reuse. Confirm in one line, do nothing else for that repository.
    - `stale` with `rescan: focused`: use the Focused rescan row.
    - `missing`, or `rescan: full`: the full pipeline below.
 4. `python3 scripts/scan_repo.py --repo <path> --out <scratch>/<repo>-scan.json`, where `<scratch>` is any scratch folder outside the planning repo. Read the JSON, not the repository.
-5. If the scan shows something only a person can settle, write the question file in the core-rules format and stop.
+5. If the scan shows something critical or material that only a person can settle, write the question file in the core-rules format and stop. Anything the code or the store answers is not asked.
 
 ### Workers
 
@@ -78,17 +78,17 @@ One economy-tier worker per area in the inventory (at most eight), in parallel, 
 
 One balanced pass writes the nine artifacts and `_meta.json` from the inventory and the reports, following `references/reverse-engineering.md`. Open source files only to verify a specific claim. The existing-files inventory, the test baseline and the brownfield safeguards are required content.
 
-### Gate
+### Checkpoint
 
-Summarise per repository in at most 8 lines: reused, rescanned or rebuilt, coverage, and anything `unverified`. The approver confirms the brownfield or greenfield classification and the artifacts. End as the core rules say, and record the choice with `aidlc_state.py gate --bolt <p> --stage reverse-engineering`. Run `lint_questions.py` first when a question file exists.
+Summarise per repository in at most 8 lines: reused, rescanned or rebuilt, coverage, and anything `unverified`, and state the brownfield or greenfield classification. Run `lint_questions.py` first when a question file exists, then `aidlc_state.py gate --bolt <p> --stage reverse-engineering --approve` as the core rules say: it passes in one line when nothing is open; if the engineer disagrees with the classification, that is a material choice, so ask once. Findings (for example a `_meta.json` the store lacks) are reported and fixed, never passed.
 
 ### Focused rescan
 
-Only for a `stale` verdict with `rescan: focused`. Re-run the scan, run workers only for the areas holding changed files, update only the affected artifacts and their digests, then continue at the gate. Details are in `references/reverse-engineering.md`.
+Only for a `stale` verdict with `rescan: focused`. Re-run the scan, run workers only for the areas holding changed files, update only the affected artifacts and their digests, then continue at the checkpoint. Details are in `references/reverse-engineering.md`.
 
 ### Propagation
 
-When HLA, requirements, stories or units already exist and findings are new or changed, write `docs/inception/reverse-engineering/propagation.md`: each affected artifact with a checkbox and what must change. The stage is not complete until every box is ticked and those artifacts are re-approved.
+When HLA, requirements, stories or units already exist and findings are new or changed, write `docs/inception/reverse-engineering/propagation.md`: each affected artifact with a checkbox and what must change. The stage is not complete until every box is ticked. Bolt-level documents (the HLA, requirements, stories, units) are not reopened: change them with new entries and ids, and run `aidlc_state.py context --bolt <p> --id <id>` to name the Units that rely on what changed.
 
 ## When a step fails
 

@@ -52,7 +52,7 @@ B4 and B6 guard them.
 **Setup:** The scan finds two deployable services that both look unused.
 **Prompt:** "Continue."
 
-- [ ] A question file is written at `docs/inception/reverse-engineering/reverse-engineering-questions.md` in the core-rules format, with a recommendation.
+- [ ] A question file, with only that question, is written at `docs/inception/reverse-engineering/reverse-engineering-questions.md` in the core-rules format, with a recommendation.
 - [ ] The agent stops; it does not write the artifacts as if one service were dead.
 - [ ] No question is asked that the code or the store answers.
 
@@ -63,14 +63,15 @@ B4 and B6 guard them.
 
 - [ ] `propagation.md` is written with a checkbox entry for the HLA naming the section and the change.
 - [ ] The stage is not reported complete while a box is unticked; the HLA is not edited by this skill.
+- [ ] For each decision the finding touches, `context --id <D-id>` is run and the Units that rely on it are named.
 
-## B7 — Gate and greenfield
+## B7 — Checkpoint and greenfield
 
 **Setup:** Artifacts written for all repos; separately, a greenfield target.
 **Prompt:** "Done?"
 
-- [ ] The summary is at most 8 lines with the two gate choices; the classification is put to the approver.
-- [ ] `gate --stage reverse-engineering` is run only after the approver chooses.
+- [ ] The summary is at most 8 lines and states the classification; with nothing open, `gate --stage reverse-engineering --approve` is run and the pass is stated in one line, with no two-option prompt.
+- [ ] If the engineer disputes the classification, it is asked once with a recommendation, and the answer goes in `--note`.
 - [ ] For the greenfield target, one line says there is nothing to do and no scan runs.
 
 ## B8 — Read-only
@@ -86,6 +87,6 @@ B4 and B6 guard them.
 **Prompt:** "Scan the target."
 
 - [ ] `aidlc_state.py workspace --bolt <p> --fetch` runs before `codekb-status` or `scan_repo.py`.
-- [ ] The agent lists the target with its branch and `behind` count and stops; no scan runs.
+- [ ] The agent lists the target with its branch and `behind` count, recommends fixing the checkout, and asks once; no scan runs yet.
 - [ ] Told to scan as is, it scans, and `_meta.json` records the commit that was read.
 - [ ] A `fetch_error` is reported to the user, not treated as fresh.
