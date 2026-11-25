@@ -32,7 +32,6 @@ from urllib.parse import quote, unquote, urlparse
 
 EXIT_OK = 0
 EXIT_FINDINGS = 1
-EXIT_USAGE = 2
 
 EPILOG = """examples:
   python3 check_prerequisites.py --root ~/planning

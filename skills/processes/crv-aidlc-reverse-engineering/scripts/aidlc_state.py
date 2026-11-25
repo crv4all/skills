@@ -334,12 +334,9 @@ def backfill_stages(state: dict[str, Any], catalog: list[dict[str, Any]]) -> Non
         entry.update({k: v for k, v in new_slice(entry["id"]).items() if k not in entry})
     scope = state.get("scope", "classic")
     brownfield = any(t.get("kind") == "brownfield" for t in state.get("targets", []))
-    for item in catalog:  # Build and Test and Operation moved from the Bolt into its Slices
-        old = stages.pop(item["id"], None) if is_slice_stage(item) else None
-        if old and old.get("step") != "todo" and state.get("slices"):
-            first = state["slices"][0]
-            first.setdefault("stages", {})[item["id"]] = old
-            state["_migrated"] = f"{item['id']} moved from the Bolt into slice {first['id']}"
+    for item in catalog:  # Build and Test and Operation live in the Slices, not the Bolt
+        if is_slice_stage(item) and (stages.get(item["id"]) or {}).get("step") == "todo":
+            del stages[item["id"]]  # an untouched record of an older Bolt
     for entry in state.get("slices", []):
         have = entry.setdefault("stages", {})
         for item in catalog:
@@ -517,7 +514,6 @@ def write_split(bolt: Path, state: dict[str, Any]) -> None:
 def write_state(bolt: Path, state: dict[str, Any]) -> None:
     """Write state.json atomically: a crash leaves the old file, never half a new one."""
     state["updated"] = now()
-    migrated = state.pop("_migrated", None)
     for gone in ("kind", "parent", "approver"):  # keys of Bolts written by older skills
         state.pop(gone, None)
     drop_retired_fields(state)
@@ -530,8 +526,6 @@ def write_state(bolt: Path, state: dict[str, Any]) -> None:
         write_json_atomic(state_path(bolt), state)
     if moved:
         log_event(bolt, "portable", "", "", "machine paths moved to .aidlc-local.json")
-    if migrated:
-        log_event(bolt, "migrate", "", "", migrated)
 
 
 def drop_retired_fields(state: dict[str, Any]) -> None:
@@ -614,14 +608,11 @@ def initial_decision(stage: dict[str, Any], scope: str, brownfield: bool) -> tup
     return "execute", ""
 
 
-def unit_stage_records(
-    catalog: list[dict[str, Any]],
-    scope: str,
-    existing: Optional[dict[str, Any]] = None,
-) -> dict[str, Any]:
-    records: dict[str, Any] = dict(existing or {})
+def unit_stage_records(catalog: list[dict[str, Any]], scope: str) -> dict[str, Any]:
+    """The stage records of a new Unit, each with the decision its scope starts from."""
+    records: dict[str, Any] = {}
     for item in catalog:
-        if item["per_unit"] and item["id"] not in records:
+        if item["per_unit"]:
             decision, reason = initial_decision(item, scope, True)
             records[item["id"]] = new_record(decision, reason)
     return records
@@ -656,13 +647,17 @@ def find_unit(state: dict[str, Any], unit: str) -> dict[str, Any]:
     die(EXIT_USAGE, f"unknown unit '{unit}' (units: {known}). Load them with `units --set`.")
 
 
+def stage_holder(state: dict[str, Any], stage: dict[str, Any], key: str) -> dict[str, Any]:
+    """The Slice record for a per-Slice stage, else the Unit record, of ``key``."""
+    return find_slice(state, key) if is_slice_stage(stage) else find_unit(state, key)
+
+
 def get_record(state: dict[str, Any], stage: dict[str, Any], unit: Optional[str]) -> dict[str, Any]:
     """The record of a stage; ``unit`` is the Unit id, or the Slice id for a per-Slice stage."""
     if stage["per_unit"] or is_slice_stage(stage):
         if unit is None:
             die(EXIT_USAGE, f"stage '{stage['id']}' runs once per unit; pass --unit.")
-        holder = find_slice(state, unit) if is_slice_stage(stage) else find_unit(state, unit)
-        records = holder.setdefault("stages", {})
+        records = stage_holder(state, stage, unit).setdefault("stages", {})
         if stage["id"] not in records:
             records[stage["id"]] = new_record("pending", "")
         return records[stage["id"]]
@@ -708,8 +703,7 @@ def slot_record(
     if stage["per_unit"] or is_slice_stage(stage):
         if unit is None:
             return None
-        holder = find_slice(state, unit) if is_slice_stage(stage) else find_unit(state, unit)
-        return holder.get("stages", {}).get(stage["id"])
+        return stage_holder(state, stage, unit).get("stages", {}).get(stage["id"])
     return state["stages"].get(stage["id"])
 
 
@@ -2047,8 +2041,6 @@ def input_rows(
                 skipped = bool(rec and rec["decision"] == "skip")
             file = locate(bolt, rel)
             exists = file.is_file()
-            if entry.get("if_exists") and not exists:
-                continue
             produced_by = producer["id"] if producer else None
             row = {
                 "path": rel,
@@ -2745,33 +2737,6 @@ def as_list(value: Any) -> list[str]:
     return [str(item) for item in value]
 
 
-def header_fields(text: str) -> Optional[dict[str, str]]:
-    """Top-level ``key: value`` pairs of the first fenced ``yaml`` block, or ``None``.
-
-    Only what the sign-off check needs: scalar values, quotes and trailing
-    comments stripped. The full header is validated by ``validate_doc.py``.
-    """
-    lines = text.splitlines()
-    start = next((i for i, line in enumerate(lines) if line.strip() == "```yaml"), None)
-    if start is None:
-        return None
-    fields: dict[str, str] = {}
-    for line in lines[start + 1 :]:
-        if line.strip().startswith("```"):
-            return fields
-        match = re.match(r"^([A-Za-z_][\w-]*):\s*(.*)$", line)
-        if not match:
-            continue
-        value = match.group(2).strip()
-        if value[:1] in {'"', "'"}:
-            end = value.find(value[0], 1)
-            value = value[1:end] if end > 0 else value[1:]
-        else:
-            value = value.split(" #", 1)[0].strip()
-        fields[match.group(1)] = value
-    return None
-
-
 def load_lint_module() -> Any:
     path = Path(__file__).resolve().parent / "lint_questions.py"
     if not path.is_file():
@@ -2983,11 +2948,12 @@ def review_info(
             path = locate(bolt, rel)
             if not path.is_file():
                 continue
-            header = header_fields(path.read_text(encoding="utf-8", errors="replace")) or {}
+            header = header_values(path)
+            status, by = header.get("status"), header.get("signed_off_by")
             return {
                 "path": rel,
-                "status": header.get("status") or None,
-                "signed_off_by": header.get("signed_off_by") or None,
+                "status": status if isinstance(status, str) and status else None,
+                "signed_off_by": by if isinstance(by, str) and by else None,
             }
     return None
 

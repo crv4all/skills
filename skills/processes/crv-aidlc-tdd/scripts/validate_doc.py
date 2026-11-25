@@ -28,7 +28,6 @@ from typing import Any, NoReturn, Optional
 
 EXIT_OK = 0
 EXIT_FINDINGS = 1
-EXIT_USAGE = 2
 EXIT_INPUT = 3
 EXIT_MALFORMED = 4
 EXIT_INTERNAL = 5
@@ -83,7 +82,6 @@ H2 = re.compile(r"^##\s+(.+?)\s*#*\s*$")
 NOT_APPLICABLE = re.compile(r"^Not applicable:(.*)$", re.DOTALL)
 OPTIONAL_MARK = re.compile(r"^\s*<!--\s*Optional\b", re.IGNORECASE)
 CITED_DECISION = re.compile(r"(?<![\w:-])(?<!WP )D(\d+)\b")
-CONCERN_FILE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 RECORDS = ("hla-decisions.md", "tdd-decisions.md")
 DECISIONS_SECTION = "design decisions"
 MODERNIZATION_SECTION = "modernization plan"

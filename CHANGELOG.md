@@ -63,6 +63,17 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   trade-offs, Decisions, Open questions for other contributors), and an interface party
   must match a whole container name (trimmed, case-folded) rather than part of one.
 
+### Removed
+
+- **Dead options and old-state shims.** The `if_exists` input option (no catalogue row used
+  it), the `existing` argument of `unit_stage_records`, `CONCERN_FILE` in the validator, the
+  duplicate header reader in the state script and the unused `EXIT_USAGE` constants. The
+  reader of the old flat `relied_on` shape is gone (a record in that shape has no
+  baseline), and so is the shim that moved a Bolt-level Build and Test or Operation record
+  into a Slice. The real Bolt still loads: untouched Bolt-level records of the three
+  per-Slice stages are dropped at load, and the retired keys (`kind`, `parent`,
+  `approver`, `recorded_by`, `channel`) are still dropped.
+
 ### Added
 
 - **`contribution` records where an architecture contribution stands, and the team

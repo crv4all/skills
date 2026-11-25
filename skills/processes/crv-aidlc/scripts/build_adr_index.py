@@ -25,7 +25,6 @@ from urllib.parse import quote, unquote, urlparse
 
 EXIT_OK = 0
 EXIT_FINDINGS = 1
-EXIT_USAGE = 2
 EXIT_INPUT = 3
 EXIT_MALFORMED = 4
 EXIT_INTERNAL = 5

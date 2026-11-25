@@ -734,24 +734,16 @@ def test_a_state_with_no_slice_records_keeps_working(bolt: Bolt) -> None:
     assert bolt.run("close", "--status", "archived")[0] == 0
 
 
-def test_bolt_level_progress_moves_into_the_only_slice(bolt: Bolt) -> None:
-    old_state(bolt, ["s1"], progress=True)
-    assert bolt.run("status")[0] == 0 and "build-and-test" in bolt.state["stages"]  # reads keep it
+def test_a_bolt_level_record_of_a_per_slice_stage_is_dropped_only_when_untouched(
+    bolt: Bolt,
+) -> None:
+    old_state(bolt, ["s1"], progress=True)  # build-and-test was started in the Bolt
     assert bolt.run("park", "--note", "n")[0] == 0
-    assert not any(stage in bolt.state["stages"] for stage in PER_SLICE)
-    assert slice_stages(bolt)["build-and-test"]["step"] == "produced"
-    assert slice_stages(bolt)["deployment-pipeline"]["decision"] == "pending"  # seeded new
-
-
-def test_progress_goes_to_the_first_slice_with_one_migrate_line(bolt: Bolt) -> None:
-    old_state(bolt, ["s1", "s2"], progress=True)
-    assert bolt.run("park", "--note", "n")[0] == 0
-    first, second = bolt.state["slices"]
-    assert first["stages"]["build-and-test"]["step"] == "produced"
-    assert second["stages"]["build-and-test"]["step"] == "todo"
-    assert len([line for line in bolt.log_lines() if " | migrate | " in line]) == 1
-    assert bolt.run("park", "--note", "again")[0] == 0
-    assert len([line for line in bolt.log_lines() if " | migrate | " in line]) == 1
+    stages = bolt.state["stages"]
+    assert "build-and-test" in stages and stages["build-and-test"]["step"] == "produced"
+    assert "deployment-pipeline" not in stages and "deployment-execution" not in stages
+    assert slice_stages(bolt)["build-and-test"]["step"] == "todo"  # nothing moved into the Slice
+    assert not [line for line in bolt.log_lines() if " | migrate | " in line]
 
 
 # --- jira ----------------------------------------------------------------------
