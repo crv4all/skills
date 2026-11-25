@@ -12,6 +12,14 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A failed reservation of decision ids leaves nothing behind.** When `decision-id` ends
+  with "the ids were not reserved", its own commit is first undone (`reset --keep`), so the
+  message is true and the next run hands out the same ids; if the commit cannot be undone
+  the message says the ids are saved here and not shared yet.
+- **The first write to an older Bolt says what it dropped.** One `migrate` log line and a
+  warning carry every retired value (`approver`, `kind`, `recorded_by`, `channel`) and the
+  untouched Bolt-level records of the per-Slice stages, word for word.
+
 - **A failed verification can no longer be skipped into done, and the verdict line
   cannot hide.** `decide --decision skip` is refused once a stage that records a
   `Verdict:` has started (finish it with a passing run or reopen it). Skipped before it

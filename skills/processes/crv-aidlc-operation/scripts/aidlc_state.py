@@ -106,6 +106,12 @@ state.json (not a Unit's) that those unshared commits also changed, the next com
 commit, and the result lists the undone commands in `undone` and in a warning; repeat
 them. If that cannot be done cleanly it stops with exit 6 and the branch exactly as it was.
 
+Truthful results: `decision-id` that ends "the ids were not reserved" has first undone its
+own commit (`git reset --keep HEAD~1`), so the counter and the log are as before. The first
+write to a Bolt of an older framework adds one `migrate` log line (and a warning) that
+carries every value it drops: the retired keys and the untouched Bolt-level records of the
+per-Slice stages.
+
 Lock: a command that changes a bolt (and `sync`) holds one lock per planning checkout for
 its whole run, git steps included, so two sessions in one checkout queue instead of
 colliding. It waits up to 200 s (a git step may take 120 s), then stops and names the lock
@@ -514,10 +520,14 @@ def write_split(bolt: Path, state: dict[str, Any]) -> None:
 def write_state(bolt: Path, state: dict[str, Any]) -> None:
     """Write state.json atomically: a crash leaves the old file, never half a new one."""
     state["updated"] = now()
+    written = state.get("framework")
+    dropped = dropped_by_migration(bolt, state, written)
     for gone in ("kind", "parent", "approver"):  # keys of Bolts written by older skills
         state.pop(gone, None)
     drop_retired_fields(state)
-    written = state.get("framework")
+    if dropped:
+        log_event(bolt, "migrate", "", "", dropped)
+        MIGRATION_WARNINGS.append(dropped)
     state["framework"] = max(written if isinstance(written, int) else 0, FRAMEWORK)
     moved = normalise_portable(bolt, state)
     if is_split(state):
@@ -526,6 +536,39 @@ def write_state(bolt: Path, state: dict[str, Any]) -> None:
         write_json_atomic(state_path(bolt), state)
     if moved:
         log_event(bolt, "portable", "", "", "machine paths moved to .aidlc-local.json")
+
+
+MIGRATION_WARNINGS: list[str] = []  # said once per command, in its result
+
+
+def dropped_by_migration(bolt: Path, state: dict[str, Any], written: Any) -> str:
+    """What the first write of an older Bolt is about to drop, word for word, or ``""``.
+
+    The retired keys and the untouched Bolt-level records of the per-Slice stages are
+    gone from the new file; this line is where their values stay readable."""
+    if not isinstance(written, int) or written >= FRAMEWORK:
+        return ""
+    parts: list[str] = []
+    for key in ("approver", "kind", "parent", "channel"):
+        if state.get(key):
+            parts.append(f'{key} was "{state[key]}"')
+    holders = [("", state), *((u["id"] + " ", u) for u in state.get("units", []))]
+    holders += [(s["id"] + " ", s) for s in state.get("slices", [])]
+    for label, holder in holders:
+        for name, record in (holder.get("stages") or {}).items():
+            for key in ("recorded_by", "channel"):
+                if isinstance(record, dict) and record.get(key):
+                    parts.append(f'{key} of {label}{name} was "{record[key]}"')
+    try:
+        raw = json.loads(state_path(bolt).read_text(encoding="utf-8"))
+        gone = [n for n in raw.get("stages", {}) if n not in state.get("stages", {})]
+    except (OSError, ValueError, AttributeError):
+        gone = []
+    if gone:
+        parts.append(f"{', '.join(gone)} are now recorded per Slice")
+    if not parts:
+        return ""
+    return f"framework {written} to {FRAMEWORK}; " + "; ".join(parts)
 
 
 def drop_retired_fields(state: dict[str, Any]) -> None:
@@ -4928,6 +4971,20 @@ def run_changing(args: argparse.Namespace) -> dict[str, Any]:
         "the ids were not reserved (they could not be shared with the team): fix the cause, "
         "then run decision-id again"
     )
+
+    def unreserve(done: Optional[dict[str, Any]], ids: list[str]) -> str:
+        """Undo this command's own commit so the message is true; say what is true if not."""
+        own = (done or {}).get("commit")
+        if not own:
+            return not_reserved
+        if short_head(ctx) == own and run_git(ctx.top, "reset", "--keep", "HEAD~1").returncode == 0:
+            done["commit"] = None  # type: ignore[index]
+            return not_reserved
+        return (
+            f"the ids {', '.join(ids)} are saved in this clone and not shared with the team "
+            "yet: fix the cause, then run `sync` to share them"
+        )
+
     can_rerun = args.command not in NO_RERUN
     carry: dict[str, Any] = {"warnings": [], "rebuild_adr_index": False}
     reruns = 0
@@ -4957,8 +5014,9 @@ def run_changing(args: argparse.Namespace) -> dict[str, Any]:
             reruns += 1
         except Fail as exc:
             if reserving:
+                said = unreserve(exc.extra.get("git"), result.get("ids") or [])
                 result = {k: v for k, v in result.items() if k not in ("ids", "cite_as")}
-                exc.message = f"{not_reserved}. {exc.message}"
+                exc.message = f"{said}. {exc.message}"
             exc.extra.setdefault("result", result)
             raise
     if reruns:
@@ -4972,7 +5030,7 @@ def run_changing(args: argparse.Namespace) -> dict[str, Any]:
     if reserving and after["not_shared"]:
         raise Fail(
             EXIT_GIT,
-            not_reserved,
+            unreserve(after, result.get("ids") or []),
             extra={
                 "git": after,
                 "result": {k: v for k, v in result.items() if k not in ("ids", "cite_as")},
@@ -5173,6 +5231,14 @@ def checkout_lock(path: Optional[Path]) -> Iterator[None]:
 
 
 def run_locked(args: argparse.Namespace) -> dict[str, Any]:
+    MIGRATION_WARNINGS.clear()
+    result = run_command(args)
+    if MIGRATION_WARNINGS:
+        result.setdefault("warnings", []).extend(MIGRATION_WARNINGS)
+    return result
+
+
+def run_command(args: argparse.Namespace) -> dict[str, Any]:
     _INDEXES.clear()  # ids are parsed once per command, never carried over to the next
     catalog = load_catalog()
     if args.command == "open":

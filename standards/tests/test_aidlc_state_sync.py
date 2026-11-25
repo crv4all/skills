@@ -303,4 +303,4 @@ def test_an_unconfirmed_decision_reservation_hands_out_no_ids(repos: Repos) -> N
     assert out["git"]["not_shared"] is True
     git(repos.a, "remote", "set-url", "origin", str(repos.remote))
     code, out, _ = script("decision-id", "--bolt", str(bolt), "--unit", "u1")
-    assert code == 0 and out["ids"] == ["D2"]  # the unconfirmed D1 was never handed out
+    assert code == 0 and out["ids"] == ["D1"]  # the failed run was undone: D1 is still free
