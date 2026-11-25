@@ -77,7 +77,7 @@ PLACEHOLDER = re.compile(
 )
 ADR_ID = re.compile(r"\bADR-[A-Z]*\d+\b")
 DECISION_ID = re.compile(r"\bD(\d+)\b")
-RECORD_ROW_ID = re.compile(r"^\s*\|\s*D(\d+)\s*\|", re.MULTILINE)
+RECORD_ROW_ID = re.compile(r"^\s*\|\s*[*_`]*D(\d+)[*_`]*\s*\|", re.MULTILINE)
 FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})\s*([\w-]*)")
 H2 = re.compile(r"^##\s+(.+?)\s*#*\s*$")
 NOT_APPLICABLE = re.compile(r"^Not applicable:(.*)$", re.DOTALL)
@@ -553,7 +553,9 @@ def template_sections(template: Path) -> list[dict[str, Any]]:
     return sections
 
 
-def check_sections(doc: Doc, expected: list[dict[str, Any]], report: Report) -> None:
+def check_sections(
+    doc: Doc, expected: list[dict[str, Any]], report: Report, optional_may_be_missing: bool = False
+) -> None:
     seen: dict[str, int] = {}
     for section in doc.sections:
         key = norm(section["title"])
@@ -571,7 +573,8 @@ def check_sections(doc: Doc, expected: list[dict[str, Any]], report: Report) -> 
         key = norm(item["title"])
         section = doc.section(key)
         if section is None:
-            report.add("section-missing", 1, f"section '{item['title']}' is missing")
+            if not (optional_may_be_missing and item["optional"]):  # a contribution's extras
+                report.add("section-missing", 1, f"section '{item['title']}' is missing")
             continue
         number = section["line"] + 1
         if section["line"] < last:
@@ -771,11 +774,15 @@ def cell_texts(line: str) -> list[str]:
     return [c.strip() for c in line.strip().strip("|").replace("\\|", "\0").split("|")]
 
 
-def read_record(folder: Path, names: tuple[str, ...]) -> Optional[dict[int, str]]:
+def read_record(
+    folder: Path, names: tuple[str, ...], report: Optional[Report] = None
+) -> Optional[dict[int, str]]:
     """Ids declared in the decision record(s) next to a document, with their Status words.
 
     ``None`` when no record exists, so a check can stay silent instead of calling every id
-    unknown. A row declares an id in its first cell; the Status column is optional."""
+    unknown. A row declares an id in its first cell, bold or quoted ones included; the Status
+    column is optional. A record with no row it can read gives an empty result and, with a
+    ``report``, one warning: every cited id would otherwise be called unknown."""
     declared: dict[int, str] = {}
     found = False
     for name in names:
@@ -796,6 +803,13 @@ def read_record(folder: Path, names: tuple[str, ...]) -> Optional[dict[int, str]
                 values = cell_texts(line)
                 status = values[status_column] if 0 <= status_column < len(values) else ""
                 declared[int(match.group(1))] = status.lower()
+    if found and not declared and report is not None:
+        report.warn(
+            "decision-record-unreadable",
+            1,
+            "the decision record has no row this check can read (| D<n> | ... |); "
+            "decision ids are not checked",
+        )
     return declared if found else None
 
 
@@ -821,7 +835,7 @@ def cited_decisions(doc: Doc, skip: set[int]) -> dict[int, int]:
 
 def check_cited_decisions(doc: Doc, declared: Optional[dict[int, str]], report: Report) -> None:
     """Every cited D<n> must be in the record; a superseded one is a warning."""
-    if declared is None:
+    if not declared:  # no record, or one that could not be read: nothing to compare with
         return
     for number, line in sorted(cited_decisions(doc, appendix_lines(doc)).items()):
         if number not in declared:
@@ -838,7 +852,7 @@ def check_contribution(path: Path, doc: Doc, header: dict[str, Any], report: Rep
             1,
             f"header concern '{concern}' must equal the file name '{path.stem}'",
         )
-    declared = read_record(path.parent.parent, RECORDS)
+    declared = read_record(path.parent.parent, RECORDS, report)
     if declared is None and cited_decisions(doc, set()):
         report.warn("decision-record-missing", 1, "decisions are cited but no record was found")
     check_cited_decisions(doc, declared, report)
@@ -932,7 +946,7 @@ def check_interface_parties(found: list[dict[str, Any]], report: Report) -> None
                     party = name_key(part)
                     if party in reported or party in {"", "-", "none", "n/a"}:
                         continue
-                    if any(party in known or known in party for known in containers):
+                    if party in containers:  # a whole name, not a part of one
                         continue
                     reported.add(party)
                     report.warn(
@@ -944,7 +958,7 @@ def check_interface_parties(found: list[dict[str, Any]], report: Report) -> None
 
 def check_consistency(path: Path, doc: Doc, report: Report) -> None:
     """HLA checks that need no judgement: the decision record and the tables agree with the text."""
-    check_cited_decisions(doc, read_record(path.parent, RECORDS[:1]), report)
+    check_cited_decisions(doc, read_record(path.parent, RECORDS[:1], report), report)
     found = tables(doc, appendix_lines(doc))
     check_owners(found, report)
     check_interface_parties(found, report)
@@ -989,7 +1003,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     report = Report()
     header = check_header(doc, schema, report)
-    check_sections(doc, expected, report)
+    check_sections(doc, expected, report, args.kind == "contribution")
     check_placeholders(doc, report)
     floor = check_hla_link(path, header, report) if args.kind == "tdd" else 0
     decisions = check_decisions(doc, report, floor)

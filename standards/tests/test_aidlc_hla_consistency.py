@@ -17,7 +17,13 @@ from typing import Any, Optional
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "skills" / "processes" / "crv-aidlc-hla" / "scripts" / "validate_doc.py"
 
-CHECKS = {"decision-unknown", "decision-superseded", "owner-duplicate", "interface-party-unknown"}
+CHECKS = {
+    "decision-unknown",
+    "decision-superseded",
+    "decision-record-unreadable",
+    "owner-duplicate",
+    "interface-party-unknown",
+}
 RECORD = (
     "| Id | Layer | Decision | Reason | Source | Flag | Status |\n"
     "| --- | --- | --- | --- | --- | --- | --- |\n"

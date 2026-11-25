@@ -55,6 +55,13 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   is refused when the Bolt has Slices (it would never be covered), and a units file with
   a `slice`, `name` or `units` of the wrong type fails with the malformed-input exit
   code instead of a traceback.
+- **The architecture validator reads decision records like the state script does.** A bold
+  or quoted id cell (`| **D2** |`) is a declared decision, no longer a false
+  `decision-unknown`; a record with no row it can read gives one warning
+  (`decision-record-unreadable`) and the id checks are skipped instead of flagging every
+  cited id. A contribution no longer needs its optional sections (Alternatives and
+  trade-offs, Decisions, Open questions for other contributors), and an interface party
+  must match a whole container name (trimmed, case-folded) rather than part of one.
 
 ### Added
 
