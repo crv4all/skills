@@ -122,7 +122,7 @@ LOCK_WAIT = 60.0  # seconds a command waits for another session of the same chec
 LOCK_POLL = 0.2
 LOCK_WAIT_ENV = "AIDLC_LOCK_WAIT"  # test only: seconds to wait instead of LOCK_WAIT
 LOCK_STALE = 120  # fallback lock only: seconds after which a lock left by a crash is taken over
-INDEX_KEYS = ("id", "name", "kind", "slice", "owner", "repo", "depends_on")
+INDEX_KEYS = ("id", "name", "kind", "slice", "owner", "repo", "depends_on", "cancelled")
 UNIT_MODES = ["split", "inline"]
 DECISION_STATUS = (
     "constraint", "accepted", "proposed", "assumption", "open", "needs-evidence", "superseded"

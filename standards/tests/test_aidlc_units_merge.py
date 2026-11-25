@@ -105,6 +105,21 @@ def test_a_split_bolt_writes_only_the_state_file_that_changed(tmp_path: Path) ->
     assert p.run("decision-id", "--unit", "u1")[1]["ids"] == ["D2"]
 
 
+def test_cancelling_a_unit_of_a_split_bolt_leaves_its_state_file_alone(tmp_path: Path) -> None:
+    done = open_bolt(tmp_path, "--units", "split")
+    p = Bolt(tmp_path, Path(json.loads(done.stdout)["bolt"]))
+    put(p, {"units": [{"id": "u1", "owner": "Ana"}]})
+    p.run("decision-id", "--unit", "u1")
+    own = p.path / "units" / "u1" / "state.json"
+    before = own.read_bytes()
+    assert p.run("units", "--cancel", "u1", "--reason", "gone")[0] == 0
+    assert own.read_bytes() == before  # the cancellation is recorded in the shared index
+    assert (
+        json.loads((p.path / "state.json").read_text())["units"][0]["cancelled"]["reason"] == "gone"
+    )
+    assert unit(p, "u1")["cancelled"]["reason"] == "gone"
+
+
 def test_cancel_keeps_the_unit_and_takes_it_out_of_the_work(bolt: Bolt) -> None:
     put(bolt, {"units": [{"id": "u1"}, {"id": "u2", "depends_on": ["u1"]}, {"id": "u3"}]})
     skip_inception(bolt)
