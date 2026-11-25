@@ -49,6 +49,16 @@ Same method, on fixtures rebuilt with the same builder and a copy of the working
 | B18 | 3 of 3 pass | One `gate --approve --note` with the engineer's direction; no second question, nothing edited by hand. The closing message was four sentences, not one line. |
 | B21 | 2 pass, 1 not reached in session 1; reached in session 3 | Session 1 (after the first text correction) opened a `bugfix` Bolt without a confirming stop, with Slice `s1` ready, wrote the requirements with a regression test and stopped on one question: a Jira Story or Jira off. Session 2, told to turn Jira off and go ahead, recorded it and stopped at the stage boundary. Session 3 (after the second text correction: a stage boundary is not a reason to stop) wrote the code plan with the regression test as its first step and stopped for the engineer's go, as the code-generation reference requires in every scope. Sessions 2 and 3 were not graded by the second agent: the plan file's existence was checked directly. |
 
+## Cases to revise
+
+Where a case and the accepted behaviour disagree, the case is what changes. Decided on 2026-11-25; none of these blocks use.
+
+| Case | Assertion | Accepted behaviour | What to change in the case |
+| --- | --- | --- | --- |
+| B2 | "`state.json` still shows the step as `produced`" | A reversible formatting finding, such as a heading named `Summary` where `Digest` is required, may be corrected by the session and the checkpoint run again, as long as the engineering content stays valid and the engineer is told what changed. | Assert that the content is unchanged and the correction is disclosed. To test a refusal that must stay open, use a finding the session cannot repair by formatting (an artifact with no summary at all). |
+| B18 | "One line says what was recorded and what runs next" | A short closing message; the run gave four sentences. | Say "a few lines". |
+| B21 | "The regression test (bugfix) or the code plan is still produced" | Two stops come first by design: the Jira choice the script requires before a Unit is built, and the engineer's go on the code plan. | Give the Jira answer in the setup or the prompt, and assert the plan is shown before any code. |
+
 ## Deterministic checks
 
 | Date | Check | Result |
