@@ -19,6 +19,15 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **The first write to an older Bolt says what it dropped.** One `migrate` log line and a
   warning carry every retired value (`approver`, `kind`, `recorded_by`, `channel`) and the
   untouched Bolt-level records of the per-Slice stages, word for word.
+- **Passed Bolt-level stages are no longer listed as "completed work affected".** Later
+  Slices add to those documents by design, so the line never cleared and read as a reopened
+  stage; open Bolt-level stages and per-Unit and per-Slice work still report changes.
+- **A failed verification is visible on resume.** `status`, `next` and the Slice line show
+  `verdict: fail`, `not-run` or `missing` for a produced stage that has not passed.
+- **A Unit added to a Slice already checked ready gives a warning**, in the result and the
+  `units` log line: run the readiness check again.
+- **A digest ends at the next heading, code fence or table row**, so a table that follows
+  it is no longer counted as digest lines (`digest-too-long`).
 
 - **A failed verification can no longer be skipped into done, and the verdict line
   cannot hide.** `decide --decision skip` is refused once a stage that records a

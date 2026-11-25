@@ -1041,14 +1041,20 @@ def definition_for(
 
 
 def digest_is_last(lines: list[str]) -> bool:
+    """True when the file ends inside a ``## Digest``. The digest ends at the next heading,
+    the first code fence or the first table row, as ``aidlc_state.py`` reads it."""
     last = ""
     fence = False
+    ended = False
     for line in lines:
         if FENCE_RE.match(line):
             fence = not fence
+            ended = ended or bool(re.match(r"^##\s+Digest\s*$", last))
         elif not fence and re.match(r"^#{1,6}\s", line):
-            last = line
-    return bool(re.match(r"^##\s+Digest\s*$", last))
+            last, ended = line, False
+        elif not fence and re.match(r"^\s*\|", line):
+            ended = True
+    return bool(re.match(r"^##\s+Digest\s*$", last)) and not ended
 
 
 def link_file(

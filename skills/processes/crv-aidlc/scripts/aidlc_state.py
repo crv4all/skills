@@ -110,7 +110,9 @@ Truthful results: `decision-id` that ends "the ids were not reserved" has first 
 own commit (`git reset --keep HEAD~1`), so the counter and the log are as before. The first
 write to a Bolt of an older framework adds one `migrate` log line (and a warning) that
 carries every value it drops: the retired keys and the untouched Bolt-level records of the
-per-Slice stages.
+per-Slice stages. `status` shows `verdict: fail|not-run|missing` for a produced stage whose
+verdict file is not a pass; `units --set` warns when a Unit joins a Slice already checked
+ready.
 
 Lock: a command that changes a bolt (and `sync`) holds one lock per planning checkout for
 its whole run, git steps included, so two sessions in one checkout queue instead of
@@ -187,6 +189,7 @@ VERDICT_WORDS = ("pass", "fail", "not-run")
 VERDICT_LINE = re.compile(r"^[\s>*_#-]*verdict[\s*_]*:", re.IGNORECASE)
 VERDICT_VALUE = re.compile(r"^\s*([A-Za-z-]+)\s*(?:(?:-|:)\s*(.*\S))?\s*$")
 FENCE = re.compile(r"^\s*(```|~~~)")
+TABLE_ROW = re.compile(r"^\s*\|")
 DATE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}-")
 WORKSPACE_SUFFIX = ".code-workspace"
 FETCH_TIMEOUT = 20
@@ -1672,7 +1675,7 @@ def cmd_status(
     details = [unit_detail(bolt, state, catalog, u["id"]) for u in live_units(state)]
     changes, completed = context_rows(bolt, state, catalog)
     facts["unit_details"] = details
-    slice_rows = [slice_row(state, catalog, s["id"]) for s in state["slices"]]
+    slice_rows = [slice_row(bolt, state, catalog, s["id"]) for s in state["slices"]]
     facts["slice_details"] = slice_rows
     contributions = contribution_rows(bolt)
     facts["contributions"] = contributions
@@ -1680,6 +1683,11 @@ def cmd_status(
     facts["completed_affected"] = completed
     unverified = not_verified(state, catalog)
     facts["not_verified"] = unverified
+    current_verdict = None
+    if nxt.get("stage") and not nxt["done"] and nxt["action"] != "units":
+        current_verdict = with_context(bolt, state, catalog, dict(nxt)).get("verdict")
+    if current_verdict:
+        facts["verdict"] = current_verdict
     git_block = git_status_block(bolt)
     if git_block is not None:
         facts["git"] = git_block
@@ -1721,6 +1729,8 @@ def cmd_status(
         lines.append("Current: per-unit stages (see the units above)")
     else:
         lines.append(f"Current: {where_text(nxt)}, step {nxt['step']}")
+    if current_verdict:
+        lines.append(f"Verdict: {current_verdict}")
     lines.append(f"Next: {state['next_action']}")
     if state["parked"]:
         note = str(state["parked"].get("note", "")).replace("\n", " ")
@@ -1734,6 +1744,7 @@ def cmd_status(
                 + len(changes)
                 + len(completed)
                 + len(slice_rows)
+                + (1 if current_verdict else 0)
                 + len(contributions)
             ]
         )
@@ -1924,7 +1935,7 @@ def overview_row(bolt: Path, catalog: list[dict[str, Any]]) -> dict[str, Any]:
         "owner": state.get("owner") or None,
         "next": describe_next(compute_next(state, catalog, bolt)),
         "units": units,
-        "slices": [slice_row(state, catalog, s["id"]) for s in state["slices"]],
+        "slices": [slice_row(bolt, state, catalog, s["id"]) for s in state["slices"]],
         "context": changes,
         "completed_affected": completed,
         "contributions": contribution_rows(bolt),
@@ -2491,16 +2502,40 @@ def report_text(report: dict[str, Any]) -> str:
     return "; ".join(parts)
 
 
+def open_verdict(
+    bolt: Path, state: dict[str, Any], stage: dict[str, Any], key: Optional[str]
+) -> Optional[str]:
+    """What the verdict file of a produced, not yet passed stage says: ``fail``,
+    ``not-run`` or ``missing`` (no file, or no single valid line). ``None`` for a stage
+    without a verdict, one not at ``produced``, or a ``pass``. Read-only; the gate's parser."""
+    record = slot_record(state, stage, key)
+    if not stage.get("verdict") or record is None or record["step"] != "produced":
+        return None
+    if is_done(record):
+        return None
+    word, found = stage_verdict(bolt, state, stage, key)
+    codes = {f["code"] for f in found}
+    if "verdict-fail" in codes:
+        return "fail"
+    if "verdict-missing" in codes or word is None:
+        return "missing"
+    return "not-run" if word == "not-run" else None
+
+
 def with_context(
     bolt: Optional[Path],
     state: dict[str, Any],
     catalog: list[dict[str, Any]],
     result: dict[str, Any],
 ) -> dict[str, Any]:
-    """Add the context report of a ``next`` result's slot as ``context``, when not empty."""
+    """Add the context report of a ``next`` result's slot as ``context``, when not empty,
+    and the verdict a produced stage's file records as ``verdict``."""
     if result.get("stage") and bolt is not None:
         stage = stage_def(catalog, result["stage"])
         key = result.get("slice") if is_slice_stage(stage) else result.get("unit")
+        verdict = open_verdict(bolt, state, stage, key)
+        if verdict:
+            result["verdict"] = verdict
         report = context_report(bolt, state, catalog, stage, key)
         if report:
             result["context"] = report
@@ -2510,14 +2545,20 @@ def with_context(
 def context_rows(
     bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]]
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """The slots with something to report: ``(open work, completed work)``."""
+    """The slots with something to report: ``(open work, completed work)``.
+
+    A passed Bolt-level stage is never reported: later Slices add to its documents by
+    design, so the line would stay for ever and read as if the stage were reopened."""
     open_rows: list[dict[str, Any]] = []
     done_rows: list[dict[str, Any]] = []
     for item, key in slots(state, catalog):
+        done = is_done(slot_record(state, item, key))
+        if done and not (item["per_unit"] or is_slice_stage(item)):
+            continue
         report = context_report(bolt, state, catalog, item, key)
         if report:
             row = {"stage": item["id"], **subject(item, key), **report}
-            (done_rows if is_done(slot_record(state, item, key)) else open_rows).append(row)
+            (done_rows if done else open_rows).append(row)
     return open_rows, done_rows
 
 
@@ -2793,13 +2834,14 @@ def load_lint_module() -> Any:
 
 
 def digest_section(text: str) -> Optional[list[str]]:
-    """Non-blank lines under ``## Digest``, or ``None`` when the heading is absent."""
+    """Non-blank lines under ``## Digest``, or ``None`` when the heading is absent. The
+    digest ends at the next heading, the first code fence or the first table row."""
     lines = text.splitlines()
     for index, line in enumerate(lines):
         if re.match(r"^##\s+Digest\s*$", line):
             found: list[str] = []
             for follow in lines[index + 1 :]:
-                if re.match(r"^#{1,6}\s", follow):
+                if re.match(r"^#{1,6}\s", follow) or FENCE.match(follow) or TABLE_ROW.match(follow):
                     break
                 if follow.strip():
                     found.append(follow)
@@ -3497,14 +3539,23 @@ def cmd_units(
     backfill_stages(state, catalog)  # the stage records of a new Slice
     nxt = commit(bolt, state, catalog)
     added = [uid for uid in merged if uid not in old]
+    warnings: list[str] = []
+    for entry in state["slices"]:  # a Slice checked ready before a Unit joined it
+        late = [u for u in added if merged[u].get("slice") == entry["id"]]
+        if late and entry.get("ready"):
+            warnings.append(
+                f"{entry['id']} was checked ready before {', '.join(late)} "
+                f"{'was' if len(late) == 1 else 'were'} added; run the readiness check again"
+            )
     log_event(
         bolt, "units", "", "",
         f"{len(added)} unit(s) added, {len(merged) - len(added)} updated; "
-        f"{len(state['slices'])} slice(s)",
+        f"{len(state['slices'])} slice(s)" + "".join(f"; {w}" for w in warnings),
     )  # fmt: skip
     live = live_units(state)
     return {
         "ok": True,
+        **({"warnings": warnings} if warnings else {}),
         "units": [u["id"] for u in state["units"]],
         "added": added,
         "slices": [b["id"] for b in state["slices"]],
@@ -3574,10 +3625,16 @@ def slice_status(state: dict[str, Any], catalog: list[dict[str, Any]], sid: str)
     return "building" if started else "ready"
 
 
-def slice_row(state: dict[str, Any], catalog: list[dict[str, Any]], sid: str) -> dict[str, Any]:
+def slice_row(
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], sid: str
+) -> dict[str, Any]:
     """One line of facts about a Slice for ``status`` and ``overview``."""
     record = find_slice(state, sid)
     units = slice_units(state, sid)
+    item = slice_slot(state, catalog, sid)
+    verdict = ((record.get("stages") or {}).get("build-and-test") or {}).get("verdict")
+    if not verdict and item is not None and not slice_cancelled(state, sid):
+        verdict = open_verdict(bolt, state, item, sid)
     return {
         "id": sid,
         "name": record.get("name") or "",
@@ -3588,7 +3645,7 @@ def slice_row(state: dict[str, Any], catalog: list[dict[str, Any]], sid: str) ->
         "open_gaps": len((record.get("ready") or {}).get("gaps") or []),
         "waits": slice_dep_waits(state, catalog, sid),
         "verification_skipped": verification_skipped(catalog, record.get("stages"), True),
-        "verdict": ((record.get("stages") or {}).get("build-and-test") or {}).get("verdict"),
+        "verdict": verdict,
     }
 
 
