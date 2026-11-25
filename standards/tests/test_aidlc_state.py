@@ -295,8 +295,6 @@ def test_decide_skip_needs_a_reason(bolt: Bolt) -> None:
         "step": "todo",
         "approved_at": None,
         "approved_by": None,
-        "recorded_by": None,
-        "channel": None,
     }
 
 
@@ -373,8 +371,7 @@ def test_gate_approve_marks_approved_and_advances(bolt: Bolt) -> None:
     assert "gate-approve" in bolt.log_lines()[-1]
 
 
-def test_gate_needs_by_with_approve_and_note_with_request_changes(bolt: Bolt) -> None:
-    assert bolt.run("gate", "--stage", "hla", "--approve")[0] == 2
+def test_request_changes_needs_a_note(bolt: Bolt) -> None:
     assert bolt.run("gate", "--stage", "hla", "--request-changes")[0] == 2
 
 
@@ -464,25 +461,37 @@ def test_own_clarifications_are_linted(bolt: Bolt) -> None:
     assert code == 1 and data["findings"][0]["path"] == "architecture/hla-clarifications.md"
 
 
-def test_gate_refuses_an_unsigned_document(bolt: Bolt) -> None:
+def test_an_unsigned_document_never_conditions_the_gate(bolt: Bolt) -> None:
     unsigned = SIGNED.replace("status: accepted", "status: in-review").replace('"Rae Viewer"', '""')
     hla_produced(bolt, unsigned)
-    code, data, _ = bolt.run("gate", "--stage", "hla", "--approve", "--by", "Rae Viewer")
-    assert code == 1
-    assert [f["code"] for f in data["findings"]] == ["signoff-not-accepted", "signoff-unsigned"]
-    assert bolt.state["stages"]["hla"]["step"] == "produced"
+    code, data, _ = bolt.run("gate", "--stage", "hla", "--approve")
+    assert code == 0, data
+    assert data["review"] == {
+        "path": "architecture/hla.md",
+        "status": "in-review",
+        "signed_off_by": None,
+    }
+    assert bolt.state["stages"]["hla"]["step"] == "approved"
 
 
-def test_gate_refuses_a_document_without_a_header(bolt: Bolt) -> None:
+def test_a_document_without_a_header_passes_with_an_empty_review(bolt: Bolt) -> None:
     hla_produced(bolt, digest())
-    code, data, _ = bolt.run("gate", "--stage", "hla", "--approve", "--by", "Rae Viewer")
-    assert code == 1 and [f["code"] for f in data["findings"]] == ["signoff-no-header"]
+    code, data, _ = bolt.run("gate", "--stage", "hla", "--approve")
+    assert code == 0, data
+    assert data["review"] == {"path": "architecture/hla.md", "status": None, "signed_off_by": None}
 
 
-def test_gate_approves_a_signed_document(bolt: Bolt) -> None:
+def test_a_stage_without_a_review_document_has_no_review_field(bolt: Bolt) -> None:
+    data = bolt.run("gate", "--stage", "workspace-detection", "--approve")[1]
+    assert "review" not in data
+
+
+def test_gate_reports_the_review_of_a_signed_document(bolt: Bolt) -> None:
     hla_produced(bolt)
     code, data, _ = bolt.run("gate", "--stage", "hla", "--approve", "--by", "Rae Viewer")
     assert code == 0, data
+    assert data["review"]["status"] == "accepted"
+    assert data["review"]["signed_off_by"] == "Rae Viewer"
     assert bolt.state["stages"]["hla"]["approved_by"] == "Rae Viewer"
     assert bolt.state["current"]["stage"] == "tdd"
 
@@ -839,23 +848,53 @@ def test_inputs_lists_the_presets_file_when_it_exists_and_is_silent_when_not(
 # --- who did it, and the framework version -----------------------------------
 
 
-def test_an_approval_given_by_someone_else_needs_a_channel(
+def test_the_engineer_says_proceed_is_one_command_and_one_log_line(
     bolt: Bolt, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("AIDLC_ACTOR", "Ada  Lovelace")
-    gate = ("gate", "--stage", "workspace-detection", "--approve")
-    stage = ("--stage", "workspace-detection")
-    assert (
-        bolt.run("gate", *stage, "--request-changes", "--by", "ADA lovelace", "--note", "x")[0] == 0
-    )
-    assert bolt.run("step", *stage, "--to", "produced")[0] == 0
-    code, data, _ = bolt.run(*gate, "--by", "Grace Hopper")
-    assert code == 1 and "--channel" in data["error"]
-    assert bolt.run(*gate, "--by", "Grace Hopper", "--channel", "email 2026-11-24")[0] == 0
+    before = len(bolt.log_lines())
+    code, data, _ = bolt.run(
+        "gate", "--stage", "workspace-detection", "--approve",
+        "--note", "go with option A, it keeps compatibility",
+    )  # fmt: skip
+    assert code == 0, data
     record = bolt.state["stages"]["workspace-detection"]
-    assert (record["approved_by"], record["recorded_by"]) == ("Grace Hopper", "Ada Lovelace")
-    assert record["channel"] == "email 2026-11-24"
-    assert "recorded by Ada Lovelace via email 2026-11-24" in bolt.log_lines()[-1]
+    assert record["approved_by"] == "Ada Lovelace" and record["approved_at"]
+    assert "recorded_by" not in record and "channel" not in record
+    added = bolt.log_lines()[before:]
+    assert len(added) == 1
+    assert "gate-approve" in added[0] and "Ada Lovelace" in added[0]
+    assert added[0].endswith("go with option A, it keeps compatibility")
+
+
+def test_by_still_names_someone_else_and_needs_no_channel(
+    bolt: Bolt, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AIDLC_ACTOR", "Ada Lovelace")
+    code, _, _ = bolt.run("gate", "--stage", "workspace-detection", "--approve", "--by", "Grace")
+    assert code == 0
+    assert bolt.state["stages"]["workspace-detection"]["approved_by"] == "Grace"
+
+
+def test_the_removed_flags_are_refused(bolt: Bolt) -> None:
+    gate = ("gate", "--stage", "workspace-detection", "--approve")
+    for flag in ("--channel", "--ack-context"):
+        assert bolt.run(*gate, flag, "x")[0] == 2
+    assert open_bolt(bolt.root / "other", "--approver", "x").returncode == 2
+
+
+def test_an_old_state_loses_the_approval_records_at_the_next_write(bolt: Bolt) -> None:
+    state = bolt.state
+    state["approver"] = "Old Approver"
+    record = state["stages"]["workspace-detection"]
+    record["recorded_by"], record["channel"] = "Ada", "email"
+    (bolt.path / "state.json").write_text(json.dumps(state), encoding="utf-8")
+    assert bolt.run("status")[0] == 0  # loads
+    assert bolt.run("park", "--note", "n")[0] == 0
+    after = bolt.state
+    assert "approver" not in after
+    assert "recorded_by" not in after["stages"]["workspace-detection"]
+    assert "channel" not in after["stages"]["workspace-detection"]
 
 
 def test_a_newer_framework_is_refused_and_a_missing_one_is_added(bolt: Bolt) -> None:
@@ -937,7 +976,7 @@ def test_next_mine_lists_only_the_actors_units(bolt: Bolt, monkeypatch: pytest.M
     assert bolt.run("next", "--mine")[0] == 1
 
 
-def test_a_changed_input_blocks_the_gate_until_acknowledged(bolt: Bolt) -> None:
+def test_a_changed_input_is_reported_by_the_gate_and_never_refuses(bolt: Bolt) -> None:
     bolt.write("knowledge/_digest.md", digest())
     reach_produced(bolt)
     ra_files(bolt)
@@ -948,10 +987,7 @@ def test_a_changed_input_blocks_the_gate_until_acknowledged(bolt: Bolt) -> None:
     assert bolt.run("next")[1]["context_changed"] == ["knowledge/_digest.md"]
     assert bolt.run("status")[1]["stale"][0]["stage"] == stage
     code, data, _ = bolt.run("gate", "--stage", stage, "--approve", "--by", "Ada")
-    assert code == 1 and data["findings"][0]["code"] == "context-changed"
-    code, _, _ = bolt.run("gate", "--stage", stage, "--approve", "--by", "Ada",
-                          "--ack-context", "read the new digest")  # fmt: skip
-    assert code == 0 and "context acknowledged: read the new digest" in bolt.log_lines()[-1]
+    assert code == 0 and data["context"] == ["knowledge/_digest.md"]
     assert bolt.run("status")[1]["stale"] == []
 
 

@@ -555,6 +555,16 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   keeps the non-negotiable stops. This brought `SKILL.md` back inside its token
   budget.
 
+- **Passing a checkpoint is one command, with the engineer's direction in the log.**
+  AI-DLC has no approval system: a checkpoint checks technical conditions, and
+  when nothing is wrong the engineer's instruction to continue is enough.
+  `gate --approve` no longer needs `--by` (it defaults to the git user name) and
+  takes `--note "<the direction or decision>"`, written to the `gate-approve` log
+  line. The header status of an HLA or TDD records the organisation's own review
+  and no longer refuses a stage; the gate result reports it as `review`. Inputs
+  that changed since the stage was produced are listed as `context` in the gate
+  result and never refuse. Everything technical still refuses as before.
+
 ### Removed
 
 - **Parent and child Bolts, and the frame kind of Bolt, are gone.** A Bolt is one
@@ -567,6 +577,12 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `state.json` that still holds a `kind` or `parent` key loads as a normal Bolt and drops
   the keys at its next write. The framework number goes from 3 to 4, so an older copy of
   the skills refuses a Bolt written by this one.
+- **Approval records are gone.** `gate --channel`, the `recorded_by` and
+  `channel` fields, the refusal when `--by` names someone else, `open --approver`
+  and the Bolt's `approver` key, the `signoff-*` findings and `--ack-context`
+  with the `context-changed` finding are removed: they made a checkpoint look
+  like an approval workflow while the engineer's own call is what matters. Old
+  records that hold these fields load and lose them at the next write.
 
 ## [0.1.0] — 2026-08-18
 

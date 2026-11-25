@@ -52,7 +52,8 @@ EPILOG = """commands:
   inputs      files a stage reads        --bolt P --stage S [--unit U]
   decide      execute or skip a stage    --bolt P --stage S --decision D --reason R
   step        move a stage forward       --bolt P --stage S --to asked|analysed|produced
-  gate        approve or send back       --bolt P --stage S --approve --by NAME [--channel C]
+  gate        pass a checkpoint or reopen --bolt P --stage S --approve [--note "decision"]
+                                         | --request-changes --note "why"
   units       load units and slices       --bolt P --set file.json
   assign      set a unit's owner         --bolt P --unit U --owner NAME
   brief       a unit's starting page     --bolt P --unit U [--write]
@@ -91,7 +92,7 @@ examples:
   python3 aidlc_state.py next --bolt bolts/2026-01-05-billing
   python3 aidlc_state.py workspace --bolt bolts/2026-01-05-billing --fetch
   python3 aidlc_state.py gate --bolt bolts/2026-01-05-billing --stage requirements-analysis \\
-      --approve --by "A. Approver"
+      --approve --note "go with option A"
 
 exit codes:
   0  ok
@@ -459,8 +460,9 @@ def write_split(bolt: Path, state: dict[str, Any]) -> None:
 def write_state(bolt: Path, state: dict[str, Any]) -> None:
     """Write state.json atomically: a crash leaves the old file, never half a new one."""
     state["updated"] = now()
-    for gone in ("kind", "parent"):  # keys of Bolts written before framework 4
+    for gone in ("kind", "parent", "approver"):  # keys of Bolts written by older skills
         state.pop(gone, None)
+    drop_retired_fields(state)
     written = state.get("framework")
     state["framework"] = max(written if isinstance(written, int) else 0, FRAMEWORK)
     moved = normalise_portable(bolt, state)
@@ -470,6 +472,16 @@ def write_state(bolt: Path, state: dict[str, Any]) -> None:
         write_json_atomic(state_path(bolt), state)
     if moved:
         log_event(bolt, "portable", "", "", "machine paths moved to .aidlc-local.json")
+
+
+def drop_retired_fields(state: dict[str, Any]) -> None:
+    """Forget who recorded a checkpoint and by which channel: no longer kept."""
+    holders = [state, *state.get("units", [])]
+    for holder in holders:
+        for record in (holder.get("stages") or {}).values():
+            if isinstance(record, dict):
+                record.pop("recorded_by", None)
+                record.pop("channel", None)
 
 
 _ACTORS: dict[str, str] = {}
@@ -525,8 +537,6 @@ def new_record(decision: str, reason: str, step: str = "todo") -> dict[str, Any]
         "step": step,
         "approved_at": None,
         "approved_by": None,
-        "recorded_by": None,
-        "channel": None,
     }
 
 
@@ -1023,7 +1033,6 @@ def cmd_open(args: argparse.Namespace, catalog: list[dict[str, Any]]) -> dict[st
         "scope": args.scope,
         "depth": args.depth or DEFAULT_DEPTH[args.scope],
         "owner": args.owner or "",
-        "approver": args.approver or "",
         "created": date,
         "updated": now(),
         "targets": targets,
@@ -2030,39 +2039,28 @@ def gate_findings(
                         "message": f"{found['question']} line {found['line']}: {found['message']}",
                     }
                 )
-    for template in as_list(stage.get("signoff")):
-        for rel in expand(template, repos, units):
-            path = locate(bolt, rel)
-            if not path.is_file():
-                continue
-            header = header_fields(path.read_text(encoding="utf-8", errors="replace"))
-            if header is None:
-                findings.append(
-                    {"code": "signoff-no-header", "path": rel, "message": "no ```yaml header"}
-                )
-                continue
-            status = header.get("status", "")
-            if status != "accepted":
-                findings.append(
-                    {
-                        "code": "signoff-not-accepted",
-                        "path": rel,
-                        "message": f"header status is '{status or 'missing'}'; "
-                        "a person must set it to accepted",
-                    }
-                )
-            unsigned = [key for key in ("signed_off_by", "signed_off_on") if not header.get(key)]
-            if unsigned:
-                findings.append(
-                    {
-                        "code": "signoff-unsigned",
-                        "path": rel,
-                        "message": "empty in the header: " + ", ".join(unsigned),
-                    }
-                )
     if stage["id"] == "reverse-engineering":
         findings.extend(meta_findings(bolt, state))
     return findings
+
+
+def review_info(
+    bolt: Path, state: dict[str, Any], stage: dict[str, Any], unit: Optional[str]
+) -> Optional[dict[str, Any]]:
+    """The review header of the stage's HLA or TDD, for information only: it never
+    conditions a stage, because it records the organisation's own review."""
+    for template in as_list(stage.get("signoff")):
+        for rel in expand(template, brownfield_repos(state), unit_ids(state, stage, unit)):
+            path = locate(bolt, rel)
+            if not path.is_file():
+                continue
+            header = header_fields(path.read_text(encoding="utf-8", errors="replace")) or {}
+            return {
+                "path": rel,
+                "status": header.get("status") or None,
+                "signed_off_by": header.get("signed_off_by") or None,
+            }
+    return None
 
 
 def meta_findings(bolt: Path, state: dict[str, Any]) -> list[dict[str, Any]]:
@@ -2143,6 +2141,7 @@ def record_codekb_commits(bolt: Path, state: dict[str, Any]) -> None:
 
 
 def same_person(left: str, right: str) -> bool:
+    """Names compare equal ignoring case and spacing (used for unit owners)."""
     return " ".join(left.split()).casefold() == " ".join(right.split()).casefold()
 
 
@@ -2232,74 +2231,45 @@ def cmd_gate(
     record = get_record(state, stage, unit)
     label = stage["id"]
     who = actor(planning_root(bolt))
-    channel = (getattr(args, "channel", None) or "").strip() or None
-    if (args.by or "").strip() and who and channel is None and not same_person(args.by, who):
-        raise Fail(
-            EXIT_FINDINGS,
-            f"{who} is running this, but the decision is {args.by.strip()}'s: an approval "
-            "given by someone else must be recorded with --channel (for example "
-            "'email 2026-11-24').",
-        )
-    via = (f" recorded by {who} via {channel}" if who else f" via {channel}") if channel else ""
+    note = " ".join((args.note or "").split())
     if args.request_changes:
-        if not (args.note or "").strip():
+        if not note:
             die(EXIT_USAGE, "--request-changes needs --note.")
         if record["step"] == "approved":
             raise Fail(EXIT_FINDINGS, f"stage '{label}' is already approved.")
         record["step"] = "changes-requested"
         record["approved_at"] = None
         record["approved_by"] = None
-        record["recorded_by"] = None
-        record["channel"] = None
         nxt = commit(bolt, state, catalog)
-        log_event(bolt, "gate-request-changes", label, args.by or "", args.note + via, unit or "")
+        log_event(bolt, "gate-request-changes", label, who, note, unit or "")
         return {"ok": True, "stage": label, "unit": unit, "step": record["step"], "next": nxt}
-    if not (args.by or "").strip():
-        die(EXIT_USAGE, "--approve needs --by NAME.")
     findings = gate_findings(bolt, state, stage, unit, record)
     findings.extend(traceability_findings(bolt, state, catalog, stage))
     findings.extend(decision_status_findings(bolt, state, stage, unit))
-    ack = (getattr(args, "ack_context", None) or "").strip()
-    if not ack:
-        for path in context_changed(bolt, state, catalog, stage, unit):
-            findings.append(
-                {
-                    "code": "context-changed",
-                    "path": path,
-                    "message": "changed after this stage was produced; re-check the artifact, "
-                    'then approve with --ack-context "<what you checked>"',
-                }
-            )
     if findings:
         raise Fail(
             EXIT_FINDINGS,
             f"gate refused for '{label}': {len(findings)} finding(s).",
             findings=findings,
         )
+    context = context_changed(bolt, state, catalog, stage, unit)
+    review = review_info(bolt, state, stage, unit)
+    passed_by = " ".join((args.by or "").split()) or who
     record["step"] = "approved"
     record["approved_at"] = now()
-    record["approved_by"] = args.by.strip()
-    record["recorded_by"] = who or None
-    record["channel"] = channel
+    record["approved_by"] = passed_by or None
     record["relied_on"] = relied_on(bolt, state, catalog, stage, unit)
     if stage["id"] == "reverse-engineering":
         record_codekb_commits(bolt, state)
-    if not state.get("approver"):
-        state["approver"] = args.by.strip()
     nxt = commit(bolt, state, catalog)
     log_event(
-        bolt,
-        "gate-approve",
-        label,
-        args.by,
-        (unit or "") + via + (f" context acknowledged: {ack}" if ack else ""),
-        unit or "",
+        bolt, "gate-approve", label, passed_by, ((unit or "") + " " + note).strip(), unit or ""
     )
     suggestion = (
         "A fresh session for the next stage is cheapest but optional. "
         f"Next: {state['next_action']}."
     )
-    return {
+    result: dict[str, Any] = {
         "ok": True,
         "stage": label,
         "unit": unit,
@@ -2307,6 +2277,11 @@ def cmd_gate(
         "next": nxt,
         "suggestion": suggestion,
     }
+    if context:
+        result["context"] = context
+    if review:
+        result["review"] = review
+    return result
 
 
 def normalise_deps(file: Path, uid: str, raw: Any, known: set[str]) -> list[dict[str, str]]:
@@ -3319,7 +3294,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("--architecture-ref", help="ADR registry checkout; its commit is recorded.")
     sp.add_argument("--owner", help="Bolt owner (optional).")
-    sp.add_argument("--approver", help="Default approver (optional).")
     sp.add_argument("--date", help="Override the date part of the id, YYYY-MM-DD.")
     sp.add_argument(
         "--units",
@@ -3369,13 +3343,11 @@ def build_parser() -> argparse.ArgumentParser:
     group = sp.add_mutually_exclusive_group(required=True)
     group.add_argument("--approve", action="store_true")
     group.add_argument("--request-changes", action="store_true")
-    sp.add_argument("--by", help="Approver name (required with --approve).")
-    sp.add_argument("--note", help="What to change (required with --request-changes).")
-    sp.add_argument("--ack-context", help="What you re-checked after an input changed.")
+    sp.add_argument("--by", help="Who passes the checkpoint (default: you, as git user.name).")
     sp.add_argument(
-        "--channel",
-        help="How someone else gave the decision, e.g. 'email 2026-11-24'; "
-        "required when --by is not the person running the script.",
+        "--note",
+        help="With --approve: the direction or decision in one line, logged. "
+        "With --request-changes: why (required).",
     )
 
     sp = add("assign", "Set the owner of a unit.")
