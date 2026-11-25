@@ -395,6 +395,19 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Loading units adds and updates; it no longer reloads.** `units --set` used
+  to replace every unit, which dropped each unit's decision counter (a unit was
+  handed D1 twice), rewrote every unit's state file, silently overwrote owners
+  and could orphan units. It now adds the ids it has not seen, updates an
+  existing unit only in the keys the file gives (`name`, `kind`, `repo`,
+  `depends_on`, `slice`) and leaves everything else, and every unit the file
+  does not mention, as it was. A different `owner` for an existing unit is
+  refused and points to `assign`. Dependency checks run over the merged set.
+  New `units --cancel U --reason "why" [--superseded-by u7,u8]` takes a unit out
+  of routing, progress and the "all units done" tests without deleting its
+  record, files or history; a unit that depends on it shows that until its
+  dependencies are updated. Splitting a unit is a cancel plus new units.
+
 - **The work folder is a Bolt and the Construction slice is a Slice.** A Bolt
   is a bounded, outcome-driven engineering initiative: its shared requirements,
   architecture decisions, units of work and audit trail, held in one folder

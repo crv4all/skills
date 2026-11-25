@@ -54,7 +54,8 @@ EPILOG = """commands:
   step        move a stage forward       --bolt P --stage S --to asked|analysed|produced
   gate        pass a checkpoint or reopen --bolt P --stage S --approve [--note "decision"]
                                          | --request-changes --note "why"
-  units       load units and slices       --bolt P --set file.json
+  units       add or update units, slices --bolt P --set file.json
+                                         | --cancel U --reason R [--superseded-by u7,u8]
   assign      set a unit's owner         --bolt P --unit U --owner NAME
   brief       a unit's starting page     --bolt P --unit U [--write]
   decision-id reserve decision ids       --bolt P [--count n]
@@ -607,9 +608,9 @@ def slots(state: dict[str, Any], catalog: list[dict[str, Any]]) -> list[Slot]:
             result.append((item, None))
         elif not expanded:
             expanded = True
-            if not state["units"]:
+            if not live_units(state):
                 result.append((per_unit[0], None))
-            for unit in state["units"]:
+            for unit in live_units(state):
                 for sub in per_unit:
                     result.append((sub, unit["id"]))
     return result
@@ -689,7 +690,7 @@ def compute_next(
         if is_split(state) and item["per_unit"] and unit is not None:
             rows = [
                 next_for_unit(bolt, state, catalog, u["id"])
-                for u in state["units"]
+                for u in live_units(state)
                 if unit_slot(state, catalog, u["id"]) is not None
             ]
             return {"done": False, "stage": None, "unit": None, "action": "units", "units": rows}
@@ -709,7 +710,9 @@ def blocked_by(
     for dep in find_unit(state, unit_id).get("depends_on") or []:
         other, on = dep["unit"], dep.get("on", "done")
         reason = ""
-        if on == "contract":
+        if other in known and is_cancelled(find_unit(state, other)):
+            reason = f"unit {other} is cancelled; update depends_on"
+        elif on == "contract":
             has_stage = any(i["id"] == "contract-design" for i in catalog)
             if has_stage and not is_done(state["stages"].get("contract-design")):
                 reason = "contract-design is not done"
@@ -743,7 +746,14 @@ def next_for_unit(
     bolt: Optional[Path], state: dict[str, Any], catalog: list[dict[str, Any]], unit_id: str
 ) -> dict[str, Any]:
     """``next`` for one unit: its own first open stage, with what it waits for."""
-    find_unit(state, unit_id)
+    if is_cancelled(find_unit(state, unit_id)):
+        return {
+            "done": True,
+            "stage": None,
+            "unit": unit_id,
+            "action": "cancelled",
+            "blocked_by": [],
+        }
     waiting = blocked_by(state, catalog, unit_id)
     first = min((i["order"] for i in catalog if i["per_unit"]), default=0)
     for item in catalog:
@@ -772,7 +782,7 @@ def cmd_next(
         who = actor(planning_root(bolt))
         if not who:
             raise Fail(EXIT_FINDINGS, "the git user name is not set; run `git config user.name`.")
-        mine = [u["id"] for u in state["units"] if same_person(u.get("owner") or "", who)]
+        mine = [u["id"] for u in live_units(state) if same_person(u.get("owner") or "", who)]
         rows = [next_for_unit(bolt, state, catalog, uid) for uid in mine]
         return {"ok": True, "actor": who, "units": rows}
     nxt = compute_next(state, catalog, bolt)
@@ -1405,7 +1415,7 @@ def cmd_status(
         "parked": state["parked"],
         "jira": jira_facts(state),
     }
-    details = [unit_detail(bolt, state, catalog, u["id"]) for u in state["units"]]
+    details = [unit_detail(bolt, state, catalog, u["id"]) for u in live_units(state)]
     stale = stale_rows(bolt, state, catalog)
     facts["unit_details"] = details
     facts["stale"] = stale
@@ -1502,7 +1512,7 @@ def overview_row(bolt: Path, catalog: list[dict[str, Any]]) -> dict[str, Any]:
         problems.append(
             {"code": "stale-context", "where": where, "message": ", ".join(row["changed"])}
         )
-    for unit in state["units"]:
+    for unit in live_units(state):
         nxt = next_for_unit(bolt, state, catalog, unit["id"])
         open_unit = not nxt["done"]
         units.append(
@@ -1632,7 +1642,7 @@ def unit_ids(state: dict[str, Any], stage: dict[str, Any], unit: Optional[str]) 
     """The units a stage's ``<unit>`` paths cover: its own unit, or every unit."""
     if stage["per_unit"]:
         return [unit] if unit else []
-    return [u["id"] for u in state["units"]]
+    return [u["id"] for u in live_units(state)]
 
 
 def expand_pairs(
@@ -2434,9 +2444,46 @@ def check_cycles(file: Path, deps: dict[str, list[dict[str, str]]]) -> None:
         visit(uid, [])
 
 
+def is_cancelled(unit: dict[str, Any]) -> bool:
+    return bool(unit.get("cancelled"))
+
+
+def live_units(state: dict[str, Any]) -> list[dict[str, Any]]:
+    """The Units that still take part in routing, progress and the "all done" tests."""
+    return [u for u in state["units"] if not is_cancelled(u)]
+
+
+def check_unit_entry(file: Path, unit: Any, seen: set[str]) -> str:
+    uid = unit.get("id") if isinstance(unit, dict) else None
+    if not isinstance(uid, str) or not ID_PATTERN.match(uid) or uid in seen:
+        die(EXIT_MALFORMED, f"{file}: each unit needs a unique lower-case id; saw {uid!r}.")
+    for key in ("owner", "repo"):
+        if unit.get(key) is not None and not isinstance(unit[key], str):
+            die(EXIT_MALFORMED, f"{file}: unit {uid} {key} must be a string.")
+    kind = unit.get("kind")
+    if kind is not None and kind not in UNIT_KINDS:
+        die(
+            EXIT_MALFORMED,
+            f"{file}: unit {uid} has kind {kind!r}; use one of {', '.join(UNIT_KINDS)}.",
+        )
+    return uid
+
+
+def refuse_owner_change(what: str, ident: str, given: Any, stored: Any, cmd: str) -> None:
+    """Ownership changes through ``assign`` only, never as a side effect of loading."""
+    if given is not None and (not stored or not same_person(str(given), str(stored))):
+        raise Fail(
+            EXIT_FINDINGS,
+            f"{what} {ident} is owned by {stored or 'nobody'}; the file says {given}. "
+            f"Ownership changes only with `{cmd}`. Nothing was changed.",
+        )
+
+
 def cmd_units(
     bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], file: Path
 ) -> dict[str, Any]:
+    """Merge units and slices into the Bolt: add the new, update only the keys the file
+    gives, leave everything else alone. Nothing is applied unless the whole file is valid."""
     try:
         data = json.loads(file.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -2445,83 +2492,123 @@ def cmd_units(
         die(EXIT_MALFORMED, f"{file}: invalid JSON at line {exc.lineno}: {exc.msg}")
     if not isinstance(data, dict) or not ("units" in data or "slices" in data):
         die(EXIT_MALFORMED, f'{file}: expected an object with "units" and/or "slices".')
-
-    old = {u["id"]: u for u in state["units"]}
-    units = data.get("units", state["units"])
-    slices = data.get("slices", state["slices"])
-    if not isinstance(units, list) or not isinstance(slices, list):
+    units_in, slices_in = data.get("units", []), data.get("slices", [])
+    if not isinstance(units_in, list) or not isinstance(slices_in, list):
         die(EXIT_MALFORMED, f'{file}: "units" and "slices" must be lists.')
+
     seen: set[str] = set()
-    for unit in units:
-        uid = unit.get("id") if isinstance(unit, dict) else None
-        if not isinstance(uid, str) or not ID_PATTERN.match(uid) or uid in seen:
-            die(EXIT_MALFORMED, f"{file}: each unit needs a unique lower-case id; saw {uid!r}.")
-        seen.add(uid)
-        for key in ("owner", "repo"):
-            if unit.get(key) is not None and not isinstance(unit[key], str):
-                die(EXIT_MALFORMED, f"{file}: unit {uid} {key} must be a string.")
-        kind = unit.get("kind")
-        if kind is not None and kind not in UNIT_KINDS:
-            die(
-                EXIT_MALFORMED,
-                f"{file}: unit {uid} has kind {kind!r}; use one of {', '.join(UNIT_KINDS)}.",
-            )
+    for unit in units_in:
+        seen.add(check_unit_entry(file, unit, seen))
+    old = {u["id"]: u for u in state["units"]}
+    old_slices = {s["id"]: s for s in state["slices"]}
     seen_slices: set[str] = set()
-    for entry in slices:
+    for entry in slices_in:
         sid = entry.get("id") if isinstance(entry, dict) else None
-        if not isinstance(sid, str) or sid in seen_slices:
+        if not isinstance(sid, str) or not ID_PATTERN.match(sid) or sid in seen_slices:
             die(EXIT_MALFORMED, f"{file}: each slice needs a unique id; saw {sid!r}.")
         seen_slices.add(sid)
-        for member in entry.get("units", []):
-            if member not in seen:
+        for member in entry.get("units", []):  # the older shape: a slice that lists its units
+            if member not in seen and member not in old:
                 die(EXIT_MALFORMED, f"{file}: slice {sid} names unknown unit {member!r}.")
-        entry.setdefault("status", "todo")
-    owner_of = {m: b["id"] for b in slices for m in b.get("units", [])}
+    known_slices = set(old_slices) | seen_slices
+    known_units = set(old) | seen
     known_repos = [t["repo"] for t in state["targets"]]
-    deps: dict[str, list[dict[str, str]]] = {}
-    for unit in units:
-        previous = old.get(unit["id"], {})
-        repo = unit.get("repo", previous.get("repo"))
+    membership = {m: e["id"] for e in slices_in for m in e.get("units", [])}
+
+    merged: dict[str, dict[str, Any]] = {}
+    for unit in units_in:
+        uid = unit["id"]
+        previous = old.get(uid)
+        if previous is not None:
+            refuse_owner_change("unit", uid, unit.get("owner"), previous.get("owner"), "assign")
+        updates = {k: unit[k] for k in ("name", "kind", "repo", "slice") if k in unit}
+        if "slice" not in updates and uid in membership:
+            updates["slice"] = membership[uid]
+        if "depends_on" in unit:
+            updates["depends_on"] = normalise_deps(file, uid, unit["depends_on"], known_units)
+        repo = updates.get("repo")
         if repo and known_repos and repo not in known_repos:
             die(
                 EXIT_MALFORMED,
-                f"{file}: unit {unit['id']} has repo {repo!r}; "
+                f"{file}: unit {uid} has repo {repo!r}; "
                 f"this bolt's repositories are {', '.join(known_repos)}.",
             )
-        deps[unit["id"]] = normalise_deps(
-            file, unit["id"], unit.get("depends_on", previous.get("depends_on")), seen
-        )
-    check_cycles(file, deps)
-    result: list[dict[str, Any]] = []
-    for unit in units:
-        previous = old.get(unit["id"], {})
-        result.append(
-            {
-                "id": unit["id"],
-                "name": unit.get("name", ""),
-                "kind": unit.get("kind", previous.get("kind")),
-                "owner": unit.get("owner", previous.get("owner")),
-                "repo": unit.get("repo", previous.get("repo")),
-                "depends_on": deps[unit["id"]],
-                "slice": owner_of.get(unit["id"], unit.get("slice")),
-                "stages": unit_stage_records(catalog, state["scope"], previous.get("stages")),
-                "story": previous.get("story"),
-                "story_done": previous.get("story_done"),
-            }
-        )
-    state["units"] = result
-    state["slices"] = slices
+        if previous is None:
+            merged[uid] = {
+                "id": uid, "name": "", "kind": None, "repo": None, "slice": None,
+                "owner": unit.get("owner"), "depends_on": [],
+                "stages": unit_stage_records(catalog, state["scope"]),
+                "story": None, "story_done": None,
+                **updates,
+            }  # fmt: skip
+        else:
+            merged[uid] = {**previous, **updates}
+    for uid, unit in {**{u["id"]: u for u in state["units"]}, **merged}.items():
+        owner_slice = unit.get("slice")
+        if owner_slice is not None and owner_slice not in known_slices:
+            die(EXIT_MALFORMED, f"{file}: unit {uid} is in unknown slice {owner_slice!r}.")
+    combined: dict[str, dict[str, Any]] = {u["id"]: u for u in state["units"]}
+    combined.update(merged)
+    check_cycles(file, {uid: unit.get("depends_on") or [] for uid, unit in combined.items()})
+
+    slice_updates = merge_slices(file, state, catalog, slices_in, known_slices)
+    state["units"] = list(combined.values())  # existing order first, new Units after
+    state["slices"] = slice_updates
     nxt = commit(bolt, state, catalog)
-    log_event(bolt, "units", "", "", f"{len(result)} unit(s), {len(slices)} slice(s)")
+    added = [uid for uid in merged if uid not in old]
+    log_event(
+        bolt, "units", "", "",
+        f"{len(added)} unit(s) added, {len(merged) - len(added)} updated; "
+        f"{len(state['slices'])} slice(s)",
+    )  # fmt: skip
+    live = live_units(state)
     return {
         "ok": True,
-        "units": [u["id"] for u in result],
-        "slices": [b["id"] for b in slices],
-        "missing_kind": [u["id"] for u in result if not u["kind"]],
-        "missing_owner": [u["id"] for u in result if not u["owner"]],
-        "missing_repo": [u["id"] for u in result if not u["repo"]],
+        "units": [u["id"] for u in state["units"]],
+        "added": added,
+        "slices": [b["id"] for b in state["slices"]],
+        "missing_kind": [u["id"] for u in live if not u["kind"]],
+        "missing_owner": [u["id"] for u in live if not u["owner"]],
+        "missing_repo": [u["id"] for u in live if not u["repo"]],
         "next": nxt,
     }
+
+
+def merge_slices(
+    file: Path,
+    state: dict[str, Any],
+    catalog: list[dict[str, Any]],
+    entries: list[dict[str, Any]],
+    known: set[str],
+) -> list[dict[str, Any]]:
+    """Slices by id: add the new, update the keys given, keep every other slice as it is."""
+    result = {s["id"]: s for s in state["slices"]}
+    for entry in entries:
+        entry.setdefault("status", "todo")
+        result[entry["id"]] = {**result.get(entry["id"], {}), **entry}
+    return list(result.values())
+
+
+def cmd_cancel(
+    bolt: Path, state: dict[str, Any], catalog: list[dict[str, Any]], args: argparse.Namespace
+) -> dict[str, Any]:
+    """Take a Unit out of the work without deleting anything it has produced."""
+    reason = " ".join((args.reason or "").split())
+    if not reason:
+        die(EXIT_USAGE, "--cancel needs --reason.")
+    unit = find_unit(state, args.cancel)
+    if is_cancelled(unit):
+        raise Fail(EXIT_FINDINGS, f"unit {args.cancel} is already cancelled.")
+    successors = [s for s in (args.superseded_by or "").split(",") if s]
+    for other in successors:
+        find_unit(state, other)
+        if other == args.cancel:
+            die(EXIT_USAGE, "--superseded-by cannot name the cancelled unit itself.")
+    unit["cancelled"] = {"at": now(), "reason": reason, "superseded_by": successors}
+    nxt = commit(bolt, state, catalog)
+    by = f" (superseded by {', '.join(successors)})" if successors else ""
+    log_event(bolt, "units", "", "", f"cancelled {args.cancel}: {reason}{by}")
+    return {"ok": True, "unit": args.cancel, "cancelled": unit["cancelled"], "next": nxt}
 
 
 def cmd_jira(
@@ -2640,7 +2727,7 @@ def cmd_close(
                     }
                 )
         open_stories = [
-            u["id"] for u in state["units"] if u.get("story") and not u.get("story_done")
+            u["id"] for u in live_units(state) if u.get("story") and not u.get("story_done")
         ]
         if open_stories:
             findings.append(
@@ -3264,7 +3351,7 @@ def git_event(args: argparse.Namespace, result: Optional[dict[str, Any]] = None)
             return f"reserve decision ids {ids[0]}-{ids[-1]}"
         return f"reserve decision id {ids[0]}" if ids else "reserve decision ids"
     if cmd == "units":
-        return "load the units"
+        return f"cancel unit {args.cancel}" if args.cancel else "load the units"
     if cmd == "assign":
         return f"assign unit {args.unit} to {args.owner}"
     if cmd == "brief":
@@ -3467,13 +3554,18 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--unit", required=True)
     sp.add_argument("--write", action="store_true", help="Write docs/construction/<unit>/brief.md.")
 
-    sp = add("units", "Load units and slices from a JSON file.")
-    sp.add_argument(
+    sp = add("units", "Add or update units and slices from a JSON file, or cancel a unit.")
+    group = sp.add_mutually_exclusive_group(required=True)
+    group.add_argument(
         "--set",
-        required=True,
         dest="file",
-        help='JSON with "units" (id, name, kind) and/or "slices"; kind: ' + "|".join(UNIT_KINDS),
+        help='JSON with "units" (id, name, kind, repo, depends_on, slice) and/or "slices"; '
+        "new ids are added, given keys of existing ones updated, the rest untouched; kind: "
+        + "|".join(UNIT_KINDS),
     )
+    group.add_argument("--cancel", metavar="UNIT", help="Take a unit out of the work.")
+    sp.add_argument("--reason", help="With --cancel: why.")
+    sp.add_argument("--superseded-by", help="With --cancel: the unit ids that replace it, a,b.")
 
     sp = add("decision-id", "Reserve the next decision ids.")
     sp.add_argument("--count", type=int, default=1)
@@ -3866,6 +3958,8 @@ def run_locked(args: argparse.Namespace) -> dict[str, Any]:
             done["warnings"] = warnings
         return done
     if cmd == "units":
+        if args.cancel:
+            return cmd_cancel(bolt, state, catalog, args)
         return cmd_units(bolt, state, catalog, Path(args.file))
     if cmd == "decision-id":
         if args.count < 1:
