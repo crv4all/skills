@@ -1,4 +1,4 @@
-# TDD question round, section by section
+# TDD questions, section by section
 
 One question file, `architecture/tdd-questions.md`, organised by TDD section. The TDD adds detail the delivery team needs to build and run the system; it does not reopen what the HLA decided.
 
@@ -18,7 +18,7 @@ One question file, `architecture/tdd-questions.md`, organised by TDD section. Th
 ## Already answered          question: answer (source)
 ```
 
-Two to four questions for a section that needs them, none for a section the HLA settles. Skip a section that does not apply with one line under `## Already answered` saying why (for example: no interface changes in this delivery). Cite answers as `T-Q3` and clarifications as `TC-Q1`.
+Ask only what is critical or material and still open; reversible and trivial choices go under `## Assumed` with `because ...`. A section the HLA settles gets no question. Skip a section that does not apply with one line under `## Already answered` saying why (for example: no interface changes in this delivery). Cite answers as `T-Q3` and clarifications as `TC-Q1`.
 
 If the delivery has parts that differ substantially (separate services, owners or release dates), ask once whether to split into `tdd-<part>.md` files, recommending one file unless the parts share almost nothing.
 
@@ -52,4 +52,4 @@ If the delivery has parts that differ substantially (separate services, owners o
 
 ## Analysing answers
 
-Besides the core-rules checks, compare each answer with the HLA decisions listed under `## Carried from the HLA`. A contradiction stops the round: it is an HLA change, not a TDD decision. An answer that only adds detail inside an HLA decision is recorded with that decision's id as part of its source (for example `T-Q4; refines D6`).
+Besides the core-rules checks, compare each answer with the HLA decisions listed under `## Carried from the HLA`. A contradiction stops the work: it is an HLA change, not a TDD decision. An answer that only adds detail inside an HLA decision is recorded with that decision's id as part of its source (for example `T-Q4; refines D6`).

@@ -37,7 +37,7 @@ exception_link: "<where the exception is recorded, or delete the line>"
 
 ## Design decisions
 
-<!-- Optional. Decisions new in this TDD, ids continuing after the HLA record. Only tensions, not routine choices. Sign-off column stays empty. -->
+<!-- Optional. Decisions new in this TDD, ids continuing after the HLA record. Only tensions, not routine choices. The review column stays empty. -->
 
 | Tension | Decision and reason | Id | Signed off by |
 | --- | --- | --- | --- |

@@ -1,6 +1,6 @@
-# Writing, validating, refining and signing off the TDD
+# Writing, validating and refining the TDD
 
-Used by the produce, refine and sign-off steps. The answers are settled; this is about writing a design the delivery team can build from and reviewers can sign.
+Used by the produce and refine steps. The answers are settled; this is about writing a design the delivery team can build from and the organisation's reviewers can assess.
 
 ## What to read
 
@@ -26,7 +26,7 @@ Used by the produce, refine and sign-off steps. The answers are settled; this is
 
 ## Design decisions table
 
-Same rule as the HLA: only departures from an accepted ADR, approaches new to the organisation, trade-offs that cost another team, and calls where reasonable architects would disagree. First column states the tension. `Id` holds the id from `tdd-decisions.md`, which must be higher than every id in the HLA and its record. Leave `Signed off by` empty. No qualifying row: mark the section not applicable with the reason.
+Same rule as the HLA: only departures from an accepted ADR, approaches new to the organisation, trade-offs that cost another team, and calls where reasonable architects would disagree. First column states the tension. `Id` holds the id from `tdd-decisions.md`, which must be higher than every id in the HLA and its record. Leave `Signed off by` empty: it is the reviewers' record. No qualifying row: mark the section not applicable with the reason.
 
 Departing from an accepted ADR here also fills `exception_link` in the header and adds a row to Risks.
 
@@ -35,11 +35,11 @@ Departing from an accepted ADR here also fills `exception_link` in the header an
 - `hla_link` is the HLA's path relative to the TDD (normally `hla.md`). `trigger` lists why the TDD exists. `review_conditions` copies the HLA conditions this TDD answers.
 - `adr_links` lists ADRs relied on beyond those the HLA cites.
 - Owner and reviewer names come from a person, never invented.
-- `status: draft` while writing, `in-review` when handed over. Never set `accepted`, `changes-requested` or `declined`, and never fill `signed_off_by` or `signed_off_on`.
+- `status: draft` while writing, `in-review` when handed over. The organisation's reviewers set `accepted`, `changes-requested` or `declined`, `signed_off_by` and `signed_off_on`; you never fill them to get past a checkpoint.
 
 ## Splitting into parts
 
-When the question round chose a split: `tdd.md` keeps the header, overview, shared decisions, cross-part risks and the combined AI input block, and lists the parts. Each `tdd-<part>.md` is a full TDD with `part` set in its header; a section fully covered in `tdd.md` says `Not applicable: covered in tdd.md` where the template allows it. Validate every file.
+When the questions chose a split: `tdd.md` keeps the header, overview, shared decisions, cross-part risks and the combined AI input block, and lists the parts. Each `tdd-<part>.md` is a full TDD with `part` set in its header; a section fully covered in `tdd.md` says `Not applicable: covered in tdd.md` where the template allows it. Validate every file.
 
 ## Validate
 
@@ -48,7 +48,7 @@ python3 scripts/validate_doc.py --file <bolt>/architecture/tdd.md --kind tdd \
   --adr-index <planning repo>/architecture-index.json
 ```
 
-Fix every finding and rerun until exit 0. Report warnings to the owner. `hla-not-accepted` means stop: the HLA lost its sign-off.
+Fix every finding and rerun until exit 0. Report warnings to the owner. `hla-not-accepted` means the HLA header does not say accepted: report it and let the engineer decide.
 
 ## Refinement
 
@@ -57,9 +57,6 @@ Fix every finding and rerun until exit 0. Report warnings to the owner. `hla-not
 3. Update the affected sections together; a significant change gets a new id from `aidlc_state.py decision-id`; old ids are never renumbered.
 4. Raise `document_version`, validate, summarise the change in at most five lines.
 
-## Sign-off
+## Review and the checkpoint
 
-1. Set `status: in-review`; give the owner the path and the Digest.
-2. A reviewer edits the header: `status` (`accepted`, `changes-requested` or `declined`), `signed_off_by`, `signed_off_on`, and the decision table's sign-off cells.
-3. Validate again.
-4. Accepted: `aidlc_state.py gate --stage tdd --approve --by "<signed_off_by>"`; the gate refuses an unsigned header. Changes requested or declined: `gate --request-changes --note "<what and why>"`, then refine.
+Set `status: in-review` and give the owner the path and the Digest. The organisation's reviewers record their outcome in the header themselves. The session runs the checkpoint as the core rules say; it never waits for the header and never edits it. A later change to `tdd.md` gets new decision ids, and `aidlc_state.py context --bolt <p> --id <D<n>>` names the Slices and Units that rely on a changed one.
