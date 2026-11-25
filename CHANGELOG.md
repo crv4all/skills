@@ -101,6 +101,274 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `accepted` (that header is the organisation's own review): `hla-not-accepted` is a
   warning, and the TDD skill mentions it once and carries on.
 
+- **Build and Test and Operation run once per Slice.** They existed once per
+  Bolt, became next only when every Unit was done, and could not be redone for a
+  second Slice. `build-and-test`, `deployment-pipeline` and `deployment-execution`
+  are now `per_slice` in `stages.json`: their records live in the Slice, their
+  files under `docs/slices/<slice>/...` (for example
+  `docs/slices/s1/build-and-test/test-results.md`) and `<unit>` in their inputs
+  covers only that Slice's Units that are not cancelled. `decide`, `step`,
+  `gate` and `inputs` take `--slice ID`; with one Slice the flag is optional,
+  with several it is a usage error that lists them. A Slice's Build and Test is
+  next when its own Units are done, whatever the other Slices do, and `next`
+  says "waits for slice s1 (verified)" for a Slice that depends on one that is
+  not. `next --slice ID` routes one Slice, plain `next` in a split Bolt lists
+  Units and Slices in progress, and `next --mine` includes the Slices you own.
+  A Unit of a Slice that is not ready reports it. `status` and `overview` show
+  one line per Slice, and `close --status complete` needs every executed stage
+  of every Slice and every live Unit passed. A passed Slice stage can be
+  reopened like a Unit stage. A `state.json` written earlier loses its
+  Bolt-level records for these three stages when it is read; progress moves into
+  the only Slice, or the first one, with one `migrate` log line.
+
+- **A Slice is a small record with one readiness checkpoint.** A Slice used to
+  store `{id, units, status}` and nothing read the status. Now each Unit's own
+  `slice` key is the only record of membership, a Slice stores
+  `{id, name, owner, depends_on, ready, stages}`, and its status (planning,
+  ready, building, built, verified, released) is worked out from what happened,
+  never stored. New `slice --add ID [--name] [--owner] [--depends-on]` adds
+  one, `assign --slice ID --owner NAME` changes its owner and `units --set`
+  merges slice entries by id like units. `slice --ready ID` checks whether
+  enough engineering context exists to start the Slice's Units: it refuses a
+  Slice with no Units or a broken dependency, and lists the gaps it finds (an
+  unfinished Discovery or Inception stage, a failing increment question file,
+  traceability findings about this Slice's Units, an unknown decision status)
+  with what each one costs. With gaps it needs `--note "<direction>"` to go on;
+  the Slice is then ready with the gap codes stored and `status` shows
+  "ready, N open gap(s)". A single-Slice Bolt (express, bugfix) starts ready.
+
+- **Loading units adds and updates; it no longer reloads.** `units --set` used
+  to replace every unit, which dropped each unit's decision counter (a unit was
+  handed D1 twice), rewrote every unit's state file, silently overwrote owners
+  and could orphan units. It now adds the ids it has not seen, updates an
+  existing unit only in the keys the file gives (`name`, `kind`, `repo`,
+  `depends_on`, `slice`) and leaves everything else, and every unit the file
+  does not mention, as it was. A different `owner` for an existing unit is
+  refused and points to `assign`. Dependency checks run over the merged set.
+  New `units --cancel U --reason "why" [--superseded-by u7,u8]` takes a unit out
+  of routing, progress and the "all units done" tests without deleting its
+  record, files or history; a unit that depends on it shows that until its
+  dependencies are updated. Splitting a unit is a cancel plus new units.
+
+- **The work folder is a Bolt and the Construction slice is a Slice.** A Bolt
+  is a bounded, outcome-driven engineering initiative: its shared requirements,
+  architecture decisions, units of work and audit trail, held in one folder
+  under `bolts/` and addressed with `--bolt`. What AWS AI-DLC calls a Bolt, the
+  planned Construction slice over dependency-linked units, is a Slice here:
+  `slices` and `slice` in `state.json`, default id `s1`, and `slice-plan.md`.
+  Stages, gates, exit codes and file formats are otherwise unchanged. A
+  `state.json` written earlier needs its top-level `bolts` key renamed to
+  `slices`, each unit's `bolt` key renamed to `slice`, and its folder moved
+  under `bolts/`. Every script takes `--bolt`.
+- **A justified model tier no longer warns.** The validator asked for a
+  higher tier to be justified in the Execution section but warned whether or
+  not it was, so `--strict` failed every skill that genuinely needed one. It now
+  stays quiet when the section states ``**Model tier: `<tier>`.**`` with a
+  reason on the same line, and still warns when the reason is missing.
+
+- **Story points are never pushed.** They were already optional, but the
+  check-in asked about them on every batch, and the report listed each story
+  without points "so grooming has the list", which treated an empty field as a
+  gap. An empty estimate is the normal state before grooming. The skill now
+  sets points only when the person gives them, proposes numbers only when
+  asked to, and otherwise says nothing about sizing.
+- **Rules for the fields nobody mentioned.** Sprint, components and fix
+  versions had no rule, so a request for "the current sprint" had nowhere to
+  go. They are now asked only where the project has them and left unset
+  otherwise, and a named sprint is resolved through an issue already in it,
+  since create-metadata lists none. Supplied labels merge with a recorded
+  default instead of replacing it. A tenant without a `Blocks` link type gets
+  its stories and a prose-only dependency list, never a `Relates` link standing
+  in for one, and a dependency on a key that does not exist is asked about
+  before it becomes a link to nothing.
+- **One check-in, with the draft, before anything is filed.** Both skills run
+  in a subagent, which cannot wait for an answer, yet the story skill asked
+  about team, estimates, splits and cycles in three different steps, and the
+  person filing first saw the stories in Jira, where each correction is an edit
+  call. Each skill now builds everything, hands back once with the draft and
+  every question numbered, each with the default an unanswered one takes, and
+  re-runs the duplicate search before creating. A partial answer applies what
+  was answered; it never starts a second round. The story skill also proposes
+  an epic the conversation already mentioned, instead of asking cold, and
+  files nothing until the user confirms it. Sprint, components and fix versions
+  are asked only where the project has them, and left unset otherwise.
+- **The setup script is called by the skill's path, not the shell's.** Both
+  skills said `python3 scripts/jira_setup.py`, which only works from inside the
+  skill folder. From the user's repository it exits `2`, which the skill
+  documents as a usage error, so the preflight failed with the wrong diagnosis.
+- **The epic skill checks it can fix what it files.** It told the agent to
+  patch an epic in place when the read-back contradicted the write, but never
+  required the edit capability, so on a server without it the only possible
+  outcome was a wrong epic reported as wrong. Edit is now a preflight
+  requirement, as it already was for stories.
+- **A failed batch finishes what it can.** After a create error the story skill
+  said to stop, and the failure table said to finish pass two, so created
+  stories kept their `[[dep:` placeholders and had no links. Pass two now runs
+  among the stories that exist, the rest is reported, and a re-run backfills
+  the leftovers. The same pass fixed text an economy model would follow the
+  wrong way: a heading count left over from the unheaded opening, an example
+  date it would copy literally, and two evals that contradicted the skill.
+- **Re-running a batch with long titles no longer duplicates it.** The
+  duplicate check compared the summaries as given, before they were rewritten
+  to the 80-character rule, so a re-run's raw title never equalled the rewrite
+  already in Jira and every such story was filed again as a "near match". Titles
+  are now rewritten first, and both the rewritten and the given form are
+  compared.
+- **The story read-back checks what the run created, and nothing else.** It
+  queried every child of the epic and asserted that the row count equalled the
+  number created, so any epic that already had stories failed a correct run,
+  and the team check judged stories other people had filed. Both it and the
+  duplicate search also filtered on `issuetype = Story`, which made a candidate
+  filed as a Task invisible to each. The duplicate search now covers every
+  child type, and the read-back is `key in (<created keys>)` with the fields it
+  needs named explicitly.
+- **A project's own Priority default is not a failure.** The skills claimed
+  `TBD` was not an allowed value on any tenant and expected Priority unset after
+  every create. On BAPP, `TBD` is a real option and the project default, with
+  an icon hosted off-site that renders broken, so Jira stores it on every issue
+  created without a Priority, and the read-back would have failed every run.
+  The skills still never choose a Priority. They now read the default from
+  create-metadata, accept it in the read-back as the project's value, name it
+  in the report, and offer the user the chance to set a real one.
+- **Epic membership is always `parent`.** The skills told a company-managed
+  project to use the legacy `Epic Link` field and treated `parent` there as a
+  different relationship. That rule is out of date: Jira Cloud moved epic
+  membership onto `parent` for both project styles, and a company-managed
+  BAPP story holds its epic in `parent` while the create screen still offers
+  `Epic Link` beside it. The skills now send `parent` only, search and read
+  back with `parent = <key>`, and stop if `parent` is absent rather than
+  falling back.
+- **A story can open with a goal instead of a user story.** Refactors,
+  migrations and platform changes have no real person to put in "As a ... I
+  want", and forcing one produced "As a developer, I want the service split",
+  which is the kind of filler the writing reference bans. A story may now open
+  with a goal: one sentence on what is true afterwards and why. The input
+  schema takes `goal` or `user_story`, never both.
+- **Stories can carry a Tasks checklist.** Acceptance criteria say what is true
+  when a story is done, and teams also want the steps to get there in the
+  story itself. Tasks is an optional `- [ ]` section filled only from steps the
+  person or the spec gave, since a generated task list is a plan nobody agreed
+  to. A task that restates a criterion is dropped, and one big enough for its
+  own owner is flagged in the report as a likely sub-task. It is called Tasks
+  rather than TODO because TODO is a banned placeholder, and the pre-create
+  check would fail every story that used it.
+- **A story opens with its user story, not a heading.** Jira already labels the
+  field Description, so a `## User story` heading as the first line repeated
+  the frame the "As a / I want / So that" lines already carry, and looked
+  wrong under the field label. The opening statement is now unheaded, and the
+  three sections after it keep theirs.
+- **Structured input has one rendering.** The story schema said what each field
+  held but not where it went, so the same batch could render a test plan as a
+  nested list on one story and a paragraph on the next. `structured-input.md`
+  now maps every schema field to its heading or Jira field, and says what a
+  missing required section does: it is asked about, never invented. A test
+  fails if a schema field is added without a row.
+- **A pre-rendered description is checked like any other.** The schema said
+  `description_markdown` was "used as-is", which read as permission to skip the
+  writing checks and the required headings. It now says the field replaces
+  rendering, not checking, so the one input path with no template behind it is
+  not also the one with no rules.
+- **Filing an epic twice files it once.** `crv-create-jira-epic` now searches
+  the project for an epic with the same summary before creating one, as the
+  story skill always has. It used to search only after a create call errored,
+  so re-running a request, or filing an epic a teammate had already filed, left
+  two epics splitting the same stories. An exact match creates nothing and
+  names the existing key. A near match is asked about once.
+- **Story points are no longer mandatory.** Sizing belongs to the team, in
+  grooming, with the people who will do the work. A story with no estimate is
+  now filed with the field unset, named in the report, and counted separately
+  in the total rather than folded in as zero.
+  Requiring an estimate left only two moves, and both were wrong: block the
+  batch over a value that takes five seconds to set in grooming, or invent a
+  number that gets summed into a sprint commitment and cannot be told apart from
+  an agreed one. `story_points` left the schema's required set, and
+  `estimate_source` gained `unsized`.
+- **Priority is never chosen by the skill.** Not from a recorded default, not
+  inferred from a spec, and never as `TBD`, which is not an allowed option value
+  on any tenant and renders as a broken icon on the board. That is what happened
+  and what prompted this. A priority a person names explicitly is still sent,
+  validated against the project's allowed options and reported as supplied; the
+  input schema gives it a dedicated `priority` key and refuses it through
+  `additional_fields`, so setting one stays a deliberate act.
+- **The tier is stated, not asked.** Every skill now says which tier it is
+  running on in one line and starts work. The rule was one prompt per
+  invocation, before any work happened, and in practice nobody answered it: the
+  user cannot judge the tier before seeing what the run involves, so it cost a
+  round trip every time and taught them the skill's questions are noise. A tier
+  named in the session or in the project's agent configuration is still honoured
+  and reported. Choosing one silently is still forbidden.
+- **A subagent with no Atlassian tools is diagnosed, not misreported.** MCP
+  servers are granted per agent, so a spawned subagent can see no Jira tools
+  while the session that spawned it has them, and the symptom is identical to a
+  server nobody installed. Both skills now tell the two apart and hand back for
+  an inline re-run instead of sending the user to reinstall something that is
+  already there. Running inline is the sanctioned fallback: the subagent exists
+  to keep intermediate reasoning out of the conversation, which is worth less
+  than the run happening at all.
+- **The story skill's failure table moved to `references/failure-modes.md`.** It
+  had grown into a lookup table, which is what a reference is for, and the body
+  keeps the non-negotiable stops. This brought `SKILL.md` back inside its token
+  budget.
+
+- **Passing a checkpoint is one command, with the engineer's direction in the log.**
+  AI-DLC has no approval system: a checkpoint checks technical conditions, and
+  when nothing is wrong the engineer's instruction to continue is enough.
+  `gate --approve` no longer needs `--by` (it defaults to the git user name) and
+  takes `--note "<the direction or decision>"`, written to the `gate-approve` log
+  line. The header status of an HLA or TDD records the organisation's own review
+  and no longer refuses a stage; the gate result reports it as `review`. Inputs
+  that changed since the stage was produced are listed as `context` in the gate
+  result and never refuse. Everything technical still refuses as before.
+
+- **A step on someone else's Unit warns instead of refusing.** The owner guard
+  stopped a step, `decide`, `jira` or `decision-id` on a Unit owned by another
+  person unless `--takeover "<why>"` was given, which made the engineer argue with
+  the tool. The command now runs, the result's `warnings` names the owner and the
+  actor, and the log line says the same. `assign`, `next --mine` and the
+  unowned-Unit problem are unchanged.
+
+- **A failed build or test can no longer be stored as passed.** The Build and Test
+  gate only checked that `test-results.md` existed, so a red run passed like a
+  green one and the verdict sat in prose nobody read. A stage in `stages.json`
+  may now name a `verdict` file; `build-and-test` names `test-results.md` and
+  `code-generation` names the Unit's `code-summary.md`. The file must hold exactly
+  one line `Verdict: pass`, `Verdict: fail` or `Verdict: not-run`. No such line is
+  the finding `verdict-missing`; `fail` is `verdict-fail` and refuses whatever
+  `--note` says (there is no override flag); `not-run` is `verdict-not-run` unless
+  `--note` gives the reason, and the record then stores `"verdict": "not-run"`.
+  `status` and `overview` show such a stage as not verified. The build-and-test
+  and code-generation references tell the agent to write the line.
+
+- **A passed Unit stage can be reopened.** Nothing could reopen a passed stage,
+  and the warning for an edited artifact advised `gate --request-changes`, which
+  was refused. `gate --request-changes --unit <u> --note "<why>"` now works on a
+  passed Unit stage: the step becomes `changes-requested`, who and when it passed
+  (and its verdict) are cleared and the note is logged. The Unit's later stages
+  keep their records; `next --unit` returns to the reopened stage. Bolt-level
+  stages stay closed to it, with a message that says why: change the document
+  (the edit is logged) and the Units that rely on it are told. The warning for an
+  edited artifact now says which of the two applies.
+
+- **The seven AI-DLC skills teach what the scripts now do.** After six rounds of
+  script changes the skill text still told a session to hand out approver names,
+  `--channel`, `--parent`, `--kind frame` and `--takeover`, to expect three question
+  rounds, and to write Build and Test under `docs/construction/` and Operation under
+  `docs/operation/`. A session following it would have issued commands that no
+  longer exist. The text now matches the scripts and teaches one operating model:
+  one Bolt per initiative with one shared architecture, Slices added over time and
+  Units inside them. The entry skill carries a table that maps plain requests
+  ("Continue my Unit", "What is blocking this implementation?", "Plan the next
+  Slice") to the commands a session runs, so an engineer never needs a flag. A
+  stage ends in a checkpoint the session passes itself when nothing technical or
+  material is open, asks once with a recommendation when a choice is open, and
+  never passes a failed run. Questions follow what is open, with no quota. The
+  HLA skill explains contributions, the merge into `hla.md` and the consistency
+  review; Inception explains additive Slices and readiness; Construction explains
+  the `Verdict:` line, `context` and per-Slice Build and Test; Operation works per
+  Slice. The shared core rules were rewritten once and copied to all seven skills.
+  The evaluation cases for removed behaviour were deleted and cases for the new
+  behaviour were written; none has been run, so no `results.md` exists.
+
 ### Removed
 
 - **Dead options and old-state shims.** The `if_exists` input option (no catalogue row used
@@ -111,6 +379,25 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   into a Slice. The real Bolt still loads: untouched Bolt-level records of the three
   per-Slice stages are dropped at load, and the retired keys (`kind`, `parent`,
   `approver`, `recorded_by`, `channel`) are still dropped.
+
+- **Parent and child Bolts, and the frame kind of Bolt, are gone.** A Bolt is one
+  initiative that holds its shared architecture, its Slices and its Units. Splitting
+  a large piece of work into a frame Bolt and child Bolts made a concern-sized
+  investigation cost a whole lifecycle. `aidlc_state.py` no longer has `open --parent`,
+  `open --kind` or the `kind` command, `status`, `inputs`, `overview` and the workspace
+  file no longer mention a parent or children, the five `parent:` inputs are gone from
+  `stages.json`, and `validate_doc.py` no longer knows a `parent:D<n>` citation. An older
+  `state.json` that still holds a `kind` or `parent` key loads as a normal Bolt and drops
+  the keys at its next write. The framework number goes from 3 to 4, so an older copy of
+  the skills refuses a Bolt written by this one.
+- **Approval records are gone.** `gate --channel`, the `recorded_by` and
+  `channel` fields, the refusal when `--by` names someone else, `open --approver`
+  and the Bolt's `approver` key, the `signoff-*` findings and `--ack-context`
+  with the `context-changed` finding are removed: they made a checkpoint look
+  like an approval workflow while the engineer's own call is what matters. Old
+  records that hold these fields load and lose them at the next write.
+- **`--takeover` is gone** from `decide`, `step`, `jira` and `decision-id`: the
+  owner guard no longer refuses, so there is nothing to take over.
 
 ### Added
 
@@ -544,297 +831,6 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   end: scalar against list, per-project scoping, idempotent re-runs, refusal of
   `customfield_NNNNN` identifiers, and a hand-mangled defaults block reported as
   malformed rather than absent.
-
-### Changed
-
-- **Build and Test and Operation run once per Slice.** They existed once per
-  Bolt, became next only when every Unit was done, and could not be redone for a
-  second Slice. `build-and-test`, `deployment-pipeline` and `deployment-execution`
-  are now `per_slice` in `stages.json`: their records live in the Slice, their
-  files under `docs/slices/<slice>/...` (for example
-  `docs/slices/s1/build-and-test/test-results.md`) and `<unit>` in their inputs
-  covers only that Slice's Units that are not cancelled. `decide`, `step`,
-  `gate` and `inputs` take `--slice ID`; with one Slice the flag is optional,
-  with several it is a usage error that lists them. A Slice's Build and Test is
-  next when its own Units are done, whatever the other Slices do, and `next`
-  says "waits for slice s1 (verified)" for a Slice that depends on one that is
-  not. `next --slice ID` routes one Slice, plain `next` in a split Bolt lists
-  Units and Slices in progress, and `next --mine` includes the Slices you own.
-  A Unit of a Slice that is not ready reports it. `status` and `overview` show
-  one line per Slice, and `close --status complete` needs every executed stage
-  of every Slice and every live Unit passed. A passed Slice stage can be
-  reopened like a Unit stage. A `state.json` written earlier loses its
-  Bolt-level records for these three stages when it is read; progress moves into
-  the only Slice, or the first one, with one `migrate` log line.
-
-- **A Slice is a small record with one readiness checkpoint.** A Slice used to
-  store `{id, units, status}` and nothing read the status. Now each Unit's own
-  `slice` key is the only record of membership, a Slice stores
-  `{id, name, owner, depends_on, ready, stages}`, and its status (planning,
-  ready, building, built, verified, released) is worked out from what happened,
-  never stored. New `slice --add ID [--name] [--owner] [--depends-on]` adds
-  one, `assign --slice ID --owner NAME` changes its owner and `units --set`
-  merges slice entries by id like units. `slice --ready ID` checks whether
-  enough engineering context exists to start the Slice's Units: it refuses a
-  Slice with no Units or a broken dependency, and lists the gaps it finds (an
-  unfinished Discovery or Inception stage, a failing increment question file,
-  traceability findings about this Slice's Units, an unknown decision status)
-  with what each one costs. With gaps it needs `--note "<direction>"` to go on;
-  the Slice is then ready with the gap codes stored and `status` shows
-  "ready, N open gap(s)". A single-Slice Bolt (express, bugfix) starts ready.
-
-- **Loading units adds and updates; it no longer reloads.** `units --set` used
-  to replace every unit, which dropped each unit's decision counter (a unit was
-  handed D1 twice), rewrote every unit's state file, silently overwrote owners
-  and could orphan units. It now adds the ids it has not seen, updates an
-  existing unit only in the keys the file gives (`name`, `kind`, `repo`,
-  `depends_on`, `slice`) and leaves everything else, and every unit the file
-  does not mention, as it was. A different `owner` for an existing unit is
-  refused and points to `assign`. Dependency checks run over the merged set.
-  New `units --cancel U --reason "why" [--superseded-by u7,u8]` takes a unit out
-  of routing, progress and the "all units done" tests without deleting its
-  record, files or history; a unit that depends on it shows that until its
-  dependencies are updated. Splitting a unit is a cancel plus new units.
-
-- **The work folder is a Bolt and the Construction slice is a Slice.** A Bolt
-  is a bounded, outcome-driven engineering initiative: its shared requirements,
-  architecture decisions, units of work and audit trail, held in one folder
-  under `bolts/` and addressed with `--bolt`. What AWS AI-DLC calls a Bolt, the
-  planned Construction slice over dependency-linked units, is a Slice here:
-  `slices` and `slice` in `state.json`, default id `s1`, and `slice-plan.md`.
-  Stages, gates, exit codes and file formats are otherwise unchanged. A
-  `state.json` written earlier needs its top-level `bolts` key renamed to
-  `slices`, each unit's `bolt` key renamed to `slice`, and its folder moved
-  under `bolts/`. Every script takes `--bolt`.
-- **A justified model tier no longer warns.** The validator asked for a
-  higher tier to be justified in the Execution section but warned whether or
-  not it was, so `--strict` failed every skill that genuinely needed one. It now
-  stays quiet when the section states ``**Model tier: `<tier>`.**`` with a
-  reason on the same line, and still warns when the reason is missing.
-
-- **Story points are never pushed.** They were already optional, but the
-  check-in asked about them on every batch, and the report listed each story
-  without points "so grooming has the list", which treated an empty field as a
-  gap. An empty estimate is the normal state before grooming. The skill now
-  sets points only when the person gives them, proposes numbers only when
-  asked to, and otherwise says nothing about sizing.
-- **Rules for the fields nobody mentioned.** Sprint, components and fix
-  versions had no rule, so a request for "the current sprint" had nowhere to
-  go. They are now asked only where the project has them and left unset
-  otherwise, and a named sprint is resolved through an issue already in it,
-  since create-metadata lists none. Supplied labels merge with a recorded
-  default instead of replacing it. A tenant without a `Blocks` link type gets
-  its stories and a prose-only dependency list, never a `Relates` link standing
-  in for one, and a dependency on a key that does not exist is asked about
-  before it becomes a link to nothing.
-- **One check-in, with the draft, before anything is filed.** Both skills run
-  in a subagent, which cannot wait for an answer, yet the story skill asked
-  about team, estimates, splits and cycles in three different steps, and the
-  person filing first saw the stories in Jira, where each correction is an edit
-  call. Each skill now builds everything, hands back once with the draft and
-  every question numbered, each with the default an unanswered one takes, and
-  re-runs the duplicate search before creating. A partial answer applies what
-  was answered; it never starts a second round. The story skill also proposes
-  an epic the conversation already mentioned, instead of asking cold, and
-  files nothing until the user confirms it. Sprint, components and fix versions
-  are asked only where the project has them, and left unset otherwise.
-- **The setup script is called by the skill's path, not the shell's.** Both
-  skills said `python3 scripts/jira_setup.py`, which only works from inside the
-  skill folder. From the user's repository it exits `2`, which the skill
-  documents as a usage error, so the preflight failed with the wrong diagnosis.
-- **The epic skill checks it can fix what it files.** It told the agent to
-  patch an epic in place when the read-back contradicted the write, but never
-  required the edit capability, so on a server without it the only possible
-  outcome was a wrong epic reported as wrong. Edit is now a preflight
-  requirement, as it already was for stories.
-- **A failed batch finishes what it can.** After a create error the story skill
-  said to stop, and the failure table said to finish pass two, so created
-  stories kept their `[[dep:` placeholders and had no links. Pass two now runs
-  among the stories that exist, the rest is reported, and a re-run backfills
-  the leftovers. The same pass fixed text an economy model would follow the
-  wrong way: a heading count left over from the unheaded opening, an example
-  date it would copy literally, and two evals that contradicted the skill.
-- **Re-running a batch with long titles no longer duplicates it.** The
-  duplicate check compared the summaries as given, before they were rewritten
-  to the 80-character rule, so a re-run's raw title never equalled the rewrite
-  already in Jira and every such story was filed again as a "near match". Titles
-  are now rewritten first, and both the rewritten and the given form are
-  compared.
-- **The story read-back checks what the run created, and nothing else.** It
-  queried every child of the epic and asserted that the row count equalled the
-  number created, so any epic that already had stories failed a correct run,
-  and the team check judged stories other people had filed. Both it and the
-  duplicate search also filtered on `issuetype = Story`, which made a candidate
-  filed as a Task invisible to each. The duplicate search now covers every
-  child type, and the read-back is `key in (<created keys>)` with the fields it
-  needs named explicitly.
-- **A project's own Priority default is not a failure.** The skills claimed
-  `TBD` was not an allowed value on any tenant and expected Priority unset after
-  every create. On BAPP, `TBD` is a real option and the project default, with
-  an icon hosted off-site that renders broken, so Jira stores it on every issue
-  created without a Priority, and the read-back would have failed every run.
-  The skills still never choose a Priority. They now read the default from
-  create-metadata, accept it in the read-back as the project's value, name it
-  in the report, and offer the user the chance to set a real one.
-- **Epic membership is always `parent`.** The skills told a company-managed
-  project to use the legacy `Epic Link` field and treated `parent` there as a
-  different relationship. That rule is out of date: Jira Cloud moved epic
-  membership onto `parent` for both project styles, and a company-managed
-  BAPP story holds its epic in `parent` while the create screen still offers
-  `Epic Link` beside it. The skills now send `parent` only, search and read
-  back with `parent = <key>`, and stop if `parent` is absent rather than
-  falling back.
-- **A story can open with a goal instead of a user story.** Refactors,
-  migrations and platform changes have no real person to put in "As a ... I
-  want", and forcing one produced "As a developer, I want the service split",
-  which is the kind of filler the writing reference bans. A story may now open
-  with a goal: one sentence on what is true afterwards and why. The input
-  schema takes `goal` or `user_story`, never both.
-- **Stories can carry a Tasks checklist.** Acceptance criteria say what is true
-  when a story is done, and teams also want the steps to get there in the
-  story itself. Tasks is an optional `- [ ]` section filled only from steps the
-  person or the spec gave, since a generated task list is a plan nobody agreed
-  to. A task that restates a criterion is dropped, and one big enough for its
-  own owner is flagged in the report as a likely sub-task. It is called Tasks
-  rather than TODO because TODO is a banned placeholder, and the pre-create
-  check would fail every story that used it.
-- **A story opens with its user story, not a heading.** Jira already labels the
-  field Description, so a `## User story` heading as the first line repeated
-  the frame the "As a / I want / So that" lines already carry, and looked
-  wrong under the field label. The opening statement is now unheaded, and the
-  three sections after it keep theirs.
-- **Structured input has one rendering.** The story schema said what each field
-  held but not where it went, so the same batch could render a test plan as a
-  nested list on one story and a paragraph on the next. `structured-input.md`
-  now maps every schema field to its heading or Jira field, and says what a
-  missing required section does: it is asked about, never invented. A test
-  fails if a schema field is added without a row.
-- **A pre-rendered description is checked like any other.** The schema said
-  `description_markdown` was "used as-is", which read as permission to skip the
-  writing checks and the required headings. It now says the field replaces
-  rendering, not checking, so the one input path with no template behind it is
-  not also the one with no rules.
-- **Filing an epic twice files it once.** `crv-create-jira-epic` now searches
-  the project for an epic with the same summary before creating one, as the
-  story skill always has. It used to search only after a create call errored,
-  so re-running a request, or filing an epic a teammate had already filed, left
-  two epics splitting the same stories. An exact match creates nothing and
-  names the existing key. A near match is asked about once.
-- **Story points are no longer mandatory.** Sizing belongs to the team, in
-  grooming, with the people who will do the work. A story with no estimate is
-  now filed with the field unset, named in the report, and counted separately
-  in the total rather than folded in as zero.
-  Requiring an estimate left only two moves, and both were wrong: block the
-  batch over a value that takes five seconds to set in grooming, or invent a
-  number that gets summed into a sprint commitment and cannot be told apart from
-  an agreed one. `story_points` left the schema's required set, and
-  `estimate_source` gained `unsized`.
-- **Priority is never chosen by the skill.** Not from a recorded default, not
-  inferred from a spec, and never as `TBD`, which is not an allowed option value
-  on any tenant and renders as a broken icon on the board. That is what happened
-  and what prompted this. A priority a person names explicitly is still sent,
-  validated against the project's allowed options and reported as supplied; the
-  input schema gives it a dedicated `priority` key and refuses it through
-  `additional_fields`, so setting one stays a deliberate act.
-- **The tier is stated, not asked.** Every skill now says which tier it is
-  running on in one line and starts work. The rule was one prompt per
-  invocation, before any work happened, and in practice nobody answered it: the
-  user cannot judge the tier before seeing what the run involves, so it cost a
-  round trip every time and taught them the skill's questions are noise. A tier
-  named in the session or in the project's agent configuration is still honoured
-  and reported. Choosing one silently is still forbidden.
-- **A subagent with no Atlassian tools is diagnosed, not misreported.** MCP
-  servers are granted per agent, so a spawned subagent can see no Jira tools
-  while the session that spawned it has them, and the symptom is identical to a
-  server nobody installed. Both skills now tell the two apart and hand back for
-  an inline re-run instead of sending the user to reinstall something that is
-  already there. Running inline is the sanctioned fallback: the subagent exists
-  to keep intermediate reasoning out of the conversation, which is worth less
-  than the run happening at all.
-- **The story skill's failure table moved to `references/failure-modes.md`.** It
-  had grown into a lookup table, which is what a reference is for, and the body
-  keeps the non-negotiable stops. This brought `SKILL.md` back inside its token
-  budget.
-
-- **Passing a checkpoint is one command, with the engineer's direction in the log.**
-  AI-DLC has no approval system: a checkpoint checks technical conditions, and
-  when nothing is wrong the engineer's instruction to continue is enough.
-  `gate --approve` no longer needs `--by` (it defaults to the git user name) and
-  takes `--note "<the direction or decision>"`, written to the `gate-approve` log
-  line. The header status of an HLA or TDD records the organisation's own review
-  and no longer refuses a stage; the gate result reports it as `review`. Inputs
-  that changed since the stage was produced are listed as `context` in the gate
-  result and never refuse. Everything technical still refuses as before.
-
-- **A step on someone else's Unit warns instead of refusing.** The owner guard
-  stopped a step, `decide`, `jira` or `decision-id` on a Unit owned by another
-  person unless `--takeover "<why>"` was given, which made the engineer argue with
-  the tool. The command now runs, the result's `warnings` names the owner and the
-  actor, and the log line says the same. `assign`, `next --mine` and the
-  unowned-Unit problem are unchanged.
-
-- **A failed build or test can no longer be stored as passed.** The Build and Test
-  gate only checked that `test-results.md` existed, so a red run passed like a
-  green one and the verdict sat in prose nobody read. A stage in `stages.json`
-  may now name a `verdict` file; `build-and-test` names `test-results.md` and
-  `code-generation` names the Unit's `code-summary.md`. The file must hold exactly
-  one line `Verdict: pass`, `Verdict: fail` or `Verdict: not-run`. No such line is
-  the finding `verdict-missing`; `fail` is `verdict-fail` and refuses whatever
-  `--note` says (there is no override flag); `not-run` is `verdict-not-run` unless
-  `--note` gives the reason, and the record then stores `"verdict": "not-run"`.
-  `status` and `overview` show such a stage as not verified. The build-and-test
-  and code-generation references tell the agent to write the line.
-
-- **A passed Unit stage can be reopened.** Nothing could reopen a passed stage,
-  and the warning for an edited artifact advised `gate --request-changes`, which
-  was refused. `gate --request-changes --unit <u> --note "<why>"` now works on a
-  passed Unit stage: the step becomes `changes-requested`, who and when it passed
-  (and its verdict) are cleared and the note is logged. The Unit's later stages
-  keep their records; `next --unit` returns to the reopened stage. Bolt-level
-  stages stay closed to it, with a message that says why: change the document
-  (the edit is logged) and the Units that rely on it are told. The warning for an
-  edited artifact now says which of the two applies.
-
-- **The seven AI-DLC skills teach what the scripts now do.** After six rounds of
-  script changes the skill text still told a session to hand out approver names,
-  `--channel`, `--parent`, `--kind frame` and `--takeover`, to expect three question
-  rounds, and to write Build and Test under `docs/construction/` and Operation under
-  `docs/operation/`. A session following it would have issued commands that no
-  longer exist. The text now matches the scripts and teaches one operating model:
-  one Bolt per initiative with one shared architecture, Slices added over time and
-  Units inside them. The entry skill carries a table that maps plain requests
-  ("Continue my Unit", "What is blocking this implementation?", "Plan the next
-  Slice") to the commands a session runs, so an engineer never needs a flag. A
-  stage ends in a checkpoint the session passes itself when nothing technical or
-  material is open, asks once with a recommendation when a choice is open, and
-  never passes a failed run. Questions follow what is open, with no quota. The
-  HLA skill explains contributions, the merge into `hla.md` and the consistency
-  review; Inception explains additive Slices and readiness; Construction explains
-  the `Verdict:` line, `context` and per-Slice Build and Test; Operation works per
-  Slice. The shared core rules were rewritten once and copied to all seven skills.
-  The evaluation cases for removed behaviour were deleted and cases for the new
-  behaviour were written; none has been run, so no `results.md` exists.
-
-### Removed
-
-- **Parent and child Bolts, and the frame kind of Bolt, are gone.** A Bolt is one
-  initiative that holds its shared architecture, its Slices and its Units. Splitting
-  a large piece of work into a frame Bolt and child Bolts made a concern-sized
-  investigation cost a whole lifecycle. `aidlc_state.py` no longer has `open --parent`,
-  `open --kind` or the `kind` command, `status`, `inputs`, `overview` and the workspace
-  file no longer mention a parent or children, the five `parent:` inputs are gone from
-  `stages.json`, and `validate_doc.py` no longer knows a `parent:D<n>` citation. An older
-  `state.json` that still holds a `kind` or `parent` key loads as a normal Bolt and drops
-  the keys at its next write. The framework number goes from 3 to 4, so an older copy of
-  the skills refuses a Bolt written by this one.
-- **Approval records are gone.** `gate --channel`, the `recorded_by` and
-  `channel` fields, the refusal when `--by` names someone else, `open --approver`
-  and the Bolt's `approver` key, the `signoff-*` findings and `--ack-context`
-  with the `context-changed` finding are removed: they made a checkpoint look
-  like an approval workflow while the engineer's own call is what matters. Old
-  records that hold these fields load and lose them at the next write.
-- **`--takeover` is gone** from `decide`, `step`, `jira` and `decision-id`: the
-  owner guard no longer refuses, so there is nothing to take over.
 
 ## [0.1.0] — 2026-08-18
 
