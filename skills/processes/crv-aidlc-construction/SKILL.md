@@ -27,7 +27,7 @@ Read `references/core-rules.md` once per session, then ONLY the current stage's 
 
 1. `aidlc_state.py next --bolt <p> --unit <u>`: stage and what it waits for. Slice not ready: `slice --bolt <p> --ready <slice>`, explain its gaps. Someone else owns the Unit: say so in one line, carry on.
 2. Read its `context` before editing.
-3. Per design stage, recommend from the Unit's `kind` and the stage's run condition: `decide --bolt <p> --stage <id> --unit <u> --decision execute|skip --reason "..."`. Cite what the HLA, TDD or an ADR fixed (`D<n>`) in each design, never re-ask: that citation carries a later change of the decision to this Unit. Code Generation always runs. Unit ids: `decision-id --unit <u>` (`<u>:D<n>`).
+3. Per design stage, recommend from the Unit's `kind` and the stage's run condition: `decide --bolt <p> --stage <id> --unit <u> --decision execute|skip --reason "..."`. Cite what the HLA, TDD or an ADR fixed (`D<n>`) in each design, never re-ask: that citation carries a later change of the decision to this Unit. Unit ids: `decision-id --unit <u>` (`<u>:D<n>`).
 
 | Kind | Design stages that normally run |
 | --- | --- |
@@ -44,7 +44,7 @@ Per Unit in `docs/construction/<unit>/<stage>/`: functional-design, nfr-requirem
 
 `aidlc_state.py inputs --bolt <p> --stage <id> --unit <u>` first (exit 3: name the missing file, stop). Build and Test takes `--slice <s>` instead (one Slice: no flag).
 
-- **Ask:** only what is open; lint `--allow-open`; `step --stage <id> --unit <u> --to asked`; stop.
+- **Ask:** a question file only if a question matters (else `## Assumed` in the artifact, then produce); lint `--allow-open`; `step --stage <id> --unit <u> --to asked`; stop.
 - **Analyse, produce:** `step ... --to analysed`, `--to produced`.
 - **Code:** show the plan; on go, build; write the summary; `step --to produced`.
 - **Checkpoint:** `gate --bolt <p> --stage <id> --unit <u> --approve`.

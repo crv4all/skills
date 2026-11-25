@@ -16,7 +16,7 @@ rewrites what the first one built on. B1, B3, B6 and B9 guard them.
 - [ ] `status` and `inputs --stage requirements-analysis` run before anything is written.
 - [ ] Nothing the HLA decided is asked; it is under `## Already answered` or a Constraints row citing `D<n>`.
 - [ ] The digest's latency target appears as a pre-answered question with a path and a quote.
-- [ ] A category with nothing open has no question and a one-line note under `## Already answered`; there is no fixed question count.
+- [ ] A category with nothing open has no question and a one-line note under `## Already answered`; there is no fixed question count. With nothing to ask at all, no question file is written and the stage goes on to produce, with its assumed choices in the artifact.
 - [ ] Reversible choices are under `## Assumed`, each with `because`.
 - [ ] `lint_questions.py --allow-open` passes and `step --to asked` is run; no `requirements.md` exists.
 

@@ -16,7 +16,7 @@ Ask, Analyse, Produce, Checkpoint. Each can be its own session; end a step with 
 
 - Investigate first: code, tests, configuration, documents, `codekb/`, decisions, the HLA, `docs/presets.md`, earlier answers. What they settle is not asked: list it under `## Already answered` with its source (file and line, or `preset P-n`).
 - Class what remains. **Critical** (security, compliance, irreversible, data loss) and **material** (business meaning, public contracts, architecture, other people's work) are asked, with a `Class:` line. **Reversible** and **trivial** choices are decided from conventions and listed under `## Assumed`, each with `because ...`; the engineer can overturn them.
-- No quota. A layer, category or stage with nothing open gets no question. A listed question file must exist at the checkpoint and hold at least one question: if nothing is open, ask the single one the stage depends on most. Never add more to fill it.
+- No quota, no forced question: a layer, category or stage with nothing open gets none, and no question file. A choice decided without asking goes under `## Assumed` in the artifact (or the question file, if there is one).
 - A question has: one or two lines of context, 2 to 5 options lettered from A, a last `X) Other (describe)`, a `Recommended:` line with the reason, and an empty `Answer:` line. Questions live in the file, not only in chat.
 - Analyse answers: run `lint_questions.py`; look for blanks, vague words, contradictions with each other, the HLA or an ADR, merged options, undefined terms. Follow up in `<stage>-clarifications.md`; never guess a gap.
 

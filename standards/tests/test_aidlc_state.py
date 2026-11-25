@@ -432,13 +432,21 @@ def hla_produced(p: Bolt, header: str = SIGNED) -> None:
     assert p.run("step", "--stage", "hla", "--to", "produced")[0] == 0
 
 
-def test_gate_needs_every_question_file_of_the_stage(bolt: Bolt) -> None:
+def test_gate_does_not_need_a_question_file_the_stage_has_no_question_for(bolt: Bolt) -> None:
     hla_produced(bolt)
     (bolt.path / "architecture/hla-questions-b.md").unlink()
     code, data, _ = bolt.run("gate", "--stage", "hla", "--approve", "--by", "Rae Viewer")
-    assert code == 1
-    assert [(f["code"], f["path"]) for f in data["findings"]] == [
-        ("questions-missing", "architecture/hla-questions-b.md")
+    assert code == 0, data
+    assert not [f for f in data.get("findings", []) if f["code"] == "questions-missing"]
+
+
+def test_a_question_file_that_exists_is_still_linted_at_the_gate(bolt: Bolt) -> None:
+    hla_produced(bolt)
+    (bolt.path / "architecture/hla-questions-b.md").unlink()
+    bolt.write("architecture/hla-questions-c.md", QUESTIONS.replace("Answer: A", "Answer:"))
+    code, data, _ = bolt.run("gate", "--stage", "hla", "--approve", "--by", "Rae Viewer")
+    assert code == 1 and [f["path"] for f in data["findings"]] == [
+        "architecture/hla-questions-c.md"
     ]
 
 

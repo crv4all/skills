@@ -7,7 +7,7 @@
 
 Reviewers read these documents to make decisions, and later stages read them to
 build. A missing section, a header field nobody filled in, an ADR id that does
-not exist or a TDD written against an HLA nobody accepted all look fine to a
+not exist or a TDD whose HLA link points nowhere all look fine to a
 reader skimming the page; each one is a mechanical fact a script can check for
 free. Judgement about the design stays with people.
 
@@ -52,7 +52,8 @@ checks (each failure is a finding, exit 1):
               (decision-unknown; a superseded one is a warning); no term or container has two
               owners; producers and consumers of interface tables are containers (warning).
               Appendices, code fences and unit-scoped ids (u3:D2) are ignored
-  hla link    (tdd) hla_link resolves to a document whose header status is accepted
+  hla link    (tdd) hla_link resolves to a document; if its header status is not accepted
+              that is a warning only (the review is the organisation's, not a condition)
   contribution  (contribution) the header concern equals the file name, and every D<n> cited
               exists in the decision record next to hla.md (decision-unknown); the twelve
               layers do not apply
@@ -756,10 +757,16 @@ def check_hla_link(path: Path, header: dict[str, Any], report: Report) -> int:
     hla = read_doc(target)
     hla_header, error = read_header(hla)
     status = (hla_header or {}).get("status")
+    # The HLA header records the organisation's own review; it never conditions the TDD.
     if error is not None or hla_header is None:
-        report.add("hla-not-accepted", 1, f"{link}: its header cannot be read")
+        report.warn("hla-not-accepted", 1, f"{link}: its header cannot be read")
     elif status != "accepted":
-        report.add("hla-not-accepted", 1, f"{link}: header status is '{status}', not accepted")
+        report.warn(
+            "hla-not-accepted",
+            1,
+            f"{link}: the HLA is still in review (status '{status}'); "
+            "decisions this TDD builds on may change",
+        )
     texts = ["\n".join(hla.lines)]
     record = target.parent / "hla-decisions.md"
     if record.is_file():

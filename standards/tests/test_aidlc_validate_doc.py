@@ -322,10 +322,14 @@ def test_a_complete_tdd_against_an_accepted_hla_is_valid(tmp_path: Path) -> None
     assert code == 0, data["findings"]
 
 
-def test_tdd_is_refused_when_the_hla_is_not_accepted(tmp_path: Path) -> None:
+def test_a_tdd_does_not_need_an_accepted_hla(tmp_path: Path) -> None:
+    """The HLA header records the organisation's own review: a warning, never a refusal."""
     accepted_hla(tmp_path, status="in-review")
     code, data = validate(tmp_path, build("tdd", ids="D6"), "tdd")
-    assert code == 1 and codes(data) == ["hla-not-accepted"]
+    assert code == 0 and codes(data) == []
+    assert codes(data, "warnings") == ["hla-not-accepted"]
+    message = data["warnings"][0]["message"]
+    assert "still in review" in message and "may change" in message
 
 
 def test_tdd_with_an_unresolved_hla_link(tmp_path: Path) -> None:

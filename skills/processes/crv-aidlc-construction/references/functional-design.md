@@ -13,6 +13,6 @@
 4. Describe workflows and state machines; snippets of at most 15 lines of pseudocode.
 5. Trace every `AC` to the rules that satisfy it.
 
-**Writes** in `docs/construction/<unit>/functional-design/`: `functional-design-questions.md`; `entities.md` (YAML); `rules.md` (YAML); `functional-spec.md` (workflows, state machines, ER and rules views); `frontend-components.md` (UI only); `traceability.json` (`AC` to `BR`). Each starts with `## Digest`.
+**Writes** in `docs/construction/<unit>/functional-design/`: `functional-design-questions.md` (only if asked); `entities.md` (YAML); `rules.md` (YAML); `functional-spec.md` (workflows, state machines, ER and rules views); `frontend-components.md` (UI only); `traceability.json` (`AC` to `BR`). Each starts with `## Digest`.
 
 **Good:** every `AC` maps to a rule, and nothing names a technology.

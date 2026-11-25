@@ -5,10 +5,12 @@
 # ///
 """Check that a stage question file is well formed and fully answered.
 
-A question file is the written record of what the approver decided. A question
+A question file is the written record of what the engineer decided. A question
 with no recommendation, no way out of the listed options, or an answer that is
 not one of the options leaves the record unusable, and the cost surfaces three
 stages later. Checking the shape here is free; checking it by reading is not.
+A stage writes a question file only when a question matters, so a file with no
+question (it may hold only `## Assumed`) is valid; an asked question is checked in full.
 
 The format follows the AWS AI-DLC question format (lettered options, a final
 "Other", an answer line). The ``Recommended:`` line, with its reason, is a
@@ -45,7 +47,7 @@ EPILOG = """examples:
   python3 lint_questions.py --presets docs/presets.md          # the organisation's presets
   python3 lint_questions.py --file q.md --presets docs/presets.md  # also checks cited preset ids
 
-findings (exit 1): no-questions, no-context, too-few-options, too-many-options,
+findings (exit 1): no-context, too-few-options, too-many-options,
   no-other-option, no-recommendation, no-recommendation-reason, no-answer-line,
   empty-answer, answer-not-offered, other-without-text, multiple-letters,
   answer-rewritten (a formatter turned the answer line into a link), should-not-ask and
@@ -295,8 +297,6 @@ def lint_text(text: str, allow_open: bool = False) -> dict[str, Any]:
     blocks = split_blocks(lines)
     findings: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
-    if not blocks:
-        findings.append(finding("no-questions", "-", 1, "No `## Q<n>` question blocks found."))
     for qid, heading_line, body, proposal in blocks:
         block_findings, block_warnings = check_block(qid, heading_line, body, allow_open, proposal)
         findings.extend(block_findings)

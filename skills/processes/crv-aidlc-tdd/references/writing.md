@@ -48,7 +48,7 @@ python3 scripts/validate_doc.py --file <bolt>/architecture/tdd.md --kind tdd \
   --adr-index <planning repo>/architecture-index.json
 ```
 
-Fix every finding and rerun until exit 0. Report warnings to the owner. `hla-not-accepted` means the HLA header does not say accepted: report it and let the engineer decide.
+Fix every finding and rerun until exit 0. Report warnings to the owner. `hla-not-accepted` is only a warning (the HLA is still in review): say so once and go on.
 
 ## Refinement
 

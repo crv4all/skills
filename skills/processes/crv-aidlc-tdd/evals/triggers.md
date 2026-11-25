@@ -30,5 +30,5 @@ acronym also collides with test-driven development, which is tested below.
 
 | # | Prompt | Correct answer | Reasoning |
 | --- | --- | --- | --- |
-| B1 | "Write the TDD now; the HLA is still in review." | Fire, then ask | The validator needs the HLA header to say accepted; the skill says so, recommends waiting and lets the engineer decide. Nothing is written meanwhile. |
+| B1 | "Write the TDD now; the HLA is still in review." | Fire | The HLA review is the organisation's own and never conditions the TDD; the skill mentions it once and continues. |
 | B2 | "Add more detail on retries to the design." | Fire if a TDD exists | Refinement of an existing TDD; if only an HLA exists, it is an HLA refinement. |

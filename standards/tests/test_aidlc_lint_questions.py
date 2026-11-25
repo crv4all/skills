@@ -60,10 +60,10 @@ def test_missing_file_exits_3(tmp_path: Path) -> None:
     assert done.returncode == 3
 
 
-def test_no_questions(tmp_path: Path) -> None:
+def test_a_file_with_no_question_is_valid(tmp_path: Path) -> None:
+    """A stage writes a question file only when a question matters; one may hold nothing."""
     code, result = lint(tmp_path, "# Nothing here\n")
-    assert code == 1
-    assert codes(result) == ["no-questions"]
+    assert code == 0 and result["findings"] == [] and result["questions"] == 0
 
 
 CASES = {
@@ -302,4 +302,7 @@ def test_class_line_and_assumed_section(tmp_path: Path) -> None:
     code, result = lint(tmp_path, assumed)
     assert code == 1 and codes(result) == ["assumed-no-reason"] and result["questions"] == 1
     only = "# Notes\n\n## Assumed\n- Use snake_case because the repo does.\n"
-    assert codes(lint(tmp_path, only)[1]) == ["no-questions"]
+    assert lint(tmp_path, only)[0] == 0  # only assumed choices, each with its reason
+    bare = "# Notes\n\n## Assumed\n- Tabs for indent\n"
+    code, result = lint(tmp_path, bare)
+    assert code == 1 and codes(result) == ["assumed-no-reason"]

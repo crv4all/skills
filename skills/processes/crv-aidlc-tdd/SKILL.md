@@ -56,7 +56,7 @@ Each row is one run. Find the step from `aidlc_state.py next --bolt <p>` and the
 ### 1. Applicability
 
 1. `aidlc_state.py status --bolt <p> --format text`, then `inputs --bolt <p> --stage tdd`. Exit 3: report the missing file and its stage; stop.
-2. Read the header of `architecture/hla.md`. The TDD validator needs `status: accepted` there: that field is the organisation's own review of the HLA. If it is not `accepted`, tell the engineer in one line that the TDD can be drafted but will not validate until that review is recorded, recommend waiting, and let them decide. Never edit the header yourself.
+2. Read the header of `architecture/hla.md`. Its `status` is the organisation's own review and never conditions the TDD. If it is not `accepted`, say once, in one line, that the HLA is still in review and the decisions the TDD builds on may change, then continue. Never edit the header yourself.
 3. A TDD is required when (a) `review_conditions` or `decision_needed` asks for one, or (b) `impact_flags` include `new-data-store`, `new-public-exposure`, `major-cutover` or `new-domain-messaging`.
 4. Neither: say a TDD is not required and why, then `aidlc_state.py decide --bolt <p> --stage tdd --decision skip --reason "<flags and conditions checked>"`. If the engineer overrides with a reason, record it with `decide --decision execute --reason "override: <reason>"` and use trigger `override`.
 
@@ -82,5 +82,5 @@ Ask once for the HLA's path and the ADR index (or none). Apply the same applicab
 ## When a step fails
 
 - `aidlc_state.py`: exit 1 is a refusal (read the findings), 2 a wrong flag, 3 a missing file or Bolt, 4 a malformed `state.json` (report it; never edit it by hand).
-- `validate_doc.py`: `hla-not-accepted` means the HLA header does not say accepted; report it and let the engineer decide. `decision-not-new` means an id was reused; reserve a new one. Exit 3 or 4: an input is missing or broken; report it.
+- `validate_doc.py`: `hla-not-accepted` is a warning (the HLA is still in review): mention it once, never stop for it. `decision-not-new` means an id was reused; reserve a new one. Exit 3 or 4: an input is missing or broken; report it.
 - The HLA leaves something the TDD needs undecided at the HLA's level (a new container, a new store): that is an HLA gap; raise it rather than deciding it here.

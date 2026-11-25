@@ -13,6 +13,6 @@
 4. Record stack choices with the reason and the alternative given up.
 5. Keep brownfield stacks unless an answer or ADR changes them.
 
-**Writes** in `docs/construction/<unit>/nfr-requirements/`: `nfr-requirements-questions.md`; `performance-requirements.md`, `security-requirements.md`, `scalability-requirements.md`, `reliability-requirements.md`, `observability-requirements.md`; `tech-stack-decisions.md`; `traceability.json`. Each starts with `## Digest`.
+**Writes** in `docs/construction/<unit>/nfr-requirements/`: `nfr-requirements-questions.md` (only if asked); `performance-requirements.md`, `security-requirements.md`, `scalability-requirements.md`, `reliability-requirements.md`, `observability-requirements.md`; `tech-stack-decisions.md`; `traceability.json`. Each starts with `## Digest`.
 
 **Good:** every item has a number and a source; none contradicts the HLA.

@@ -62,9 +62,9 @@ Each run ends with one line saying what comes next.
 
 1. **Ask.**
    - `aidlc_state.py status --bolt <p> --format text`, then `aidlc_state.py inputs --bolt <p> --stage <id>`. Exit 3: name the missing file and the stage that produces it, and stop.
-   - Read the files `inputs` lists, as the stage reference says. Investigate before asking. Write the question file: `## Already answered`, `## Assumed` (each `because ...`), then only the questions that are critical or material. A category with nothing open gets none.
+   - Read the files `inputs` lists, as the stage reference says. Investigate before asking. Write the question file only when a question matters: `## Already answered`, `## Assumed` (each `because ...`), then only the questions that are critical or material. With none, no file: put the assumed choices in the stage's artifact.
    - `lint_questions.py --file <question file> --allow-open`; fix every finding.
-   - `aidlc_state.py step --bolt <p> --stage <id> --to asked`. Tell the engineer which file to answer.
+   - `aidlc_state.py step --bolt <p> --stage <id> --to asked`. Tell the engineer which file to answer; with no question, go on to Produce.
 2. **Analyse.**
    - `lint_questions.py --file <question file>`. Open answers: list them and stop.
    - Analyse per the core rules. Follow-ups go to `<stage>-clarifications.md` beside the question file.

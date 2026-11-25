@@ -13,6 +13,6 @@
 4. Keep technology-neutral where the infrastructure stage will decide the product.
 5. Trace each `NFR<n>.<m>` to its solution.
 
-**Writes** in `docs/construction/<unit>/nfr-design/`: `nfr-design-questions.md`; `resilience-design.md`, `scalability-design.md`, `performance-design.md`, `security-design.md`, `observability-design.md`; `logical-components.md`; `traceability.json`. Each starts with `## Digest`.
+**Writes** in `docs/construction/<unit>/nfr-design/`: `nfr-design-questions.md` (only if asked); `resilience-design.md`, `scalability-design.md`, `performance-design.md`, `security-design.md`, `observability-design.md`; `logical-components.md`; `traceability.json`. Each starts with `## Digest`.
 
 **Good:** no `NFR<n>.<m>` is left without a solution or a stated reason.

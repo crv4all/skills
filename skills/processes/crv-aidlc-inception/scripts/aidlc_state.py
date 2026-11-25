@@ -2821,16 +2821,8 @@ def gate_findings(
     for template in as_list(stage.get("questions")):
         for rel in expand(template, repos, units):
             path = locate(bolt, rel)
-            if path.is_file():
+            if path.is_file():  # a stage with nothing to ask has no question file
                 questions.append(path)
-            else:
-                findings.append(
-                    {
-                        "code": "questions-missing",
-                        "path": rel,
-                        "message": "question file does not exist",
-                    }
-                )
     # Stages that share a folder name their own clarification files; otherwise
     # every clarification file beside a question file belongs to the stage.
     clarifications: list[Path] = []

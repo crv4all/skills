@@ -13,6 +13,6 @@
 4. Define monitoring, alerts, pipeline stages and the rollback path.
 5. Name where each secret lives; never write one.
 
-**Writes** in `docs/construction/<unit>/infrastructure-design/`: `infrastructure-design-questions.md`; `infrastructure-specification.md` (Deployment, Infrastructure Services and Shared Infrastructure tables); `monitoring-design.md`; `cicd-pipeline.md`; `traceability.json`. Each starts with `## Digest`. The IaC itself is written in Code Generation.
+**Writes** in `docs/construction/<unit>/infrastructure-design/`: `infrastructure-design-questions.md` (only if asked); `infrastructure-specification.md` (Deployment, Infrastructure Services and Shared Infrastructure tables); `monitoring-design.md`; `cicd-pipeline.md`; `traceability.json`. Each starts with `## Digest`. The IaC itself is written in Code Generation.
 
 **Good:** every logical component lands on a named resource, in tables.

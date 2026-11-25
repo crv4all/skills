@@ -22,8 +22,8 @@ checkpoint. B1, B2, B4 and B7 guard them.
 **Setup:** An HLA with `status: in-review` and `impact_flags: [new-data-store]`.
 **Prompt:** "Start the technical design."
 
-- [ ] The agent says in one line that the TDD validator needs the HLA header to say `accepted` (the organisation's review), recommends waiting, and lets the engineer decide.
-- [ ] The HLA header is not edited; nothing is written until the engineer decides.
+- [ ] The agent says once, in one line, that the HLA is still in review and the decisions the TDD builds on may change, then continues.
+- [ ] The HLA header is not edited and the agent does not stop or ask whether to wait.
 
 ## B3 — Ask by section
 

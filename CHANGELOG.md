@@ -63,6 +63,19 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   trade-offs, Decisions, Open questions for other contributors), and an interface party
   must match a whole container name (trimmed, case-folded) rather than part of one.
 
+### Changed
+
+- **A stage no longer needs a question it does not have.** `gate` raised
+  `questions-missing` for a stage's question file that did not exist, and the question
+  lint raised `no-questions` for a file with none, so a session had to invent a question
+  to pass a checkpoint. A missing question file is now not a finding, and a file with no
+  `## Q` question (it may hold only `## Assumed`) is valid; an asked question is still
+  checked in full. The core rules and the HLA, Inception and Construction skills say: write
+  a question file only when a question matters; choices decided without asking go under
+  `## Assumed`. The TDD validator no longer refuses a TDD because the HLA header is not
+  `accepted` (that header is the organisation's own review): `hla-not-accepted` is a
+  warning, and the TDD skill mentions it once and carries on.
+
 ### Removed
 
 - **Dead options and old-state shims.** The `if_exists` input option (no catalogue row used
