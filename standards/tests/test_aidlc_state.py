@@ -86,6 +86,10 @@ def digest(lines: int = 2) -> str:
     )
 
 
+def verdict_doc(line: str = "Verdict: pass") -> str:
+    return f"{line}\n\n" + digest()
+
+
 def reach_produced(p: Bolt, stage: str = "requirements-analysis") -> None:
     """Take the early stages out of the way so ``stage`` is the one in play."""
     for name in ("workspace-detection",):
@@ -578,8 +582,9 @@ def test_close_complete_after_everything_is_approved(tmp_path: Path) -> None:
     p.run("step", "--stage", "requirements-analysis", "--to", "produced")
     assert p.run("gate", "--stage", "requirements-analysis", "--approve", "--by", "B")[0] == 0
     cg = "docs/construction/u1/code-generation/"
-    for name in ("code-generation-plan.md", "unit-test-instructions.md", "code-summary.md"):
+    for name in ("code-generation-plan.md", "unit-test-instructions.md"):
         p.write(cg + name, digest())
+    p.write(cg + "code-summary.md", verdict_doc())
     p.write(cg + "source-manifest.json", "{}")
     p.write(cg + "traceability.json", "{}")
     p.run("step", "--stage", "code-generation", "--unit", "u1", "--to", "produced")
@@ -590,10 +595,10 @@ def test_close_complete_after_everything_is_approved(tmp_path: Path) -> None:
     for name in (
         "build-instructions.md",
         "build-and-test-summary.md",
-        "test-results.md",
         "cross-unit-traceability.md",
     ):
         p.write("docs/construction/build-and-test/" + name, digest())
+    p.write("docs/construction/build-and-test/test-results.md", verdict_doc())
     p.run("step", "--stage", "build-and-test", "--to", "produced")
     assert p.run("gate", "--stage", "build-and-test", "--approve", "--by", "B")[0] == 0
     code, data, _ = p.run("close", "--status", "complete")
@@ -1327,3 +1332,132 @@ def test_an_old_state_with_a_frame_kind_and_a_parent_loads_and_loses_the_keys(
     assert bolt.run("park", "--note", "n")[0] == 0
     assert "kind" not in bolt.state and "parent" not in bolt.state
     assert bolt.state["stages"]["requirements-analysis"]["decision"] == "execute"
+
+
+# --- verdicts: a failed verification is never stored as passed ----------------
+
+BAT = "docs/construction/build-and-test/"
+
+
+def build_and_test_produced(p: Bolt, results: str) -> None:
+    """Skip everything before Build and Test, then write its files with ``results``."""
+    skip_inception(p)
+    load_units(p, [{"id": "u1"}])
+    for stage in ("functional-design", "nfr-requirements", "nfr-design", "infrastructure-design"):
+        p.run("decide", "--stage", stage, "--unit", "u1", "--decision", "skip", "--reason", "t")
+    p.run("decide", "--stage", "code-generation", "--unit", "u1", "--decision", "skip",
+          "--reason", "t")  # fmt: skip
+    for name in (
+        "build-instructions.md",
+        "build-and-test-summary.md",
+        "cross-unit-traceability.md",
+    ):
+        p.write(BAT + name, digest())
+    p.write(BAT + "test-results.md", results)
+    assert p.run("step", "--stage", "build-and-test", "--to", "produced")[0] == 0
+
+
+GATE = ("gate", "--stage", "build-and-test", "--approve")
+
+
+def verdict_codes(data: dict[str, Any]) -> list[str]:
+    return [f["code"] for f in data["findings"]]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        digest(),  # no line
+        verdict_doc("Verdict: pass\nVerdict: pass"),  # two lines
+        verdict_doc("Verdict: passed"),  # another word
+        verdict_doc("Verdict:"),  # empty
+        verdict_doc("Verdict: pass - all green"),  # pass takes no reason
+        verdict_doc("  Verdict: pass"),  # not at the start of a line
+    ],
+)
+def test_a_missing_or_malformed_verdict_refuses_the_gate(bolt: Bolt, text: str) -> None:
+    build_and_test_produced(bolt, text)
+    code, data, _ = bolt.run(*GATE, "--note", "go on")
+    assert code == 1 and verdict_codes(data) == ["verdict-missing"]
+    assert bolt.state["stages"]["build-and-test"]["step"] == "produced"
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["Verdict: fail", "verdict: FAIL", "Verdict: fail - 3 tests red", "Verdict: fail: flaky"],
+)
+def test_a_fail_verdict_cannot_be_passed_with_any_flags(bolt: Bolt, line: str) -> None:
+    build_and_test_produced(bolt, verdict_doc(line))
+    for extra in ((), ("--note", "proceed anyway"), ("--by", "Boss", "--note", "I decide")):
+        code, data, _ = bolt.run(*GATE, *extra)
+        assert code == 1 and verdict_codes(data) == ["verdict-fail"], extra
+        assert "stays open" in data["findings"][0]["message"]
+    record = bolt.state["stages"]["build-and-test"]
+    assert record["step"] == "produced" and "verdict" not in record
+    assert bolt.run("gate", "--stage", "build-and-test", "--approve", "--channel", "x")[0] == 2
+
+
+def test_a_not_run_verdict_passes_only_with_a_note_and_is_stored(bolt: Bolt) -> None:
+    build_and_test_produced(bolt, verdict_doc("Verdict: not-run - no test database"))
+    code, data, _ = bolt.run(*GATE)
+    assert code == 1 and verdict_codes(data) == ["verdict-not-run"]
+    code, data, _ = bolt.run(*GATE, "--note", "nothing to test in this change")
+    assert code == 0 and data["verdict"] == "not-run"
+    assert bolt.state["stages"]["build-and-test"]["verdict"] == "not-run"
+
+
+def test_a_pass_verdict_is_stored(bolt: Bolt) -> None:
+    build_and_test_produced(bolt, verdict_doc("verdict: Pass"))
+    code, data, _ = bolt.run(*GATE)
+    assert code == 0 and data["verdict"] == "pass"
+    assert bolt.state["stages"]["build-and-test"]["verdict"] == "pass"
+    assert "not_verified" in bolt.run("status")[1]
+    assert bolt.run("status")[1]["not_verified"] == []
+
+
+def test_a_not_run_stage_is_shown_as_not_verified(bolt: Bolt) -> None:
+    build_and_test_produced(bolt, verdict_doc("Verdict: not-run"))
+    assert bolt.run(*GATE, "--note", "accepted unverified")[0] == 0
+    assert bolt.run("status")[1]["not_verified"] == [{"stage": "build-and-test", "unit": None}]
+    assert (
+        "Not verified (verdict not-run): build-and-test"
+        in bolt.run("status", "--format", "text")[2]
+    )
+    overview = subprocess.run(
+        [sys.executable, str(SCRIPT), "overview", "--root", str(bolt.root), "--format", "text"],
+        capture_output=True, text=True, timeout=60,
+    ).stdout  # fmt: skip
+    assert "not verified: build-and-test" in overview
+
+
+def unit_stage_ready(p: Bolt, results: str) -> None:
+    skip_inception(p)
+    load_units(p, [{"id": "u1"}])
+    for stage in ("functional-design", "nfr-requirements", "nfr-design", "infrastructure-design"):
+        p.run("decide", "--stage", stage, "--unit", "u1", "--decision", "skip", "--reason", "t")
+    cg = "docs/construction/u1/code-generation/"
+    for name in ("code-generation-plan.md", "unit-test-instructions.md"):
+        p.write(cg + name, digest())
+    p.write(cg + "code-summary.md", results)
+    p.write(cg + "source-manifest.json", "{}")
+    p.write(cg + "traceability.json", "{}")
+    p.run("step", "--stage", "code-generation", "--unit", "u1", "--to", "produced")
+
+
+def test_code_generation_checks_the_units_own_verdict(bolt: Bolt) -> None:
+    unit_stage_ready(bolt, digest())
+    gate = ("gate", "--stage", "code-generation", "--unit", "u1", "--approve")
+    code, data, _ = bolt.run(*gate, "--note", "x")
+    assert code == 1 and verdict_codes(data) == ["verdict-missing"]
+    bolt.write("docs/construction/u1/code-generation/code-summary.md", verdict_doc("Verdict: fail"))
+    code, data, _ = bolt.run(*gate, "--note", "x")
+    assert code == 1 and verdict_codes(data) == ["verdict-fail"]
+    bolt.write("docs/construction/u1/code-generation/code-summary.md", verdict_doc())
+    assert bolt.run(*gate)[0] == 0
+    assert bolt.state["units"][0]["stages"]["code-generation"]["verdict"] == "pass"
+
+
+def test_only_stages_with_a_verdict_key_check_one(bolt: Bolt) -> None:
+    code, data, _ = bolt.run("gate", "--stage", "workspace-detection", "--approve")
+    assert code == 0 and "verdict" not in data
+    assert "verdict" not in bolt.state["stages"]["workspace-detection"]

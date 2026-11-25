@@ -146,6 +146,9 @@ SOURCE_SUFFIXES = {
 }  # fmt: skip
 SCAFFOLD_NAMES = {"__init__.py", "setup.py", "conftest.py"}
 DIGEST_MAX_LINES = 10
+VERDICT_WORDS = ("pass", "fail", "not-run")
+VERDICT_LINE = re.compile(r"^verdict\s*:", re.IGNORECASE)
+VERDICT_FORM = re.compile(r"^verdict\s*:\s*([A-Za-z-]+)\s*(?:(?:-|:)\s*(.*\S))?\s*$", re.IGNORECASE)
 DATE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}-")
 WORKSPACE_SUFFIX = ".code-workspace"
 FETCH_TIMEOUT = 20
@@ -1406,6 +1409,8 @@ def cmd_status(
     stale = stale_rows(bolt, state, catalog)
     facts["unit_details"] = details
     facts["stale"] = stale
+    unverified = not_verified(state, catalog)
+    facts["not_verified"] = unverified
     git_block = git_status_block(bolt)
     if git_block is not None:
         facts["git"] = git_block
@@ -1428,6 +1433,9 @@ def cmd_status(
     for row in stale:
         where = row["stage"] + (f" [{row['unit']}]" if row["unit"] else "")
         lines.append(f"Context changed for {where}: {', '.join(row['changed'])}")
+    if unverified:
+        names = [r["stage"] + (f" [{r['unit']}]" if r["unit"] else "") for r in unverified]
+        lines.append(f"Not verified (verdict not-run): {', '.join(names)}")
     lines.append(jira_line(state))
     if git_block is not None:
         lines.append(git_status_line(git_block))
@@ -1442,7 +1450,7 @@ def cmd_status(
     if state["parked"]:
         note = str(state["parked"].get("note", "")).replace("\n", " ")
         lines.append(f"Parked: {note[:300]}")
-    return {"text": "\n".join(lines[: 20 + len(details) + len(stale)]) + "\n"}
+    return {"text": "\n".join(lines[: 21 + len(details) + len(stale)]) + "\n"}
 
 
 def log_rows(bolt: Path) -> list[dict[str, str]]:
@@ -1530,6 +1538,7 @@ def overview_row(bolt: Path, catalog: list[dict[str, Any]]) -> dict[str, Any]:
         "next": describe_next(compute_next(state, catalog, bolt)),
         "units": units,
         "stale": stale,
+        "not_verified": not_verified(state, catalog),
         "last": last,
         "problems": problems,
     }
@@ -1547,6 +1556,9 @@ def overview_text(rows: list[dict[str, Any]]) -> str:
         for unit in row["units"]:
             waits = f" | {waits_sentence(unit['blocked_by'])}" if unit["blocked_by"] else ""
             lines.append(f"  unit {unit['id']} | {unit['owner'] or '-'} | {unit['next']}{waits}")
+        for item in row["not_verified"]:
+            where = item["stage"] + (f" [{item['unit']}]" if item["unit"] else "")
+            lines.append(f"  not verified: {where}")
         for problem in row["problems"]:
             lines.append(f"  ! {problem['code']} {problem['where']}: {problem['message']}")
     return "\n".join(lines) + "\n"
@@ -2043,6 +2055,73 @@ def gate_findings(
     return findings
 
 
+def read_verdict(text: str) -> Optional[str]:
+    """The word of the one ``Verdict:`` line, or ``None`` when there is not exactly one
+    valid line. ``pass`` takes no reason; ``fail`` and ``not-run`` may carry one."""
+    lines = [line for line in text.splitlines() if VERDICT_LINE.match(line)]
+    if len(lines) != 1:
+        return None
+    match = VERDICT_FORM.match(lines[0].rstrip())
+    if match is None:
+        return None
+    word = match.group(1).lower()
+    if word not in VERDICT_WORDS or (word == "pass" and match.group(2)):
+        return None
+    return word
+
+
+def stage_verdict(
+    bolt: Path, state: dict[str, Any], stage: dict[str, Any], unit: Optional[str]
+) -> tuple[Optional[str], list[dict[str, Any]]]:
+    """The verdict a stage's ``verdict`` file records and the findings about it.
+
+    Without a verdict key there is nothing to check. A missing file is the artifact
+    finding's business, not this one's."""
+    template = stage.get("verdict")
+    if not template:
+        return None, []
+    found: list[dict[str, Any]] = []
+    words: list[str] = []
+    for rel in expand(template, brownfield_repos(state), unit_ids(state, stage, unit)):
+        path = locate(bolt, rel)
+        if not path.is_file():
+            continue
+        word = read_verdict(path.read_text(encoding="utf-8", errors="replace"))
+        if word is None:
+            found.append(
+                {
+                    "code": "verdict-missing",
+                    "path": rel,
+                    "message": "the file needs exactly one line `Verdict: pass`, "
+                    "`Verdict: fail` or `Verdict: not-run`",
+                }
+            )
+        else:
+            words.append(word)
+            if word == "fail":
+                found.append(
+                    {
+                        "code": "verdict-fail",
+                        "path": rel,
+                        "message": "the recorded verdict is fail; the stage stays open "
+                        "until a run passes",
+                    }
+                )
+    if found or not words:
+        return None, found
+    return ("not-run" if "not-run" in words else "pass"), found
+
+
+def not_verified(state: dict[str, Any], catalog: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Passed stages whose verdict is ``not-run``: done, but never shown to work."""
+    rows: list[dict[str, Any]] = []
+    for item, unit in slots(state, catalog):
+        record = slot_record(state, item, unit)
+        if record and record.get("step") == "approved" and record.get("verdict") == "not-run":
+            rows.append({"stage": item["id"], "unit": unit})
+    return rows
+
+
 def review_info(
     bolt: Path, state: dict[str, Any], stage: dict[str, Any], unit: Optional[str]
 ) -> Optional[dict[str, Any]]:
@@ -2245,6 +2324,17 @@ def cmd_gate(
     findings = gate_findings(bolt, state, stage, unit, record)
     findings.extend(traceability_findings(bolt, state, catalog, stage))
     findings.extend(decision_status_findings(bolt, state, stage, unit))
+    verdict, verdict_found = stage_verdict(bolt, state, stage, unit)
+    findings.extend(verdict_found)
+    if verdict == "not-run" and not note:
+        findings.append(
+            {
+                "code": "verdict-not-run",
+                "path": str(stage.get("verdict") or ""),
+                "message": "the recorded verdict is not-run; pass --note with the reason "
+                "the engineer accepts it unverified",
+            }
+        )
     if findings:
         raise Fail(
             EXIT_FINDINGS,
@@ -2257,6 +2347,10 @@ def cmd_gate(
     record["step"] = "approved"
     record["approved_at"] = now()
     record["approved_by"] = passed_by or None
+    if verdict:
+        record["verdict"] = verdict
+    else:
+        record.pop("verdict", None)
     record["relied_on"] = relied_on(bolt, state, catalog, stage, unit)
     if stage["id"] == "reverse-engineering":
         record_codekb_commits(bolt, state)
@@ -2280,6 +2374,8 @@ def cmd_gate(
         result["context"] = context
     if review:
         result["review"] = review
+    if verdict:
+        result["verdict"] = verdict
     return result
 
 

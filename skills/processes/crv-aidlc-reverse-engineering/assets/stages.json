@@ -751,7 +751,8 @@
         "docs/construction/<unit>/code-generation/source-manifest.json",
         "docs/construction/<unit>/code-generation/traceability.json"
       ],
-      "order": 16
+      "order": 16,
+      "verdict": "docs/construction/<unit>/code-generation/code-summary.md"
     },
     {
       "id": "build-and-test",
@@ -788,7 +789,8 @@
         "docs/construction/build-and-test/test-results.md",
         "docs/construction/build-and-test/cross-unit-traceability.md"
       ],
-      "order": 17
+      "order": 17,
+      "verdict": "docs/construction/build-and-test/test-results.md"
     },
     {
       "id": "deployment-pipeline",

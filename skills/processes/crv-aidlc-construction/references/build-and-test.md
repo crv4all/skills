@@ -14,6 +14,6 @@
 5. On failure: fix, then loop back to the stage that owns the defect, then stop and ask.
 6. Check cross-Unit traceability.
 
-**Writes** in `docs/construction/build-and-test/`: `build-instructions.md`; `build-and-test-summary.md` (`## Target Verification Matrix`); `test-results.md` (`## Loop-Back Log`); `cross-unit-traceability.md`; integration, performance or security instructions when needed. Each starts with `## Digest`.
+**Writes** in `docs/construction/build-and-test/`: `build-instructions.md`; `build-and-test-summary.md` (`## Target Verification Matrix`); `test-results.md` (`## Loop-Back Log`); `cross-unit-traceability.md`; integration, performance or security instructions when needed. Each starts with `## Digest`. `test-results.md` has one line `Verdict: pass|fail|not-run` (` - reason` may follow; `fail` is refused, `not-run` needs a note).
 
 **Good:** every target has a verdict backed by a command that was run.

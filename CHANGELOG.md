@@ -572,6 +572,18 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   actor, and the log line says the same. `assign`, `next --mine` and the
   unowned-Unit problem are unchanged.
 
+- **A failed build or test can no longer be stored as passed.** The Build and Test
+  gate only checked that `test-results.md` existed, so a red run passed like a
+  green one and the verdict sat in prose nobody read. A stage in `stages.json`
+  may now name a `verdict` file; `build-and-test` names `test-results.md` and
+  `code-generation` names the Unit's `code-summary.md`. The file must hold exactly
+  one line `Verdict: pass`, `Verdict: fail` or `Verdict: not-run`. No such line is
+  the finding `verdict-missing`; `fail` is `verdict-fail` and refuses whatever
+  `--note` says (there is no override flag); `not-run` is `verdict-not-run` unless
+  `--note` gives the reason, and the record then stores `"verdict": "not-run"`.
+  `status` and `overview` show such a stage as not verified. The build-and-test
+  and code-generation references tell the agent to write the line.
+
 ### Removed
 
 - **Parent and child Bolts, and the frame kind of Bolt, are gone.** A Bolt is one
