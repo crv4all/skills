@@ -1,8 +1,8 @@
-# Round A: layers 1 to 3
+# Group A: layers 1 to 3
 
-Round A fixes what the system is for and what it is about. Every later layer is judged against it, so a vague outcome here produces a design that cannot be reviewed. Spend the questions on what the documents leave open; the digest usually answers more than it seems.
+Group A fixes what the system is for and what it is about. Every later layer is judged against it, so a vague outcome here produces a design that cannot be reviewed. Spend the questions on what the documents leave open; the digest usually answers more than it seems.
 
-For each layer below: **Settles** is what must be decided by the end of the round. **Reads** is where answers are usually found already. **Ask from** are prompts to draw questions from, not a script: ask only what changes the design. **Bound by** names the ADR topics that typically constrain the layer. **Good** is the bar the layer must clear.
+For each layer below: **Settles** is what must be decided by the end of the group. **Reads** is where answers are usually found already. **Ask from** are prompts to draw questions from, not a script: ask only what changes the design. **Bound by** names the ADR topics that typically constrain the layer. **Good** is the bar the layer must clear.
 
 ## Layer 1: Business context and scope
 
@@ -61,8 +61,8 @@ For each layer below: **Settles** is what must be decided by the end of the roun
 
 **Good:** each flow is named trigger to outcome, every step has an owning system, and the failure path is written down. The first release slice is named and tied to the Layer 1 outcome.
 
-## Round A file notes
+## Group A file notes
 
-- The context summary and the ADR shortlist go at the top of this file only; rounds B and C reuse them.
+- The context summary and the ADR shortlist go at the top of this file only; groups B and C reuse them.
 - A pure data or batch system with no human users still answers Layer 3 as data flows; do not skip it.
-- If Layer 1 cannot name an outcome, stop after this round and say so: the rest of the design has nothing to be measured against.
+- If Layer 1 cannot name an outcome, stop after this group and say so: the rest of the design has nothing to be measured against.

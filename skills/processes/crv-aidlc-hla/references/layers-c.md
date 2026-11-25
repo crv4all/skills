@@ -1,8 +1,8 @@
-# Round C: layers 9 to 12 and the review header
+# Group C: layers 9 to 12 and the review header
 
-Round C decides how the change reaches production safely, shows that alternatives were weighed, names what could go wrong, and hands Inception a machine-readable summary. Open the file with the decisions from rounds A and B that constrain it. Most of Layer 12 and much of the header can be derived; ask only what cannot.
+Group C decides how the change reaches production safely, shows that alternatives were weighed, names what could go wrong, and hands Inception a machine-readable summary. Open the file with the decisions from groups A and B that constrain it. Most of Layer 12 and much of the header can be derived; ask only what cannot.
 
-Same headings per layer as in the earlier rounds: **Settles**, **Reads**, **Ask from**, **Bound by**, **Good**.
+Same headings per layer as in the earlier groups: **Settles**, **Reads**, **Ask from**, **Bound by**, **Good**.
 
 ## Layer 9: Modernization
 
@@ -19,7 +19,7 @@ Same headings per layer as in the earlier rounds: **Settles**, **Reads**, **Ask 
 - What difference between old and new output is acceptable?
 - Which measured value triggers a rollback, and who calls it?
 - After which step is rollback no longer possible?
-- What retires the old system: a date, a usage threshold, or a sign-off?
+- What retires the old system: a date, a usage threshold, or an explicit decision by the owners?
 
 **Bound by:** retirement and sunset decisions, migration patterns, temporary exceptions.
 

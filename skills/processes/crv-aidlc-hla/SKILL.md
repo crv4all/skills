@@ -1,7 +1,7 @@
 ---
 name: crv-aidlc-hla
 description: >-
-  Produces the High-Level Architecture (HLA) for a Bolt before Inception: three file-based question rounds over twelve design layers, opinionated proposals that cite the ADRs they follow, a decision record with Bolt-wide ids, an hla.md with a review header that a validator checks, and sign-off recorded in the file. Use when someone wants to write, draft, refine or sign off a high-level architecture, solution architecture or architecture document for a Bolt or from a set of input documents, or asks which ADRs bind a design. Not for the Technical Design Document that follows an accepted HLA (crv-aidlc-tdd), not for opening, resuming or routing a Bolt (crv-aidlc), and not for requirements, stories or units (crv-aidlc-inception).
+  Produces the High-Level Architecture (HLA) for a Bolt before Inception, shared by every engineer on it: one hla.md and one decision record, a contribution file per concern that several people investigate at once, proposals over twelve design layers that cite the ADRs they follow, questions only where something material is open, a consistency review across contributors, and a validated document. Use when someone wants to write, refine or review a high-level or solution architecture for a Bolt or from input documents, investigate one concern of it (security, data migration), take in architecture-review feedback, or asks which ADRs bind a design. Not for the Technical Design Document (crv-aidlc-tdd), opening or routing a Bolt (crv-aidlc), or requirements, stories and units (crv-aidlc-inception).
 license: Apache-2.0
 metadata:
   owner: cloudforce-team-data
@@ -13,15 +13,15 @@ metadata:
 
 # High-level architecture
 
-Runs the HLA as three question rounds in files, then writes `hla.md` from the template. Proposals come first, questions only for what the inputs and accepted ADRs leave open, and every decision lands in a record with an id.
+One architecture per Bolt: one `architecture/hla.md` and one decision record, written by several engineers over time. Proposals come first, questions only where something material is open, every decision lands in the shared record with an id, and a concern investigated in parallel lives in its own contribution file until its conclusion is merged.
 
 ## Execution
 
-**Delegate to a subagent. Do not run this in the main session.** Each step reads the knowledge digest, the ADR index and the round files; that context belongs in an agent that exits when the step is done.
+**Delegate to a subagent. Do not run this in the main session.** Each step reads the digest, the ADR index and the architecture files; that context belongs in an agent that exits when the step is done.
 
-**Model tier: `frontier`.** The HLA fixes decisions every later stage inherits, so reasoning quality dominates cost. State it, do not ask about it. One line, then start work:
+**Model tier: `frontier`.** The HLA fixes decisions every later stage inherits, and the consistency review needs the best reasoning, so quality dominates cost. State it, do not ask. One line, then start work:
 
-> Running `crv-aidlc-hla` (step: round B) in a subagent on the frontier tier.
+> Running `crv-aidlc-hla` (step: contribution) in a subagent on the frontier tier.
 
 Honour a tier the user names, and say which one you used. Never silently escalate. If this model tier or subagents are not available, say so in one line and run on the session's model.
 
@@ -31,64 +31,78 @@ Read `references/core-rules.md` once per session. Then read only the files the s
 
 In `<bolt>/architecture/`:
 
-- `hla-questions-a.md`, `-b.md`, `-c.md`: one per round, every answer filled.
-- `hla-clarifications.md`: follow-ups, only when answers needed them.
-- `hla-decisions.md`: a `## Digest`, then one row per decision: `| Id | Layer | Decision | Reason | Source | Flag |`.
-- `hla.md`: the template's sections in order, a valid header, `validate_doc.py` exit 0, and `status: in-review` until a person signs.
+- `hla.md`: the template's sections in order, a valid header, `validate_doc.py` exit 0.
+- `hla-decisions.md`: a `## Digest`, then one row per decision: `| Id | Layer | Decision | Reason | Source | Flag |`, optionally `Status` and `Owner`. One record for the whole Bolt.
+- `contributions/<concern>.md`: one per concern investigated apart (`assets/contribution-template.md`).
+- `hla-questions-a.md`, `-b.md`, `-c.md` (layers 1 to 3, 4 to 8, 9 to 12) and `hla-clarifications.md`: only what needed asking.
 
 ## When not to use this
 
 - The Technical Design Document after an accepted HLA: `crv-aidlc-tdd`.
 - Opening, resuming or routing a Bolt: `crv-aidlc`.
-- Requirements, stories, domain design or units: `crv-aidlc-inception`. It reads the accepted HLA.
+- Requirements, stories, domain design or units: `crv-aidlc-inception`. It reads the HLA.
 - Writing an ADR: that belongs in the ADR registry, not here.
 
 ## Steps
 
-Each row is one run; stop after it. Find the step from `aidlc_state.py next --bolt <p>` and the files present: the last round file, whether its answers are complete (`lint_questions.py`), and whether its layers have rows in `hla-decisions.md`.
+Find the step from the engineer's request, `aidlc_state.py next --bolt <p>` and `status --bolt <p> --format text` (it lists each contribution, owner and status). Each step is one run.
 
-| Step | Read besides core rules | Writes | Ends with |
-| --- | --- | --- | --- |
-| Bootstrap and ask A | `references/layers-a.md` | `hla-questions-a.md` | `step --to asked` |
-| Analyse A, ask B | `layers-a.md`, `layers-b.md` | decisions, `hla-questions-b.md` | stop |
-| Analyse B, ask C | `layers-b.md`, `layers-c.md` | decisions, `hla-questions-c.md` | stop |
-| Analyse C | `layers-c.md` | decisions | `step --to analysed` |
-| Generate | `references/generation-rules.md`, `assets/hla-template.md` | `hla.md` | `step --to produced`, gate summary |
-| Refine or sign off | `generation-rules.md` | changed sections | validate, gate |
+| Step | Read besides core rules | Writes |
+| --- | --- | --- |
+| Bootstrap and first layers | `layers-a.md` | `hla-questions-a.md`, decisions; `step --to asked` |
+| Next layers | `layers-b.md`, `layers-c.md` | question files, decisions; `step --to analysed` after the last |
+| Contribution | `assets/contribution-template.md` | the contribution, `hla.md` sections |
+| Generate, refine, review feedback | `references/generation-rules.md`, `assets/hla-template.md` | `hla.md`; `step --to produced` |
 
-### Bootstrap (in the round A run)
+### Bootstrap
 
 1. `aidlc_state.py status --bolt <p> --format text`, then `inputs --bolt <p> --stage hla`. Exit 3: name the missing file and the stage that produces it, and stop.
-2. Read `knowledge/_digest.md`. Use `knowledge/_outline.json` to open a raw section by line range only when a layer needs it. Read only the `## Digest` of each `codekb/<repo>/overview.md` (shared store at the planning repo root; `inputs` resolves it).
-3. Refresh the ADR index first, so the shortlist uses the latest registry: `python3 ../crv-aidlc/scripts/build_adr_index.py --registry <registry path> --out <planning repo>/architecture-index.json --refresh`, then `aidlc_state.py sync --bolt <p> -m "refresh the ADR index"`. Name the ADRs it reports as added or changed. Then shortlist without reading the whole index: `grep -E '"(id|title|status)"' <architecture-index.json>`, then read the decision line of the candidates only. Accepted binds, Proposed is directional, Superseded and Deprecated are not used.
-4. Open the round A file with `## Context`, at most 15 lines: business driver, current state, constraints, stakeholders, solution type, applicable ADRs, documents that could not be read. Then `## ADR shortlist`: `| Layer | ADR | Status | What it settles |`.
-5. Child Bolt (`status` shows a parent): read the `parent:` digests that `inputs` lists before anything else, and say so if `parent_hla_status` is not `accepted`. Round A then opens with `## Settled in the parent Bolt`: only the parent decision ids that constrain this Bolt, cited as `parent:D3`. Nothing settled there is asked again. This Bolt's own ids still start at `D1`.
+2. Read `knowledge/_digest.md`. Use `knowledge/_outline.json` to open a raw section by line range only when a layer needs it. Read only the `## Digest` of each `codekb/<repo>/overview.md`.
+3. Refresh the ADR index so the shortlist uses the latest registry: `python3 ../crv-aidlc/scripts/build_adr_index.py --registry <registry path> --out <planning repo>/architecture-index.json --refresh`, then `aidlc_state.py sync --bolt <p> -m "refresh the ADR index"`. Name the ADRs it reports as added or changed. Shortlist without reading the whole index: `grep -E '"(id|title|status)"' <architecture-index.json>`, then read the decision line of the candidates only. Accepted binds, Proposed is directional, Superseded and Deprecated are not used.
+4. The first question file opens with `## Context`, at most 15 lines (business driver, current state, constraints, stakeholders, solution type, applicable ADRs, documents that could not be read), then `## ADR shortlist`: `| Layer | ADR | Status | What it settles |`.
 
-### Round files
+### The layers
 
-Per layer: a `## Layer <n>: <name>` heading, a `Proposal:` paragraph of at most six lines (the design you would choose, why, and the ADR ids it follows; the lint counts it as the first question's context), then two to four `## Q<n>` questions in the core-rules format, numbered per file. Scale the count to the Bolt depth. Anything the digest, code knowledge or an accepted ADR settles is not asked: it goes under `## Already answered` at the end of the file, with its source. Rounds B and C open with `## Settled in earlier rounds`: only the decision ids that constrain them. Answers are cited as `A-Q3`, `B-Q1`, `CL-Q2`.
+Work the twelve layers in three groups: A is layers 1 to 3, B is 4 to 8, C is 9 to 12, in `hla-questions-<a|b|c>.md`. Per layer: a `## Layer <n>: <name>` heading and a `Proposal:` paragraph of at most six lines (the design you would choose, why, the ADR ids it follows). Investigate first: the digest, code knowledge, accepted ADRs and earlier answers settle most of it (`## Already answered`, with sources). Ask only what is critical or material and still open; decide reversible and trivial choices under `## Assumed`, each `because ...`. A layer with nothing open gets a proposal and no question. The checkpoint needs all three files to exist with one question each, so a group with nothing open holds the one question the design depends on most. Number questions per file; cite answers as `A-Q3`, `B-Q1`, `CL-Q2`.
 
-Before stopping, run `lint_questions.py --file <file> --allow-open` and fix every finding. Tell the user which file to answer.
+Before stopping run `lint_questions.py --file <file> --allow-open` and fix every finding; tell the engineer which file to answer. With answers in: `lint_questions.py --file <file>`; open answers are listed and you stop; vague ones become follow-ups in `hla-clarifications.md` (heading names the original, `## Q4 Retention period (B-Q2)`).
 
-### Analyse a round
+Record decisions in the shared record: `aidlc_state.py decision-id --bolt <p> --count <n>` reserves ids; add rows (Source is an answer id, ADR id or path; Flag is `-`, `departure`, `proposed-adr`, `novel`, `cross-team` or `contested`). Following an Accepted ADR is cited, not decided. An answer that departs from one gets `departure`; generation turns it into a header exception, a risk and a decision needed. If `decision-id` says the ids were not reserved, tell the engineer to fix the connection and run it again; never invent an id. After group C: `step --to analysed`.
 
-1. `lint_questions.py --file <file>`. Open answers: list them and stop.
-2. Analyse per the core rules. Follow-ups go to `hla-clarifications.md`, numbered on from the last question there, each heading naming the original (`## Q4 Retention period (B-Q2)`). Stop until they are answered.
-3. Reserve ids with `aidlc_state.py decision-id --bolt <p> --count <n>` and add the rows. Source is an answer id, an ADR id or a document path. Flag is `-`, `departure`, `proposed-adr`, `novel`, `cross-team` or `contested`. Following an Accepted ADR is cited, not decided: no row. Keep the record's Digest current.
-4. An answer that departs from an Accepted ADR or a parent decision gets the `departure` flag; generation turns it into a header exception, a risk and a decision needed.
-5. Write the next round file. After round C, `aidlc_state.py step --bolt <p> --stage hla --to analysed`.
+## Contributions: several engineers, one architecture
 
-### Generate
+A contribution is how one engineer investigates one concern (security, data migration, networking) without touching what others edit. It has no stage. Its owner merges the conclusion into `hla.md`; the reasoning stays in the file.
 
-Follow `references/generation-rules.md`. Validate with `scripts/validate_doc.py` until it exits 0, run `step --to produced`, set `status: in-review`, and end as the core rules' gate says. Sign-off and refinement follow the same reference. Never set `accepted` yourself.
+1. **Open it.** Copy `assets/contribution-template.md` to `architecture/contributions/<concern>.md` (kebab-case; the file name is the `concern`). Fill the header (`concern`, `owner`, `status: draft`, `touches` = the `hla.md` section titles it will change, `affects`). Run `aidlc_state.py contribution --bolt <p> --concern <concern> --status draft --note "<one line>"`.
+2. **Keep it proportionate.** A paragraph and a table can be enough. Investigate first (code, tests, configuration, documents, decisions); findings carry sources; the proposal is words its owner can merge. Ask only what is critical or material; assume the rest and say why.
+3. **Reserve decisions.** `decision-id --count <n>`; write each row in `hla-decisions.md` first, with Owner and Status (`proposed`, then `constraint` or `accepted`). Then cite the ids under Decisions; never restate a decision there.
+4. **Merge** the conclusion into the `hla.md` sections named in `touches`, nothing else. Set the header to `proposed` while others must react, `merged` once it is in `hla.md`; run `contribution ... --status proposed|merged` with the same word.
+5. **Validate both:** `python3 scripts/validate_doc.py --file architecture/contributions/<concern>.md --kind contribution` and `--kind hla` on `hla.md`. Fix findings.
+6. **Review consistency** as soon as a contribution is merged.
+
+Two engineers on two concerns edit two files and different sections, so their work merges without a manual step. When both need one section, say so before editing and agree who writes it.
+
+## Consistency review
+
+Do this when a contribution is merged and again at the HLA checkpoint. `validate_doc.py` catches unknown decision ids, a term with two owners and unknown interface parties; it cannot see the rest. Read `hla.md`, `hla-decisions.md` and every open contribution for: conflicting responsibilities, data ownership (two owners, or none), contract assumptions, migration assumptions, security boundaries, quality attributes pulling against each other, legacy behaviour to preserve, operations and recovery.
+
+For each contradiction state: what conflicts and where (file, section, decision ids), the consequence if both stand, the options with your recommendation, and who should talk. Never pick one contributor's side silently, edit another's contribution, or hide a warning. With no conflict, say so in one line.
+
+## Organisation review feedback
+
+Take the organisation's architecture-review feedback in as a contribution `review-<date>`: each point in its Decisions section maps to the decision ids it changes or adds (new ids from `decision-id`). Merge, record `contribution`, then for each changed id run `aidlc_state.py context --bolt <p> --id <D<n>>` and tell the engineer which Slices and Units rely on it. Fill the header's `status`, `signed_off_by`, `signed_off_on` only from what a reviewer states; it is their record and never conditions a stage.
+
+## Generate, refine and checkpoint
+
+Follow `references/generation-rules.md`: validate until `validate_doc.py` exits 0, run `step --to produced`, run the consistency review, then the checkpoint as the core rules say. Report warnings; fix findings. A later change to `hla.md` gets new decision ids; `context` tells the Units that rely on the old ones.
 
 ## Without a Bolt
 
-When the user has documents but no Bolt, ask once where to write and where the ADR index is (or that there is none, giving `adr_registry_commit: none`). Skip every `aidlc_state.py` call, number decisions from `D1` in `hla-decisions.md`, and keep sign-off in the header only. The rounds, record and validator are unchanged.
+When the user has documents but no Bolt, ask once where to write and where the ADR index is (or that there is none, giving `adr_registry_commit: none`). Skip every `aidlc_state.py` call, number decisions from `D1` in `hla-decisions.md`. The layers, record and validator are unchanged.
 
 ## When a step fails
 
-- `aidlc_state.py`: exit 1 is a refusal (read the findings), 2 a wrong flag, 3 a missing file or Bolt, 4 a malformed `state.json` (report it; never edit it by hand).
+- `aidlc_state.py`: exit 1 is a refusal (read the findings), 2 a wrong flag, 3 a missing file or Bolt (for `contribution`, the contribution file or its header is missing), 4 a malformed `state.json` (report it; never edit it by hand).
 - `lint_questions.py`: exit 1 lists questions to fix or answers still open.
 - `validate_doc.py`: exit 1 lists findings with line numbers; 3 or 4 means the template, schema or index is missing or broken: report it, do not work around it.
 - An input contradicts an accepted ADR, or two inputs contradict each other: ask, never pick silently.

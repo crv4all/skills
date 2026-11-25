@@ -1,10 +1,10 @@
-# Writing, validating, refining and signing off the HLA
+# Writing, validating and refining the HLA
 
-Used by the generate, refine and sign-off steps. The rounds are settled; this is about turning `hla-decisions.md` and the answers into a document reviewers can decide on.
+Used to generate and refine `hla.md` from `hla-decisions.md`, the answers and the merged contributions, as a document reviewers can decide on.
 
 ## What to read
 
-`hla-decisions.md`, the three round files (answers and `## Already answered`), `hla-clarifications.md`, and `assets/hla-template.md`. Open a knowledge or code-knowledge source only to cite it. Open a full ADR only when the document cites it and its index line is not enough.
+`hla-decisions.md`, the three question files (answers, `## Already answered`, `## Assumed`), `hla-clarifications.md`, the contributions that touch the section you are writing, and `assets/hla-template.md`. Open a knowledge or code-knowledge source only to cite it. Open a full ADR only when the document cites it and its index line is not enough.
 
 ## Section by section
 
@@ -27,7 +27,6 @@ Keep the template's headings, order and tables. Remove the guidance comments. Ea
 | all | Digest, Design decisions, Appendix, header |
 
 - **Digest** last: at most 10 lines, because later stages and the gate read only this.
-- In a frame Bolt (`status` shows `kind: frame`), the sections that would design components hold the rules the child Bolts must follow, and the phase map with the contracts between phases goes under Proposed architecture.
 - A section marked Optional in the template may hold only `Not applicable: <reason>`. Required sections cannot. Modernization is required when `solution_type` is `modernization`.
 - Every fact carries its source: a decision id, an answer id (`A-Q3`, `CL-Q2`), an ADR id, or a document path with lines. Anything not checked is marked `unverified`.
 - In table cells with several items, put each on its own line with `<br/>`; never run them together with full stops.
@@ -35,16 +34,16 @@ Keep the template's headings, order and tables. Remove the guidance comments. Ea
 
 ## Design decisions table
 
-The table is for reviewers to sign, so it holds only decisions that need a reviewer's eye. A row qualifies when it is one of:
+The table is for the organisation's reviewers, so it holds only decisions that need a reviewer's eye. A row qualifies when it is one of:
 
 1. a departure from an accepted ADR, or reliance on a Proposed ADR that others would contest;
 2. an approach new to the organisation;
 3. a trade-off whose cost lands on another team, product or the compliance position;
 4. a call where reasonable architects would disagree.
 
-Routine choices that follow a pattern, ordinary engineering practice, and targets already stated in their own section stay out. The first column states the tension (for example "fresh data for operators versus load on the source system"), not the topic ("caching"). The `Id` column holds the decision id from `hla-decisions.md`. Leave `Signed off by` empty. If no row qualifies, mark the section not applicable and say so.
+Routine choices that follow a pattern, ordinary engineering practice, and targets already stated in their own section stay out. The first column states the tension (for example "fresh data for operators versus load on the source system"), not the topic ("caching"). The `Id` column holds the decision id from `hla-decisions.md`. Leave `Signed off by` empty: it is the reviewers' record. If no row qualifies, mark the section not applicable and say so.
 
-The record `hla-decisions.md` may add two optional columns after `Flag`: `Status` (`constraint`, `accepted`, `proposed`, `assumption`, `open`, `needs-evidence` or `superseded`) and `Owner`. Only a `constraint` binds later work: an `assumption` is never cited as one. A cross-team decision names its `Owner`. The gate refuses any other Status word; a record without the columns stays valid.
+The record `hla-decisions.md` may add two optional columns after `Flag`: `Status` (`constraint`, `accepted`, `proposed`, `assumption`, `open`, `needs-evidence` or `superseded`) and `Owner`. Only a `constraint` binds later work: an `assumption` is never cited as one. A cross-team decision names its `Owner`. The checkpoint refuses any other Status word; a record without the columns stays valid.
 
 ## ADR rule
 
@@ -52,15 +51,14 @@ The record `hla-decisions.md` may add two optional columns after `Flag`: `Status
 - Departing from an Accepted ADR is an exception, recorded in four places: header `exceptions` (`required: true`, `link_or_reason`), a Risks row, a `decision_needed` entry, and a Design decisions row.
 - Using a Proposed ADR is a recorded decision in `hla-decisions.md`, flagged in the doc table only when it meets a criterion above.
 - Superseded and Deprecated ADRs are never a basis. Find the successor, or record the gap as a risk.
-- In a child Bolt, a decision of the parent (`parent:D3`) binds like an Accepted ADR: cite it, and treat a departure from it as an exception, with the parent id as the link.
 
 ## Header
 
-Fill every field from the round C answers and `hla-decisions.md`; show any derived value's basis in the decision record. Rules that matter most:
+Fill every field from the group C answers, the assumptions and `hla-decisions.md`; show any derived value's basis in the decision record. Rules that matter most:
 
 - `security_consultation_required` is written only from an explicit answer or a named trigger. Never `false` by silence.
 - Reviewer and owner names come from a person. If none was given, stop and ask; do not fill a name.
-- `status: draft` while writing; `in-review` when handed to reviewers. Never set `accepted`, `changes-requested` or `declined`, and never fill `signed_off_by` or `signed_off_on`.
+- `status: draft` while writing; `in-review` when handed to the organisation's reviewers. Those reviewers set `accepted`, `changes-requested` or `declined`, `signed_off_by` and `signed_off_on` in their own review; you never fill them to get past a checkpoint, and no stage waits for them.
 - `document_version` is quoted. Raise the minor number for each review round.
 
 ## Diagrams
@@ -80,7 +78,7 @@ python3 scripts/validate_doc.py --file <bolt>/architecture/hla.md --kind hla \
   --adr-index <planning repo>/architecture-index.json
 ```
 
-Fix every finding and run again until it exits 0. Report warnings (a non-accepted ADR cited, a stale index commit) to the owner rather than hiding them. Exit 3 or 4 means an input is missing or broken: report it, do not edit around it.
+Fix every finding and run again until it exits 0. `--kind hla` also reads `hla-decisions.md` beside the document: a cited `D<n>` it does not declare, or a term or container with two owners, is a finding; a superseded decision cited or an interface party that is no container is a warning. Report warnings (also a non-accepted ADR, a stale index commit) rather than hiding them. What it cannot see is the consistency review in `SKILL.md`. Exit 3 or 4 means an input is missing or broken: report it, do not edit around it.
 
 ## Refinement
 
@@ -88,20 +86,7 @@ For any change asked after the document exists:
 
 1. List every section, header field and decision the change touches, and show the list before editing.
 2. Update them together in one pass; a change to a container usually touches flows, data, security, risks and the AI input block.
-3. A significant change gets a new decision id (`aidlc_state.py decision-id`) and a row in `hla-decisions.md`; never renumber old ids.
+3. A significant change gets a new decision id (`aidlc_state.py decision-id`) and a row in `hla-decisions.md`; never renumber old ids. A superseded decision keeps its row, with Status `superseded`.
 4. Re-derive `impact_flags`, `review_level`, `exceptions` and the consultation flag.
 5. Raise `document_version`, validate, and summarise what changed in at most five lines.
-
-If the stage was already approved, follow the core rules for changes after approval: the later artifacts that depend on the HLA are listed and re-opened.
-
-## Sign-off
-
-The decision is recorded in the file by people, then mirrored into Bolt state by the script.
-
-1. Set `status: in-review` and give the owner the path, the Digest and the `decision_needed` list.
-2. A reviewer edits the header: `status` to `accepted`, `changes-requested` or `declined`; `signed_off_by`; `signed_off_on`; any `review_conditions` (a TDD request goes there). The `Signed off by` cells in the decisions table are theirs too.
-3. Validate again.
-4. Accepted: `aidlc_state.py gate --stage hla --approve --by "<signed_off_by>"`. The gate refuses unless the header says `accepted` and is signed.
-5. Changes requested: `gate --request-changes --note "<the requests>"`, then refine. Declined: the same with the reason, and tell the owner the Bolt needs a new direction.
-
-Before its gate, a Bolt that will have children writes one `architecture/briefs/<child slug>.md` per planned child: the child's scope, the decision ids that bind it, the contracts it provides and consumes, and the open decisions it carries as assumptions. A child reads it in full.
+6. For each decision touched, run `aidlc_state.py context --bolt <p> --id <D<n>>` and tell the engineer which Slices and Units rely on it. The HLA stage is not reopened.

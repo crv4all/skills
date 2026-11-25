@@ -63,7 +63,7 @@ adr_registry_commit: "<commit, or none>"
 
 ## Design decisions
 
-<!-- Optional. Only departures from ADRs, novel approaches, trade-offs other teams carry, and calls where reasonable architects would disagree. The first column names the tension. The sign-off column stays empty for reviewers. -->
+<!-- Optional. Only departures from ADRs, novel approaches, trade-offs other teams carry, and calls where reasonable architects would disagree. The first column names the tension. The review column stays empty: it is the organisation reviewers' record. -->
 
 | Tension | Decision and reason | Id | Signed off by |
 | --- | --- | --- | --- |
@@ -260,7 +260,7 @@ open_items:
 
 | Practice | Applied to | Evidence |
 | --- | --- | --- |
-| Question rounds over twelve layers | <rounds and layers> | <question files> |
+| Design layers worked (twelve) | <groups and layers> | <question files> |
 | Decision record | <D-id range> | hla-decisions.md |
 | ADR registry | <commit> | <index path> |
 | Inputs read | <documents and code knowledge> | <paths; anything unreadable> |

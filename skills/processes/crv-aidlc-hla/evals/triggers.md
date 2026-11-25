@@ -14,9 +14,10 @@ neighbours are what this description has to separate from.
 | --- | --- | --- |
 | T1 | "Write the high-level architecture for the billing Bolt." | Names the HLA and a Bolt. |
 | T2 | "Here are the discovery documents. Draft a solution architecture we can take to review." | An architecture document from input documents, no Bolt named. |
-| T3 | "The round B questions are answered, carry on with the architecture." | Resuming the rounds. |
+| T3 | "The layer 4 to 8 questions are answered, carry on with the architecture." | Resuming the layers. |
 | T4 | "Reviewers want the cutover moved to a parallel run; update the HLA." | Refinement of an existing HLA. |
 | T5 | "Which ADRs constrain the design for the reporting migration?" | ADR binding for a design is part of bootstrap. |
+| T6 | "Start investigating the data migration approach for the architecture." | A contribution for one concern. |
 
 ## Should not fire
 
@@ -33,5 +34,5 @@ neighbours are what this description has to separate from.
 | # | Prompt | Correct answer | Reasoning |
 | --- | --- | --- | --- |
 | B1 | "What is next for the billing Bolt?" | Do not fire | A routing question; `crv-aidlc` answers it and may then hand over to this skill. |
-| B2 | "Sign off the HLA, I approve it." | Fire for sign-off | The skill records the person's decision through the gate, but the person must fill the header fields; it never sets `accepted` itself. |
+| B2 | "Looks good, proceed with the HLA." | Fire for the checkpoint | The skill records the direction through the checkpoint; the header's review fields are the organisation's record and are never filled to proceed. |
 | B3 | "Do we need a TDD for this design?" | Do not fire | The applicability decision belongs to `crv-aidlc-tdd`. |

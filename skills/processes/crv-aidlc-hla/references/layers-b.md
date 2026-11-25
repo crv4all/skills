@@ -1,8 +1,8 @@
-# Round B: layers 4 to 8
+# Group B: layers 4 to 8
 
-Round B turns the purpose and domain from round A into a structure. Open the file with the round A decisions that constrain it. The common failure here is choosing technology before the responsibilities are clear; propose responsibilities first, then the technology for each, citing the ADR that settles it.
+Group B turns the purpose and domain from group A into a structure. Open the file with the group A decisions that constrain it. The common failure here is choosing technology before the responsibilities are clear; propose responsibilities first, then the technology for each, citing the ADR that settles it.
 
-Same headings per layer as in round A: **Settles**, **Reads**, **Ask from**, **Bound by**, **Good**.
+Same headings per layer as in group A: **Settles**, **Reads**, **Ask from**, **Bound by**, **Good**.
 
 ## Layer 4: Proposed architecture
 
@@ -43,7 +43,7 @@ Same headings per layer as in round A: **Settles**, **Reads**, **Ask from**, **B
 
 ## Layer 6: Non-functional requirements
 
-**Settles:** availability and how it is measured; latency at P95 and P99 for the flows from round A; throughput and data volume now and in two to three years; freshness for data products; recovery point and recovery time; observability (the few metrics that prove health and the outcome, tracing, what alerts); a cost guardrail; compliance obligations.
+**Settles:** availability and how it is measured; latency at P95 and P99 for the flows from group A; throughput and data volume now and in two to three years; freshness for data products; recovery point and recovery time; observability (the few metrics that prove health and the outcome, tracing, what alerts); a cost guardrail; compliance obligations.
 
 **Reads:** current volumes and incidents in code knowledge; service levels and budgets in the digest; performance and service-level ADRs.
 
