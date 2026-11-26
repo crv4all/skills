@@ -1,0 +1,421 @@
+"""``aidlc_state.py`` commits and pushes a shared planning repo.
+
+Each test builds a bare remote and one or two clones in a temporary folder, with
+a fixed git identity set through the environment.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SCRIPT = REPO_ROOT / "skills" / "processes" / "crv-aidlc" / "scripts" / "aidlc_state.py"
+BOLT_ID = "2026-01-05-demo"
+
+pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+
+
+@pytest.fixture(autouse=True)
+def identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    for who in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{who}_NAME", "Test Person")
+        monkeypatch.setenv(f"GIT_{who}_EMAIL", "test@example.com")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.delenv("AIDLC_GIT", raising=False)
+
+
+def git(path: Path, *args: str) -> str:
+    done = subprocess.run(
+        ["git", "-C", str(path), *args], capture_output=True, text=True, check=True, timeout=60
+    )
+    return done.stdout.strip()
+
+
+def script(*args: str) -> tuple[int, dict[str, Any], str]:
+    done = subprocess.run(
+        [sys.executable, str(SCRIPT), *args], capture_output=True, text=True, timeout=120
+    )
+    out = done.stdout
+    return done.returncode, (json.loads(out) if out.strip().startswith("{") else {}), out
+
+
+def open_demo(root: Path, *extra: str) -> tuple[int, dict[str, Any], str]:
+    return script(
+        "open", "--root", str(root), "--slug", "demo", "--title", "Demo", "--intent", "Try it",
+        "--date", "2026-01-05", *extra,
+    )  # fmt: skip
+
+
+def bolt_of(root: Path) -> Path:
+    return root / "bolts" / BOLT_ID
+
+
+def write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+class Repos:
+    def __init__(self, base: Path) -> None:
+        self.remote = base / "remote.git"
+        self.a = base / "a"
+        self.b = base / "b"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(self.remote)], check=True)
+        subprocess.run(["git", "init", "-q", "-b", "main", str(self.a)], check=True)
+        git(self.a, "remote", "add", "origin", str(self.remote))
+        write(self.a / "README.md", "planning repo\n")
+        git(self.a, "add", "-A")
+        git(self.a, "commit", "-q", "-m", "start")
+        git(self.a, "push", "-q", "-u", "origin", "main")
+        subprocess.run(["git", "clone", "-q", str(self.remote), str(self.b)], check=True)
+
+    def remote_log(self) -> list[str]:
+        return git(self.remote, "log", "--format=%s", "main").splitlines()
+
+
+@pytest.fixture
+def repos(tmp_path: Path) -> Repos:
+    return Repos(tmp_path)
+
+
+def test_state_change_commits_and_pushes(repos: Repos) -> None:
+    code, out, _ = open_demo(repos.a)
+    assert code == 0, out
+    assert out["git"]["pushed"] is True and out["git"]["commit"]
+    assert git(repos.a, "log", "-1", "--format=%s") == "docs(demo): open the bolt"
+    assert git(repos.a, "log", "-1", "--format=%b") == ""
+    assert repos.remote_log()[0] == "docs(demo): open the bolt"
+    assert git(repos.a, "status", "--porcelain") == ""
+
+    code, out, _ = script(
+        "decide", "--bolt", str(bolt_of(repos.a)), "--stage", "hla",
+        "--decision", "skip", "--reason", "not needed",
+    )  # fmt: skip
+    assert code == 0
+    assert repos.remote_log()[0] == "docs(demo): decide hla: skip"
+
+
+def test_team_work_is_rebased_under_the_local_commit(repos: Repos) -> None:
+    assert open_demo(repos.a)[0] == 0
+    git(repos.b, "pull", "-q")
+    write(repos.b / "codekb" / "team.md", "from the team\n")
+    git(repos.b, "add", "-A")
+    git(repos.b, "commit", "-q", "-m", "team work")
+    git(repos.b, "push", "-q")
+
+    code, out, _ = script("decision-id", "--bolt", str(bolt_of(repos.a)), "--count", "3")
+    assert code == 0 and out["git"]["pushed"] is True
+    log = repos.remote_log()
+    assert log[0] == "docs(demo): reserve decision ids D1-D3"
+    assert "team work" in log
+    assert (repos.a / "codekb" / "team.md").is_file()
+    assert git(repos.a, "rev-list", "--merges", "--count", "HEAD") == "0"
+
+
+def test_conflicting_artifact_stops_with_exit_6(repos: Repos) -> None:
+    assert open_demo(repos.a)[0] == 0
+    git(repos.b, "pull", "-q")
+    rel = f"bolts/{BOLT_ID}/architecture/hla.md"
+    write(repos.b / rel, "their version\n")
+    git(repos.b, "add", "-A")
+    git(repos.b, "commit", "-q", "-m", "team hla")
+    git(repos.b, "push", "-q")
+
+    write(repos.a / rel, "my version\n")
+    code, out, text = script("sync", "--bolt", str(bolt_of(repos.a)), "-m", "write the hla")
+    assert code == 6
+    assert (repos.a / ".git" / "rebase-merge").exists()
+    finding = out["findings"][0]
+    assert finding["path"] == rel and "keep both" in finding["message"]
+    assert "'ours' is the team's version" in text
+
+    # while the rebase is open, every changing command stops and changes nothing
+    code, _, _ = script("park", "--bolt", str(bolt_of(repos.a)), "--note", "x")
+    assert code == 6
+    assert json.loads((bolt_of(repos.a) / "state.json").read_text())["parked"] is None
+
+
+def test_index_conflict_resolves_itself(repos: Repos) -> None:
+    write(repos.a / "architecture-index.json", '{"v": 0}\n')
+    assert script("sync", "--root", str(repos.a), "-m", "add the index")[0] == 0
+    git(repos.b, "pull", "-q")
+    write(repos.b / "architecture-index.json", '{"v": "team"}\n')
+    git(repos.b, "commit", "-qam", "team index")
+    git(repos.b, "push", "-q")
+
+    write(repos.a / "architecture-index.json", '{"v": "mine"}\n')
+    code, out, _ = script("sync", "--root", str(repos.a), "-m", "change the index")
+    assert code == 0, out
+    assert out["git"]["rebuild_adr_index"] is True
+    assert not (repos.a / ".git" / "rebase-merge").exists()
+    assert (repos.a / "architecture-index.json").read_text() == '{"v": "team"}\n'
+    assert out["git"]["pushed"] is False  # my commit became empty; nothing to push
+
+
+def test_no_remote_keeps_the_commit_and_warns(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q", "-b", "main", str(tmp_path)], check=True)
+    code, out, _ = open_demo(tmp_path)
+    assert code == 0
+    assert out["git"]["commit"] and out["git"]["pushed"] is False
+    assert any("push: skipped" in w for w in out["git"]["warnings"])
+    assert git(tmp_path, "log", "-1", "--format=%s") == "docs(demo): open the bolt"
+
+
+def test_planted_secret_stops_without_a_commit(repos: Repos) -> None:
+    assert open_demo(repos.a)[0] == 0
+    head = git(repos.a, "rev-parse", "HEAD")
+    rel = f"bolts/{BOLT_ID}/inputs/notes.md"
+    write(repos.a / rel, "intro\npassword=hunter2hunter2\n")
+    code, out, text = script("sync", "--bolt", str(bolt_of(repos.a)))
+    assert code == 6
+    assert out["findings"][0]["path"] == f"{rel}:2"
+    assert "hunter2" not in text
+    assert git(repos.a, "rev-parse", "HEAD") == head
+    assert git(repos.a, "diff", "--cached", "--name-only") == ""
+
+
+def test_path_outside_the_scope_is_left_uncommitted(repos: Repos) -> None:
+    assert open_demo(repos.a)[0] == 0
+    write(repos.a / "notes.txt", "private\n")
+    write(bolt_of(repos.a) / "inputs" / "a.md", "a\n")
+    write(repos.a / "codekb" / "x.md", "x\n")
+    code, out, _ = script("sync", "--bolt", str(bolt_of(repos.a)))
+    assert code == 0
+    assert out["git"]["uncommitted"] == ["notes.txt"]
+    files = git(repos.a, "show", "--name-only", "--format=", "HEAD").splitlines()
+    assert "notes.txt" not in files and "codekb/x.md" in files
+    assert git(repos.a, "status", "--porcelain") == "?? notes.txt"
+    assert out["git"]["message"] == "docs(demo): save work in progress"
+
+
+def test_git_off_and_non_git_folder_do_nothing(
+    repos: Repos, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AIDLC_GIT", "off")
+    code, out, _ = open_demo(repos.a)
+    assert code == 0 and "git" not in out
+    assert git(repos.a, "log", "-1", "--format=%s") == "start"
+    code, out, _ = script("sync", "--bolt", str(bolt_of(repos.a)))
+    assert code == 0 and out["git"]["enabled"] is False
+    monkeypatch.delenv("AIDLC_GIT")
+
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    code, out, _ = open_demo(plain)
+    assert code == 0 and "git" not in out
+    code, out, _ = script("sync", "--bolt", str(bolt_of(plain)))
+    assert code == 0 and out["git"]["enabled"] is False
+
+    code, out, _ = open_demo(repos.b, "--no-git")
+    assert code == 0 and "git" not in out
+
+
+def test_status_shows_the_git_block(repos: Repos) -> None:
+    assert open_demo(repos.a)[0] == 0
+    p = str(bolt_of(repos.a))
+    write(bolt_of(repos.a) / "inputs" / "a.md", "a\n")
+    code, out, _ = script("status", "--bolt", p)
+    assert code == 0
+    assert out["git"]["branch"] == "main" and out["git"]["uncommitted"] == 1
+    assert out["git"]["ahead"] == 0 and out["git"]["behind"] == 0
+    code, _, text = script("status", "--bolt", p, "--format", "text")
+    assert "Git: main, ahead 0, behind 0, 1 uncommitted" in text
+    assert git(repos.a, "log", "-1", "--format=%s") == "docs(demo): open the bolt"
+
+
+def test_configured_branch_must_be_the_current_one(repos: Repos) -> None:
+    write(repos.a / "aidlc.json", json.dumps({"git": {"branch": "construction"}}))
+    code, out, _ = open_demo(repos.a)
+    assert code == 1
+    assert "git switch construction" in out["error"]
+    assert not bolt_of(repos.a).exists()
+
+
+def test_log_names_the_git_user_and_the_local_file_is_never_committed(
+    repos: Repos, tmp_path: Path
+) -> None:
+    git(repos.a, "config", "user.name", "Ada Lovelace")
+    far = tmp_path / "elsewhere" / "svc"
+    far.mkdir(parents=True)
+    assert open_demo(repos.a, "--target", f"svc={far}")[0] == 0
+    bolt = bolt_of(repos.a)
+    assert script("park", "--bolt", str(bolt), "--note", "n")[0] == 0
+    fields = [line.split(" | ") for line in (bolt / "log.md").read_text().splitlines()]
+    assert {f[3] for f in fields} == {"agent:Ada Lovelace"}
+    assert (repos.a / ".aidlc-local.json").is_file()
+    assert git(repos.a, "ls-files", ".aidlc-local.json") == ""
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert open_demo(plain)[0] == 0
+    assert (bolt_of(plain) / "log.md").read_text().split(" | ")[3] == "agent"
+
+
+# --- split Bolts: two engineers, one Bolt ------------------------------------
+
+
+def split_demo(repos: Repos) -> Path:
+    """A split Bolt with units u1 and u2 in ``a``, pushed and pulled into ``b``."""
+    assert open_demo(repos.a, "--units", "split")[0] == 0
+    bolt = bolt_of(repos.a)
+    spec = repos.a.parent / "units.json"
+    spec.write_text(json.dumps({"units": [{"id": "u1"}, {"id": "u2"}]}), encoding="utf-8")
+    assert script("units", "--bolt", str(bolt), "--set", str(spec))[0] == 0
+    assert script("jira", "--bolt", str(bolt), "--off", "--reason", "t")[0] == 0
+    git(repos.b, "pull", "-q")
+    return bolt
+
+
+def decide_unit(root: Path, unit: str, reason: str, *flags: str) -> tuple[int, dict[str, Any], str]:
+    return script(
+        "decide", "--bolt", str(bolt_of(root)), "--stage", "functional-design", "--unit", unit,
+        "--decision", "skip", "--reason", reason, *flags,
+    )  # fmt: skip
+
+
+def test_two_engineers_on_different_units_do_not_conflict(repos: Repos) -> None:
+    split_demo(repos)
+    assert decide_unit(repos.a, "u1", "mine")[0] == 0
+    assert decide_unit(repos.b, "u2", "yours", "--no-git")[0] == 0  # built on a stale base
+    code, out, _ = script("sync", "--bolt", str(bolt_of(repos.b)), "-m", "unit u2")
+    assert code == 0 and out["git"]["pushed"] is True
+    git(repos.a, "pull", "-q", "--rebase")
+    for unit in ("u1", "u2"):
+        text = (bolt_of(repos.a) / "units" / unit / "state.json").read_text()
+        assert '"decision": "skip"' in text
+
+
+def test_two_engineers_on_the_same_unit_get_the_unit_rule(repos: Repos) -> None:
+    split_demo(repos)
+    assert decide_unit(repos.a, "u1", "mine")[0] == 0
+    assert decide_unit(repos.b, "u1", "yours", "--no-git")[0] == 0
+    code, out, _ = script("sync", "--bolt", str(bolt_of(repos.b)), "-m", "unit u1")
+    assert code == 6
+    messages = [f["message"] for f in out["findings"]]
+    assert any(
+        m.startswith("two sessions changed the same unit. Do not take a side") for m in messages
+    )
+    assert git(repos.b, "status", "--porcelain").count("UU") >= 1  # nothing was resolved for them
+
+
+def test_a_decision_counter_race_is_rerun_on_the_rivals_counter(
+    repos: Repos, tmp_path: Path
+) -> None:
+    assert open_demo(repos.a)[0] == 0
+    git(repos.b, "pull", "-q")
+    rival = tmp_path / "rival"
+    subprocess.run(["git", "clone", "-q", str(repos.remote), str(rival)], check=True)
+    state_file = bolt_of(rival) / "state.json"
+    state_file.write_text(state_file.read_text().replace('"decision_seq": 0', '"decision_seq": 9'))
+    git(rival, "add", "-A")
+    git(rival, "commit", "-q", "-m", "rival takes the counter")
+    hook = repos.b / ".git" / "hooks" / "post-commit"  # the rival pushes while we commit
+    hook.write_text(
+        f"#!/bin/sh\nunset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE\ngit -C {rival} push -q origin main\n"
+    )
+    hook.chmod(0o755)
+    code, out, _ = script("decision-id", "--bolt", str(bolt_of(repos.b)))
+    assert code == 0, out  # the rival took the counter while we committed: we ran again
+    assert out["ids"] == ["D10"] and out["git"]["reruns"] == 1 and out["git"]["pushed"] is True
+    shown = git(repos.remote, "show", f"main:bolts/{BOLT_ID}/state.json")
+    assert json.loads(shown)["decision_seq"] == 10
+
+
+def test_a_change_to_an_approved_artifact_warns_once_and_is_logged(repos: Repos) -> None:
+    assert open_demo(repos.a)[0] == 0
+    bolt = bolt_of(repos.a)
+    write(bolt / "knowledge" / "_digest.md", "# Notes\n\n## Digest\n- one\n")
+    write(bolt / "knowledge" / "_outline.json", '{"files": []}\n')
+    common = ["--bolt", str(bolt), "--stage", "document-knowledge"]
+    assert script("decide", *common, "--decision", "execute", "--reason", "t")[0] == 0
+    assert script("step", *common, "--to", "produced")[0] == 0
+    code, out, _ = script("gate", *common, "--approve", "--by", "Ada")
+    assert code == 0, out
+    assert not any("changed after the checkpoint" in w for w in out["git"]["warnings"])
+    write(bolt / "knowledge" / "_digest.md", "# Notes\n\n## Digest\n- two\n")
+    code, out, _ = script("sync", "--bolt", str(bolt), "-m", "edit the digest")
+    assert code == 0 and out["git"]["commit"]
+    warnings = [w for w in out["git"]["warnings"] if w.startswith("changed after the checkpoint")]
+    assert warnings == [
+        "changed after the checkpoint: knowledge/_digest.md (stage document-knowledge is passed; "
+        "Bolt-level stages are not reopened, so tell the Units that rely on it)"
+    ]
+    log = (bolt / "log.md").read_text(encoding="utf-8")
+    assert log.count("| approved-change | document-knowledge |") == 1
+    assert git(repos.a, "status", "--porcelain") == ""  # the log line went in the same commit
+
+
+# --- leftovers are never committed --------------------------------------------
+
+
+def test_a_temp_file_left_by_a_killed_write_is_never_committed(repos: Repos) -> None:
+    assert open_demo(repos.a)[0] == 0
+    bolt = bolt_of(repos.a)
+    write(bolt / ".state.json.4242.tmp", "{half")
+    write(bolt / "units" / "u1" / ".state.json.7.tmp", "{half")
+    code, out, _ = script("park", "--bolt", str(bolt), "--note", "n")
+    assert code == 0 and out["git"]["commit"]
+    assert not [f for f in git(repos.a, "ls-files").splitlines() if f.endswith(".tmp")]
+    assert not [f for f in git(repos.remote, "ls-tree", "-r", "--name-only", "main").splitlines()
+                if f.endswith(".tmp")]  # fmt: skip
+    assert git(repos.a, "status", "--porcelain", "-uall").count(".tmp") == 2  # left where they were
+
+
+def test_the_temp_name_of_a_state_write_is_unique_per_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("aidlc_state_tmp_test", SCRIPT)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    seen: list[str] = []
+    real_replace = Path.replace
+
+    def spy(self: Path, target: Any) -> Any:
+        seen.append(self.name)
+        return real_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", spy)
+    for pid in (111, 222):
+        monkeypatch.setattr(mod.os, "getpid", lambda pid=pid: pid)
+        mod.write_json_atomic(tmp_path / "state.json", {"pid": pid})
+    assert seen == [".state.json.111.tmp", ".state.json.222.tmp"]
+    assert [p.name for p in tmp_path.iterdir()] == ["state.json"]  # nothing left behind
+    monkeypatch.setattr(Path, "replace", lambda *_: (_ for _ in ()).throw(OSError("disk")))
+    with pytest.raises(OSError):
+        mod.write_json_atomic(tmp_path / "state.json", {"pid": 3})
+    assert [p.name for p in tmp_path.iterdir()] == ["state.json"]  # a failed write cleans up
+
+
+def test_a_file_with_conflict_markers_is_not_committed(repos: Repos) -> None:
+    assert open_demo(repos.a)[0] == 0
+    head = git(repos.a, "rev-parse", "HEAD")
+    bolt = bolt_of(repos.a)
+    rel = f"bolts/{BOLT_ID}/architecture/hla.md"
+    write(repos.a / rel, "intro\n<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> branch\n")
+    write(bolt / "inputs" / "other.md", "also broken\n<<<<<<< x\n=======\n>>>>>>> y\n")
+    write(bolt / "inputs" / "fine.md", "Title\n=======\nA setext heading is not a conflict.\n")
+    code, out, _ = script("sync", "--bolt", str(bolt))
+    assert code == 6
+    assert sorted(f["path"] for f in out["findings"]) == sorted(
+        [rel, f"bolts/{BOLT_ID}/inputs/other.md"]
+    )
+    assert {f["code"] for f in out["findings"]} == {"conflict-markers"}
+    assert git(repos.a, "rev-parse", "HEAD") == head
+    assert git(repos.a, "diff", "--cached", "--name-only") == ""
+    (repos.a / rel).unlink()
+    (bolt / "inputs" / "other.md").unlink()
+    code, out, _ = script("sync", "--bolt", str(bolt))
+    assert code == 0 and out["git"]["commit"]
+    assert "inputs/fine.md" in git(repos.a, "show", "--name-only", "--format=", "HEAD")

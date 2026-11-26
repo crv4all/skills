@@ -87,7 +87,7 @@ forbidden.
 | `layer` | always | Must equal the parent directory. |
 | `maturity` | always | `draft` · `stable` · `deprecated`. |
 | `execution` | always | `subagent` is the mandatory default. `inline` only for skills too small to be worth the round trip, and the body must say why. |
-| `model-tier` | always | `economy` is the mandatory default. `balanced` and `frontier` are escalations the body must justify; the validator warns on them. |
+| `model-tier` | always | `economy` is the mandatory default. `balanced` and `frontier` are escalations the body must justify; the validator warns until the Execution section states ``**Model tier: `<tier>`.**`` with the reason on the same line. |
 | `version` | at `stable`/`deprecated` | Quoted semver, e.g. `"1.0.0"`. Informational. |
 | `tags` | at `stable`/`deprecated` | Comma-separated string, no spaces. A string because the spec only allows strings. |
 | `review-cadence` | at `stable`/`deprecated` | `monthly` · `quarterly` · `semiannual` · `annual`. Chosen from how fast the facts move, not from how important the skill feels. |

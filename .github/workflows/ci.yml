@@ -89,7 +89,10 @@ jobs:
 
   floor:
     name: python 3.9 floor
-    runs-on: ubuntu-latest
+    # ubuntu-latest is 26.04, and the published CPython 3.9 builds stop at
+    # 24.04. setup-python fails before a script runs if this job follows
+    # latest. 24.04 is the newest image that still has a 3.9 build.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

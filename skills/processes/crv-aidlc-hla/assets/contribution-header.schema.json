@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "contribution-header.schema.json",
+  "title": "Architecture contribution header",
+  "description": "The fenced yaml block at the top of architecture/contributions/<concern>.md. Uses only the JSON Schema subset validate_doc.py implements.",
+  "type": "object",
+  "required": ["concern", "owner", "status", "touches"],
+  "properties": {
+    "concern": {
+      "description": "The concern this file covers; it is also the file name without .md.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "owner": {
+      "description": "The person who investigates the concern and merges its conclusion into hla.md.",
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "status": {
+      "description": "draft while written, proposed once the owner offers it to the team, merged once the conclusion is in hla.md.",
+      "type": "string",
+      "enum": ["draft", "proposed", "merged"]
+    },
+    "touches": {
+      "description": "Titles of the hla.md sections this contribution changes.",
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "pattern": "\\S"}
+    },
+    "affects": {
+      "description": "Other concerns or component names this contribution has consequences for; may be empty.",
+      "type": "array",
+      "items": {"type": "string", "pattern": "\\S"}
+    }
+  }
+}

@@ -2,7 +2,7 @@
 
 # Skill catalogue
 
-4 skill(s) in [crv4all/agent-skills](https://github.com/crv4all/agent-skills).
+11 skill(s) in [crv4all/agent-skills](https://github.com/crv4all/agent-skills).
 
 Install any of them with `install.sh`; see [docs/installing.md](docs/installing.md).
 
@@ -11,6 +11,13 @@ Every skill runs in a subagent and states its model tier before starting. See
 
 | Skill | Layer | Maturity | Runs as | Tier | Owner | Summary |
 | --- | --- | --- | --- | --- | --- | --- |
+| [`crv-aidlc`](skills/processes/crv-aidlc/SKILL.md) | processes | draft | subagent | economy | cloudforce-team-data | Opens, resumes and closes a Bolt (the folder for one piece of work in a planning repo), routes to the next AI-DLC stage and runs the checkpoints with… |
+| [`crv-aidlc-construction`](skills/processes/crv-aidlc-construction/SKILL.md) | processes | draft | subagent | balanced | cloudforce-team-data | Builds a Bolt's Units in code: per-Unit design stages when they apply, a checkbox code plan, code in the target repositories with a recorded Verdict, then… |
+| [`crv-aidlc-hla`](skills/processes/crv-aidlc-hla/SKILL.md) | processes | draft | subagent | frontier | cloudforce-team-data | Produces the High-Level Architecture (HLA) for a Bolt before Inception, shared by every engineer on it: one hla.md and one decision record, a contribution… |
+| [`crv-aidlc-inception`](skills/processes/crv-aidlc-inception/SKILL.md) | processes | draft | subagent | balanced | cloudforce-team-data | Runs the AI-DLC Inception stages for a Bolt: requirements that reconcile the HLA, user stories, a domain design, units of work, contracts between units and a… |
+| [`crv-aidlc-operation`](skills/processes/crv-aidlc-operation/SKILL.md) | processes | draft | subagent | balanced | cloudforce-team-data | Prepares and records the release of one Slice of a Bolt's change: a release plan, a runbook with named people, a rollback runbook and verification checks,… |
+| [`crv-aidlc-reverse-engineering`](skills/processes/crv-aidlc-reverse-engineering/SKILL.md) | processes | draft | subagent | balanced | cloudforce-team-data | Builds or refreshes the code knowledge for each existing (brownfield) target repository of a Bolt before the architecture is written: a deterministic… |
+| [`crv-aidlc-tdd`](skills/processes/crv-aidlc-tdd/SKILL.md) | processes | draft | subagent | balanced | cloudforce-team-data | Produces the Technical Design Document (TDD), the detailed design that follows a reviewed high-level architecture in a Bolt. |
 | [`crv-codebase-onboarding`](skills/processes/crv-codebase-onboarding/SKILL.md) | processes | draft | subagent | economy | cloudforce-team-data | Produces durable, evidence-backed codebase context in docs/codebase/ — architecture, stack divergences, conventions, workflows, data, integrations, testing,… |
 | [`crv-create-jira-epic`](skills/processes/crv-create-jira-epic/SKILL.md) | processes | draft | subagent | economy | cloudforce-team-data | Files a Jira Epic through the Atlassian MCP, resolving the required fields of the target project at run time instead of assuming custom-field IDs from any… |
 | [`crv-create-jira-story`](skills/processes/crv-create-jira-story/SKILL.md) | processes | draft | subagent | economy | cloudforce-team-data | Files Jira Stories under a parent Epic through the Atlassian MCP, searching for duplicates by JQL before creating anything, writing descriptions that carry… |
@@ -37,6 +44,48 @@ _No skills in this layer yet._
 ## processes
 
 End-to-end workflows with a reviewable deliverable.
+
+### [`crv-aidlc`](skills/processes/crv-aidlc/SKILL.md)
+
+Opens, resumes and closes a Bolt (the folder for one piece of work in a planning repo), routes to the next AI-DLC stage and runs the checkpoints with deterministic scripts, so an engineer works in plain requests and never needs a command. Use when someone wants to start, open, resume or close a Bolt, asks what is next, what is blocking a Unit, what changed under their work or what has happened in a Bolt, mentions AI-DLC, asks whether they are ready to use AI-DLC or how to get started, or wants a structured, staged delivery of a feature, migration or bug fix. Not for the stage work itself: crv-aidlc-reverse-engineering, crv-aidlc-hla, crv-aidlc-tdd, crv-aidlc-inception, crv-aidlc-construction and crv-aidlc-operation own that, and the crv-create-jira-* skills file tickets.
+
+**Owner:** cloudforce-team-data · **Maturity:** draft · **Runs as:** subagent · **Model tier:** economy
+
+### [`crv-aidlc-construction`](skills/processes/crv-aidlc-construction/SKILL.md)
+
+Builds a Bolt's Units in code: per-Unit design stages when they apply, a checkbox code plan, code in the target repositories with a recorded Verdict, then Build and Test per Slice. Use when someone wants to build, implement or continue a Unit or Slice, write its code plan, run build and test, ask what blocks it, or whether a changed contract affects their work. Not for code edits outside a Bolt, nor routing, inception, HLA, TDD or repo scans (crv-aidlc, -inception, -hla, -tdd, -reverse-engineering).
+
+**Owner:** cloudforce-team-data · **Maturity:** draft · **Runs as:** subagent · **Model tier:** balanced
+
+### [`crv-aidlc-hla`](skills/processes/crv-aidlc-hla/SKILL.md)
+
+Produces the High-Level Architecture (HLA) for a Bolt before Inception, shared by every engineer on it: one hla.md and one decision record, a contribution file per concern that several people investigate at once, proposals over twelve design layers that cite the ADRs they follow, questions only where something material is open, a consistency review across contributors, and a validated document. Use when someone wants to write, refine or review a high-level or solution architecture for a Bolt or from input documents, investigate one concern of it (security, data migration), take in architecture-review feedback, or asks which ADRs bind a design. Not for the Technical Design Document (crv-aidlc-tdd), opening or routing a Bolt (crv-aidlc), or requirements, stories and units (crv-aidlc-inception).
+
+**Owner:** cloudforce-team-data · **Maturity:** draft · **Runs as:** subagent · **Model tier:** frontier
+
+### [`crv-aidlc-inception`](skills/processes/crv-aidlc-inception/SKILL.md)
+
+Runs the AI-DLC Inception stages for a Bolt: requirements that reconcile the HLA, user stories, a domain design, units of work, contracts between units and a Slice delivery plan, with questions only where something material is open, stable traceable ids and a traceability check before the last checkpoint; and adds a later Slice to a running Bolt as an increment, with readiness gaps explained. Use when someone wants requirements, user stories, a domain design or component catalogue, units of work, API or event contracts, or a Slice or delivery plan for a Bolt, wants to plan the next Slice, change or split a Unit, or resumes one of those stages. Not for opening, resuming or routing a Bolt (crv-aidlc), the HLA (crv-aidlc-hla), the Technical Design Document (crv-aidlc-tdd), scanning existing code (crv-aidlc-reverse-engineering), building units (crv-aidlc-construction), or filing tickets (crv-create-jira-story, crv-create-jira-epic).
+
+**Owner:** cloudforce-team-data · **Maturity:** draft · **Runs as:** subagent · **Model tier:** balanced
+
+### [`crv-aidlc-operation`](skills/processes/crv-aidlc-operation/SKILL.md)
+
+Prepares and records the release of one Slice of a Bolt's change: a release plan, a runbook with named people, a rollback runbook and verification checks, then an environment-by-environment execution log in which people run every step and the agent records the evidence. Use when someone wants to plan or run a release, a data migration, a cut-over, a switch of write master or a retirement for a Slice of a Bolt, or resume its deploy log. Never runs a deployment itself. Not for routing a Bolt (crv-aidlc), building or testing units (crv-aidlc-construction), the design (crv-aidlc-hla, crv-aidlc-tdd), requirements and units (crv-aidlc-inception), or repo scans (crv-aidlc-reverse-engineering).
+
+**Owner:** cloudforce-team-data · **Maturity:** draft · **Runs as:** subagent · **Model tier:** balanced
+
+### [`crv-aidlc-reverse-engineering`](skills/processes/crv-aidlc-reverse-engineering/SKILL.md)
+
+Builds or refreshes the code knowledge for each existing (brownfield) target repository of a Bolt before the architecture is written: a deterministic repository inventory, one economy-tier worker per area, and a single synthesis into nine sourced artifacts in a store shared across Bolts (codekb/<repo>/), with a freshness check, focused rescans of what changed, and a list of later artifacts to update when findings arrive late. Use when someone wants to research, understand, reverse-engineer or map an existing codebase for a Bolt, refresh code knowledge, or asks whether the code knowledge is stale or can be reused. Not for opening, resuming or routing a Bolt (crv-aidlc), the architecture document (crv-aidlc-hla), requirements, stories or units (crv-aidlc-inception), building the units (crv-aidlc-construction), or documenting a repository inside itself for onboarding (crv-codebase-onboarding).
+
+**Owner:** cloudforce-team-data · **Maturity:** draft · **Runs as:** subagent · **Model tier:** balanced
+
+### [`crv-aidlc-tdd`](skills/processes/crv-aidlc-tdd/SKILL.md)
+
+Produces the Technical Design Document (TDD), the detailed design that follows a reviewed high-level architecture in a Bolt. Decides first whether a TDD is required at all (a review request or a high-risk impact flag), checks the HLA header says the organisation reviewed it, asks only what the HLA left open and carries its decisions forward instead of asking them again, and writes a validated tdd.md. Use when someone wants to write, refine or hand over a technical design document, detailed design or TDD after an HLA, or asks whether a TDD is needed. Not test-driven development or writing tests first. Not for the HLA itself (crv-aidlc-hla), opening or routing a Bolt (crv-aidlc), or requirements, stories and units (crv-aidlc-inception).
+
+**Owner:** cloudforce-team-data · **Maturity:** draft · **Runs as:** subagent · **Model tier:** balanced
 
 ### [`crv-codebase-onboarding`](skills/processes/crv-codebase-onboarding/SKILL.md)
 

@@ -26,7 +26,9 @@ with the reason rather than route around it.
 
 **Every skill declares `execution: subagent` and `model-tier: economy`**, and
 the body must carry a `## Execution` section that acts on them. Both are
-enforced; metadata nobody acts on is decoration.
+enforced; metadata nobody acts on is decoration. A higher tier is an escalation:
+the Execution section states it as ``**Model tier: `<tier>`.**`` with the reason
+on the same line, and a test checks that it does.
 
 **Two tiers of Python.** Scripts under `skills/**/scripts/` are stdlib-only,
 carry a PEP 723 header with `requires-python = ">=3.9"`, and must run as
@@ -55,7 +57,7 @@ next person, because the next person cannot tell that it was left.
 | Skill frontmatter, including the description | `CATALOG.md` via `build_catalog.py --write` |
 | A rule every skill follows | `README.md`, the matching section of `docs/design-principles.md`, `docs/authoring-skills.md`, and the scaffold at `skills/processes/crv-create-skill/assets/skill-template/SKILL.md.template` |
 | A skill's behaviour or output contract | That skill's `evals/behaviour.md`, and `evals/triggers.md` if the description moved |
-| A file shared byte-identically between skills | Every copy. `test_shared_jira_files.py` names them |
+| A file shared byte-identically between skills | Every copy. `test_shared_jira_files.py` and `test_shared_aidlc_files.py` name them |
 | Anything a person would notice | `CHANGELOG.md`, under Unreleased, saying why rather than what |
 | Adapted third-party material | A header in the file and a row in `THIRD_PARTY_NOTICES.md` |
 

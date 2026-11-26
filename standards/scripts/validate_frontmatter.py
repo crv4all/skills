@@ -280,6 +280,24 @@ def check_description_quality(skill: Skill, data: dict[str, Any], report: Report
         )
 
 
+def tier_is_justified(body: str, tier: str) -> bool:
+    """True when the Execution section states the tier with a reason on the same line.
+
+    The escalation warning exists so the reason gets written down. Once the
+    section says ``**Model tier: `frontier`.**`` followed by a sentence of at
+    least eight words, the reason is written down, and warning on every run
+    would only teach people to ignore the warning.
+    """
+    if EXECUTION_HEADING not in body:
+        return False
+    section = body.split(EXECUTION_HEADING, 1)[1].split("\n## ", 1)[0]
+    stated = f"**Model tier: `{tier}`.**"
+    if stated not in section:
+        return False
+    reason = section.split(stated, 1)[1].split("\n", 1)[0]
+    return len(reason.split()) >= 8
+
+
 def check_execution_contract(skill: Skill, data: dict[str, Any], body: str, report: Report) -> None:
     """Enforce the subagent-and-cheapest-model rule.
 
@@ -315,15 +333,16 @@ def check_execution_contract(skill: Skill, data: dict[str, Any], body: str, repo
         )
 
     tier = metadata.get("model-tier")
-    if tier in {"balanced", "frontier"}:
+    if tier in {"balanced", "frontier"} and not tier_is_justified(body, tier):
         report.warn(
             code="execution.escalated-tier",
             path=skill.rel_skill_md,
             message=f"model-tier is {tier!r}; the default is 'economy'",
             hint=(
                 "Escalating the tier makes every invocation more expensive. Justify it in "
-                "the Execution section, or drop to 'economy' and let the subagent ask for "
-                "more when it actually needs it."
+                "the Execution section as **Model tier: `<tier>`.** followed by the reason "
+                "on the same line, or drop to 'economy' and let the subagent ask for more "
+                "when it actually needs it."
             ),
         )
 

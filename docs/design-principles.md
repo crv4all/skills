@@ -211,7 +211,9 @@ that follows. A subagent exits when it is done and hands back the conclusion.
 procedure, not solving a hard problem — that is the whole point of writing the
 procedure down. Running it on a frontier model spends the budget on capability
 the skill was designed not to need. Escalation is available, and the validator
-warns when a skill declares a higher tier so the reason has to be written down.
+warns when a skill declares a higher tier until the reason is written down: the
+Execution section states ``**Model tier: `<tier>`.**`` with the reason on the
+same line.
 
 **Tiers, not model ids.** A tier is harness-neutral and survives a vendor
 renaming a model, which they do often. Model ids in fifty SKILL.md files is

@@ -1,0 +1,1074 @@
+{
+  "schema": 1,
+  "stages": [
+    {
+      "id": "workspace-detection",
+      "phase": "discovery",
+      "skill": "crv-aidlc",
+      "reference": null,
+      "tier": "economy",
+      "per_unit": false,
+      "scopes": [
+        "classic",
+        "express",
+        "bugfix"
+      ],
+      "conditional": false,
+      "runs_when": "Always. Classifies each target as brownfield or greenfield; the person's word overrides the scan.",
+      "inputs": [],
+      "questions": null,
+      "artifacts": [],
+      "order": 1
+    },
+    {
+      "id": "document-knowledge",
+      "phase": "discovery",
+      "skill": "crv-aidlc",
+      "reference": null,
+      "tier": "economy",
+      "per_unit": false,
+      "scopes": [
+        "classic",
+        "express"
+      ],
+      "conditional": [
+        "express"
+      ],
+      "runs_when": "classic: always. express: only when documents were handed in to inputs/; decide skip otherwise.",
+      "inputs": [],
+      "questions": null,
+      "artifacts": [
+        "knowledge/_outline.json",
+        "knowledge/_digest.md"
+      ],
+      "order": 2
+    },
+    {
+      "id": "reverse-engineering",
+      "phase": "discovery",
+      "skill": "crv-aidlc-reverse-engineering",
+      "reference": "references/reverse-engineering.md",
+      "tier": "balanced",
+      "per_unit": false,
+      "scopes": [
+        "classic",
+        "express",
+        "bugfix"
+      ],
+      "conditional": false,
+      "runs_when": "Once per brownfield target, skipped on greenfield. A fresh store at the target's HEAD is reused; a stale one gets a focused or full rescan.",
+      "inputs": [
+        {
+          "path": "knowledge/_digest.md",
+          "mode": "digest"
+        },
+        {
+          "path": "root:codekb/<repo>/_meta.json",
+          "mode": "full",
+          "optional": true
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
+        }
+      ],
+      "questions": "docs/inception/reverse-engineering/reverse-engineering-questions.md",
+      "artifacts": [
+        "root:codekb/<repo>/overview.md",
+        "root:codekb/<repo>/business-overview.md",
+        "root:codekb/<repo>/architecture.md",
+        "root:codekb/<repo>/code-structure.md",
+        "root:codekb/<repo>/api-documentation.md",
+        "root:codekb/<repo>/component-inventory.md",
+        "root:codekb/<repo>/technology-stack.md",
+        "root:codekb/<repo>/dependencies.md",
+        "root:codekb/<repo>/code-quality-assessment.md",
+        "root:codekb/<repo>/reverse-engineering-timestamp.md",
+        "root:codekb/<repo>/_meta.json"
+      ],
+      "no_digest": [
+        "root:codekb/<repo>/business-overview.md",
+        "root:codekb/<repo>/architecture.md",
+        "root:codekb/<repo>/code-structure.md",
+        "root:codekb/<repo>/api-documentation.md",
+        "root:codekb/<repo>/component-inventory.md",
+        "root:codekb/<repo>/technology-stack.md",
+        "root:codekb/<repo>/dependencies.md",
+        "root:codekb/<repo>/code-quality-assessment.md",
+        "root:codekb/<repo>/reverse-engineering-timestamp.md"
+      ],
+      "order": 3
+    },
+    {
+      "id": "hla",
+      "phase": "discovery",
+      "skill": "crv-aidlc-hla",
+      "reference": "SKILL.md",
+      "tier": "frontier",
+      "per_unit": false,
+      "scopes": [
+        "classic"
+      ],
+      "conditional": false,
+      "runs_when": "classic: always. Other scopes: only when forced with `decide`.",
+      "inputs": [
+        {
+          "path": "knowledge/_digest.md",
+          "mode": "full"
+        },
+        {
+          "path": "knowledge/_outline.json",
+          "mode": "full"
+        },
+        {
+          "path": "root:codekb/<repo>/overview.md",
+          "mode": "digest"
+        },
+        {
+          "path": "root:architecture-index.json",
+          "mode": "full",
+          "optional": true
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
+        }
+      ],
+      "questions": [
+        "architecture/hla-questions-a.md",
+        "architecture/hla-questions-b.md",
+        "architecture/hla-questions-c.md"
+      ],
+      "artifacts": [
+        "architecture/hla.md",
+        "architecture/hla-decisions.md"
+      ],
+      "clarifications": [
+        "architecture/hla-clarifications*.md"
+      ],
+      "signoff": [
+        "architecture/hla.md"
+      ],
+      "order": 4
+    },
+    {
+      "id": "tdd",
+      "phase": "discovery",
+      "skill": "crv-aidlc-tdd",
+      "reference": "references/sections.md",
+      "tier": "balanced",
+      "per_unit": false,
+      "scopes": [
+        "classic"
+      ],
+      "conditional": false,
+      "runs_when": "classic: always. Other scopes: only when forced with `decide`.",
+      "inputs": [
+        {
+          "path": "architecture/hla.md",
+          "mode": "full"
+        },
+        {
+          "path": "architecture/hla-decisions.md",
+          "mode": "full"
+        },
+        {
+          "path": "knowledge/_digest.md",
+          "mode": "full"
+        },
+        {
+          "path": "knowledge/_outline.json",
+          "mode": "full"
+        },
+        {
+          "path": "root:codekb/<repo>/overview.md",
+          "mode": "digest"
+        },
+        {
+          "path": "root:architecture-index.json",
+          "mode": "full",
+          "optional": true
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
+        }
+      ],
+      "questions": [
+        "architecture/tdd-questions.md"
+      ],
+      "artifacts": [
+        "architecture/tdd.md",
+        "architecture/tdd-decisions.md"
+      ],
+      "clarifications": [
+        "architecture/tdd-clarifications*.md"
+      ],
+      "signoff": [
+        "architecture/tdd.md"
+      ],
+      "order": 5
+    },
+    {
+      "id": "requirements-analysis",
+      "phase": "inception",
+      "skill": "crv-aidlc-inception",
+      "reference": "references/requirements-analysis.md",
+      "tier": "balanced",
+      "per_unit": false,
+      "scopes": [
+        "classic",
+        "express",
+        "bugfix"
+      ],
+      "conditional": false,
+      "runs_when": "Always. bugfix: minimal depth. Reads the HLA and TDD when they exist and records any difference.",
+      "inputs": [
+        {
+          "path": "knowledge/_digest.md",
+          "mode": "digest"
+        },
+        {
+          "path": "architecture/hla.md",
+          "mode": "digest"
+        },
+        {
+          "path": "architecture/tdd.md",
+          "mode": "digest"
+        },
+        {
+          "path": "root:codekb/<repo>/overview.md",
+          "mode": "digest"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
+        }
+      ],
+      "questions": "docs/inception/requirements-analysis/requirements-analysis-questions.md",
+      "artifacts": [
+        "docs/inception/requirements-analysis/requirements.md"
+      ],
+      "order": 6
+    },
+    {
+      "id": "user-stories",
+      "phase": "inception",
+      "skill": "crv-aidlc-inception",
+      "reference": "references/user-stories.md",
+      "tier": "balanced",
+      "per_unit": false,
+      "scopes": [
+        "classic"
+      ],
+      "conditional": true,
+      "runs_when": "User-facing features, several personas, complex logic or cross-team work. Skip for refactors, isolated fixes, infrastructure-only work and tooling.",
+      "inputs": [
+        {
+          "path": "docs/inception/requirements-analysis/requirements.md",
+          "mode": "full"
+        },
+        {
+          "path": "root:codekb/<repo>/overview.md",
+          "mode": "digest"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
+        }
+      ],
+      "questions": "docs/inception/user-stories/user-stories-questions.md",
+      "artifacts": [
+        "docs/inception/user-stories/user-stories-assessment.md",
+        "docs/inception/user-stories/personas.md",
+        "docs/inception/user-stories/stories.md"
+      ],
+      "order": 7
+    },
+    {
+      "id": "domain-design",
+      "phase": "inception",
+      "skill": "crv-aidlc-inception",
+      "reference": "references/domain-design.md",
+      "tier": "balanced",
+      "per_unit": false,
+      "scopes": [
+        "classic"
+      ],
+      "conditional": true,
+      "runs_when": "When new components are needed. Skip when only existing components change. Decisions use the Bolt D<n> sequence.",
+      "inputs": [
+        {
+          "path": "docs/inception/requirements-analysis/requirements.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/inception/user-stories/stories.md",
+          "mode": "full"
+        },
+        {
+          "path": "root:codekb/<repo>/architecture.md",
+          "mode": "full"
+        },
+        {
+          "path": "root:codekb/<repo>/component-inventory.md",
+          "mode": "full"
+        },
+        {
+          "path": "root:codekb/<repo>/dependencies.md",
+          "mode": "full"
+        },
+        {
+          "path": "architecture/hla.md",
+          "mode": "digest"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
+        }
+      ],
+      "questions": "docs/inception/domain-design/domain-design-questions.md",
+      "artifacts": [
+        "docs/inception/domain-design/components.md",
+        "docs/inception/domain-design/decisions.md"
+      ],
+      "order": 8
+    },
+    {
+      "id": "units-generation",
+      "phase": "inception",
+      "skill": "crv-aidlc-inception",
+      "reference": "references/units-generation.md",
+      "tier": "balanced",
+      "per_unit": false,
+      "scopes": [
+        "classic"
+      ],
+      "conditional": false,
+      "runs_when": "classic: always. express and bugfix use the single default unit u1.",
+      "inputs": [
+        {
+          "path": "docs/inception/domain-design/components.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/inception/domain-design/decisions.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/inception/requirements-analysis/requirements.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/inception/user-stories/stories.md",
+          "mode": "digest"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
+        }
+      ],
+      "questions": "docs/inception/units-generation/units-generation-questions.md",
+      "artifacts": [
+        "docs/inception/units-generation/unit-of-work.md",
+        "docs/inception/units-generation/unit-of-work-dependency.md",
+        "docs/inception/units-generation/unit-of-work-story-map.md"
+      ],
+      "order": 9
+    },
+    {
+      "id": "contract-design",
+      "phase": "inception",
+      "skill": "crv-aidlc-inception",
+      "reference": "references/contract-design.md",
+      "tier": "balanced",
+      "per_unit": false,
+      "scopes": [
+        "classic"
+      ],
+      "conditional": true,
+      "runs_when": "When units integrate or any unit exposes an external API. Skip for one self-contained unit.",
+      "inputs": [
+        {
+          "path": "docs/inception/units-generation/unit-of-work.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/inception/units-generation/unit-of-work-dependency.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/inception/domain-design/components.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/inception/requirements-analysis/requirements.md",
+          "mode": "digest"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
+        }
+      ],
+      "questions": "docs/inception/contract-design/contract-design-questions.md",
+      "artifacts": [
+        "docs/inception/contract-design/contract-summary.md"
+      ],
+      "order": 10
+    },
+    {
+      "id": "delivery-planning",
+      "phase": "inception",
+      "skill": "crv-aidlc-inception",
+      "reference": "references/delivery-planning.md",
+      "tier": "balanced",
+      "per_unit": false,
+      "scopes": [
+        "classic"
+      ],
+      "conditional": false,
+      "runs_when": "classic: always, after Units Generation. Plans the Slice sequence only; it does not choose stages.",
+      "inputs": [
+        {
+          "path": "docs/inception/requirements-analysis/requirements.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/inception/user-stories/stories.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/inception/domain-design/components.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/inception/units-generation/unit-of-work.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/inception/units-generation/unit-of-work-dependency.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/inception/contract-design/contract-summary.md",
+          "mode": "digest"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
+        }
+      ],
+      "questions": "docs/inception/delivery-planning/delivery-planning-questions.md",
+      "artifacts": [
+        "docs/inception/delivery-planning/slice-plan.md",
+        "docs/inception/delivery-planning/team-allocation.md",
+        "docs/inception/delivery-planning/risk-and-sequencing-rationale.md",
+        "docs/inception/delivery-planning/external-dependency-map.md",
+        "docs/verification/phase-check-inception.md"
+      ],
+      "order": 11
+    },
+    {
+      "id": "functional-design",
+      "phase": "construction",
+      "skill": "crv-aidlc-construction",
+      "reference": "references/functional-design.md",
+      "tier": "balanced",
+      "per_unit": true,
+      "scopes": [
+        "classic"
+      ],
+      "conditional": true,
+      "runs_when": "New data models, complex logic or rules. Skip for simple changes. Decided per unit when its construction starts, from the unit's kind and this condition; the engineer may decide otherwise, with the reason recorded.",
+      "inputs": [
+        {
+          "path": "docs/inception/units-generation/unit-of-work.md",
+          "mode": "full",
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/units-generation/unit-of-work-story-map.md",
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/requirements-analysis/requirements.md",
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/domain-design/components.md",
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/contract-design/contract-summary.md",
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/user-stories/stories.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/hla-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/tdd-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/domain-design/decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
+        }
+      ],
+      "questions": "docs/construction/<unit>/functional-design/functional-design-questions.md",
+      "artifacts": [
+        "docs/construction/<unit>/functional-design/entities.md",
+        "docs/construction/<unit>/functional-design/rules.md",
+        "docs/construction/<unit>/functional-design/functional-spec.md",
+        "docs/construction/<unit>/functional-design/traceability.json"
+      ],
+      "order": 12
+    },
+    {
+      "id": "nfr-requirements",
+      "phase": "construction",
+      "skill": "crv-aidlc-construction",
+      "reference": "references/nfr-requirements.md",
+      "tier": "balanced",
+      "per_unit": true,
+      "scopes": [
+        "classic"
+      ],
+      "conditional": true,
+      "runs_when": "When NFRs or stack choices are needed. Decided per unit when its construction starts, from the unit's kind and this condition; the engineer may decide otherwise, with the reason recorded.",
+      "inputs": [
+        {
+          "path": "docs/construction/<unit>/functional-design/functional-spec.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/inception/requirements-analysis/requirements.md",
+          "mode": "full",
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/contract-design/contract-summary.md",
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "root:codekb/<repo>/technology-stack.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/inception/user-stories/stories.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/hla-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/tdd-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/domain-design/decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
+        }
+      ],
+      "questions": "docs/construction/<unit>/nfr-requirements/nfr-requirements-questions.md",
+      "artifacts": [
+        "docs/construction/<unit>/nfr-requirements/performance-requirements.md",
+        "docs/construction/<unit>/nfr-requirements/security-requirements.md",
+        "docs/construction/<unit>/nfr-requirements/scalability-requirements.md",
+        "docs/construction/<unit>/nfr-requirements/reliability-requirements.md",
+        "docs/construction/<unit>/nfr-requirements/observability-requirements.md",
+        "docs/construction/<unit>/nfr-requirements/tech-stack-decisions.md",
+        "docs/construction/<unit>/nfr-requirements/traceability.json"
+      ],
+      "order": 13
+    },
+    {
+      "id": "nfr-design",
+      "phase": "construction",
+      "skill": "crv-aidlc-construction",
+      "reference": "references/nfr-design.md",
+      "tier": "balanced",
+      "per_unit": true,
+      "scopes": [
+        "classic"
+      ],
+      "conditional": true,
+      "runs_when": "When NFR Requirements ran for the unit. Decided per unit when its construction starts, from the unit's kind and this condition; the engineer may decide otherwise, with the reason recorded.",
+      "inputs": [
+        {
+          "path": "docs/construction/<unit>/nfr-requirements/performance-requirements.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/construction/<unit>/nfr-requirements/security-requirements.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/construction/<unit>/nfr-requirements/scalability-requirements.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/construction/<unit>/nfr-requirements/reliability-requirements.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/construction/<unit>/nfr-requirements/observability-requirements.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/construction/<unit>/nfr-requirements/tech-stack-decisions.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/construction/<unit>/functional-design/functional-spec.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/inception/contract-design/contract-summary.md",
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/domain-design/components.md",
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/user-stories/stories.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/hla-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/tdd-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/domain-design/decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
+        }
+      ],
+      "questions": "docs/construction/<unit>/nfr-design/nfr-design-questions.md",
+      "artifacts": [
+        "docs/construction/<unit>/nfr-design/resilience-design.md",
+        "docs/construction/<unit>/nfr-design/scalability-design.md",
+        "docs/construction/<unit>/nfr-design/performance-design.md",
+        "docs/construction/<unit>/nfr-design/security-design.md",
+        "docs/construction/<unit>/nfr-design/observability-design.md",
+        "docs/construction/<unit>/nfr-design/logical-components.md",
+        "docs/construction/<unit>/nfr-design/traceability.json"
+      ],
+      "order": 14
+    },
+    {
+      "id": "infrastructure-design",
+      "phase": "construction",
+      "skill": "crv-aidlc-construction",
+      "reference": "references/infrastructure-design.md",
+      "tier": "balanced",
+      "per_unit": true,
+      "scopes": [
+        "classic"
+      ],
+      "conditional": true,
+      "runs_when": "When services, deployment or cloud resources need design. Decided per unit when its construction starts, from the unit's kind and this condition; the engineer may decide otherwise, with the reason recorded.",
+      "inputs": [
+        {
+          "path": "docs/construction/<unit>/nfr-design/logical-components.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/construction/<unit>/nfr-requirements/tech-stack-decisions.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/construction/<unit>/functional-design/functional-spec.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/inception/domain-design/components.md",
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/contract-design/contract-summary.md",
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/user-stories/stories.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/hla-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/tdd-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/domain-design/decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
+        }
+      ],
+      "questions": "docs/construction/<unit>/infrastructure-design/infrastructure-design-questions.md",
+      "artifacts": [
+        "docs/construction/<unit>/infrastructure-design/infrastructure-specification.md",
+        "docs/construction/<unit>/infrastructure-design/monitoring-design.md",
+        "docs/construction/<unit>/infrastructure-design/cicd-pipeline.md",
+        "docs/construction/<unit>/infrastructure-design/traceability.json"
+      ],
+      "order": 15
+    },
+    {
+      "id": "code-generation",
+      "phase": "construction",
+      "skill": "crv-aidlc-construction",
+      "reference": "references/code-generation.md",
+      "tier": "balanced",
+      "per_unit": true,
+      "scopes": [
+        "classic",
+        "express",
+        "bugfix"
+      ],
+      "conditional": false,
+      "runs_when": "Always, per unit. The approved code plan stays on in every scope, express included. bugfix: a regression test that fails before the fix and passes after is mandatory. Brownfield units carry their rollback plan in the plan.",
+      "inputs": [
+        {
+          "path": "docs/construction/<unit>/functional-design/functional-spec.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/construction/<unit>/functional-design/rules.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/construction/<unit>/nfr-design/logical-components.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/construction/<unit>/infrastructure-design/infrastructure-specification.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/inception/units-generation/unit-of-work.md",
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/units-generation/unit-of-work-story-map.md",
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/requirements-analysis/requirements.md",
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/domain-design/components.md",
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/contract-design/contract-summary.md",
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "root:codekb/<repo>/code-structure.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/inception/user-stories/stories.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/hla-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/tdd-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/domain-design/decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        }
+      ],
+      "questions": null,
+      "artifacts": [
+        "docs/construction/<unit>/code-generation/code-generation-plan.md",
+        "docs/construction/<unit>/code-generation/unit-test-instructions.md",
+        "docs/construction/<unit>/code-generation/code-summary.md",
+        "docs/construction/<unit>/code-generation/source-manifest.json",
+        "docs/construction/<unit>/code-generation/traceability.json"
+      ],
+      "order": 16,
+      "verdict": "docs/construction/<unit>/code-generation/code-summary.md"
+    },
+    {
+      "id": "build-and-test",
+      "phase": "construction",
+      "skill": "crv-aidlc-construction",
+      "reference": "references/build-and-test.md",
+      "tier": "balanced",
+      "per_unit": false,
+      "per_slice": true,
+      "scopes": [
+        "classic",
+        "express",
+        "bugfix"
+      ],
+      "conditional": false,
+      "runs_when": "Always, once, after all units; it runs the build and tests and never deploys. bugfix: the regression test must fail before the fix and pass after.",
+      "inputs": [
+        {
+          "path": "docs/construction/<unit>/code-generation/code-summary.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/construction/<unit>/code-generation/unit-test-instructions.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/inception/delivery-planning/slice-plan.md",
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/user-stories/stories.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/hla-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/tdd-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/domain-design/decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        }
+      ],
+      "questions": null,
+      "artifacts": [
+        "docs/slices/<slice>/build-and-test/build-instructions.md",
+        "docs/slices/<slice>/build-and-test/build-and-test-summary.md",
+        "docs/slices/<slice>/build-and-test/test-results.md",
+        "docs/slices/<slice>/build-and-test/cross-unit-traceability.md"
+      ],
+      "order": 17,
+      "verdict": "docs/slices/<slice>/build-and-test/test-results.md"
+    },
+    {
+      "id": "deployment-pipeline",
+      "phase": "operation",
+      "skill": "crv-aidlc-operation",
+      "reference": "references/deployment-pipeline.md",
+      "tier": "balanced",
+      "per_unit": false,
+      "per_slice": true,
+      "scopes": [
+        "classic"
+      ],
+      "conditional": true,
+      "runs_when": "When people must release or cut over the Bolt's change: a data migration, a cut-over, a switch of write master, a retirement, or a release across several repositories. Skip, with the reason, when each target repository's own pipeline releases on merge and nothing else has to happen. Other scopes: only when forced with `decide`.",
+      "inputs": [
+        {
+          "path": "docs/slices/<slice>/build-and-test/build-and-test-summary.md",
+          "mode": "digest"
+        },
+        {
+          "path": "docs/inception/delivery-planning/slice-plan.md",
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/units-generation/unit-of-work-dependency.md",
+          "mode": "digest",
+          "track": "ids"
+        },
+        {
+          "path": "architecture/hla-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/tdd-decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "docs/inception/domain-design/decisions.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "ids"
+        },
+        {
+          "path": "architecture/hla.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "none"
+        },
+        {
+          "path": "architecture/tdd.md",
+          "mode": "digest",
+          "optional": true,
+          "track": "none"
+        },
+        {
+          "path": "root:codekb/<repo>/technology-stack.md",
+          "mode": "full",
+          "optional": true
+        },
+        {
+          "path": "root:docs/presets.md",
+          "mode": "full",
+          "optional": true
+        }
+      ],
+      "questions": "docs/slices/<slice>/deployment-pipeline/deployment-pipeline-questions.md",
+      "artifacts": [
+        "docs/slices/<slice>/deployment-pipeline/release-plan.md",
+        "docs/slices/<slice>/deployment-pipeline/runbook.md",
+        "docs/slices/<slice>/deployment-pipeline/rollback-runbook.md",
+        "docs/slices/<slice>/deployment-pipeline/verification-checks.md"
+      ],
+      "order": 18
+    },
+    {
+      "id": "deployment-execution",
+      "phase": "operation",
+      "skill": "crv-aidlc-operation",
+      "reference": "references/deployment-execution.md",
+      "tier": "economy",
+      "per_unit": false,
+      "per_slice": true,
+      "scopes": [
+        "classic"
+      ],
+      "conditional": true,
+      "runs_when": "When Deployment Pipeline ran.",
+      "inputs": [
+        {
+          "path": "docs/slices/<slice>/deployment-pipeline/release-plan.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/slices/<slice>/deployment-pipeline/runbook.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/slices/<slice>/deployment-pipeline/rollback-runbook.md",
+          "mode": "full"
+        },
+        {
+          "path": "docs/slices/<slice>/deployment-pipeline/verification-checks.md",
+          "mode": "full"
+        }
+      ],
+      "questions": null,
+      "artifacts": [
+        "docs/slices/<slice>/deployment-execution/deploy-log.md",
+        "docs/slices/<slice>/deployment-execution/verification-results.md"
+      ],
+      "order": 19
+    }
+  ]
+}

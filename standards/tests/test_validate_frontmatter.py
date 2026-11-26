@@ -251,18 +251,48 @@ def test_escalated_tier_warns(make_skill, validate):
     assert run.returncode == 0
 
 
+def test_justified_escalated_tier_does_not_warn(make_skill, validate):
+    body = (
+        "# Example\n\n## Execution\n\n**Model tier: `frontier`.** Its output fixes "
+        "decisions every later step inherits, so reasoning quality dominates cost.\n"
+    )
+    make_skill(frontmatter=VALID.replace("model-tier: economy", "model-tier: frontier"), body=body)
+    run = validate()
+    assert "execution.escalated-tier" not in run.codes()
+    assert run.returncode == 0
+
+
+def test_a_tier_stated_without_a_reason_still_warns(make_skill, validate):
+    body = "# Example\n\n## Execution\n\n**Model tier: `frontier`.** Because.\n"
+    make_skill(frontmatter=VALID.replace("model-tier: economy", "model-tier: frontier"), body=body)
+    assert "execution.escalated-tier" in validate().codes()
+
+
 def test_unknown_tier_is_rejected(make_skill, validate):
     make_skill(frontmatter=VALID.replace("model-tier: economy", "model-tier: cheapest"))
     assert validate().returncode == 1
 
 
 def test_shipped_skills_default_to_subagent_and_economy(repo_root):
-    """The rule is only real if the skills we ship actually follow it."""
+    """The rule is only real if the skills we ship actually follow it.
+
+    ``economy`` is the default. A higher tier is an escalation the Execution
+    section must name and justify, so a skill may only ship one when its body
+    states the tier in the ``**Model tier: `<tier>`.**`` form followed by a reason.
+    """
     import yaml
 
     for skill_md in sorted((repo_root / "skills").rglob("SKILL.md")):
-        front = skill_md.read_text(encoding="utf-8").split("---")[1]
+        text = skill_md.read_text(encoding="utf-8")
+        front = text.split("---")[1]
         metadata = yaml.safe_load(front)["metadata"]
         assert metadata["execution"] == "subagent", skill_md
-        assert metadata["model-tier"] == "economy", skill_md
-        assert "## Execution" in skill_md.read_text(encoding="utf-8"), skill_md
+        assert "## Execution" in text, skill_md
+        tier = metadata["model-tier"]
+        if tier == "economy":
+            continue
+        execution = text.split("## Execution", 1)[1].split("\n## ", 1)[0]
+        stated = f"**Model tier: `{tier}`.**"
+        assert stated in execution, f"{skill_md}: escalated tier not stated as {stated}"
+        reason = execution.split(stated, 1)[1].split("\n", 1)[0]
+        assert len(reason.split()) >= 8, f"{skill_md}: the {tier} tier needs a reason"
