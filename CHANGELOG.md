@@ -12,6 +12,10 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The Python 3.9 floor job runs on Ubuntu 24.04.** `ubuntu-latest` is now 26.04,
+  and the published CPython 3.9 builds stop at 24.04, so the job failed while
+  installing Python and never ran a script. The other jobs stay on `ubuntu-latest`;
+  they install their own interpreter through uv.
 - **A verified or released Slice no longer vouches for work it did not cover.** Adding a
   Unit to a Slice whose Build and Test passed, or sending one of its Units' passed stages
   back, reopens the Slice's Build and Test and any recorded release stage: the Slice shows
